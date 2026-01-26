@@ -1,11 +1,9 @@
-import "./amplify-config";
-
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import type { Schema } from "../amplify/data/resource";
 import { generateClient } from "aws-amplify/data";
 
 function App() {
-  const client = generateClient<Schema>();
+  const client = useMemo(() => generateClient<Schema>(), []);
 
   const [todos, setTodos] = useState<Array<Schema["Todo"]["type"]>>([]);
 
