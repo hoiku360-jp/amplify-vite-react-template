@@ -69,7 +69,7 @@ function TodosApp(props: { owner: string }) {
 
   return (
     <main style={{ padding: 16 }}>
-      <h1>My todos</h1>
+      <h1>My todos hoiku360</h1>
       <button onClick={createTodo}>+ new</button>
       <ul>
         {todos.map((todo) => (
