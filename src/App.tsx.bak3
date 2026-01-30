@@ -38,15 +38,9 @@ function TodosApp(props: { owner: string }) {
     const content = window.prompt("Todo content") ?? "";
     if (!content.trim()) return;
 
-    // 1) まず作成（成功したら戻り値の1件を即時に画面へ反映）
-    const res = await client.models.Todo.create({ content, owner });
-    const created = (res as any)?.data;
-    if (created?.id) {
-      setTodos((prev) => [created, ...prev]);
-    }
+    await client.models.Todo.create({ content, owner });
 
-    // 2) ただし subscription/整合性の揺れ対策で少し待ってから再取得（確定反映）
-    await new Promise((r) => setTimeout(r, 500));
+    // create 直後に必ず再取得（ログアウト不要にする）
     await refreshTodos();
   }
 
@@ -94,4 +88,3 @@ export default function App() {
     </Authenticator>
   );
 }
-
