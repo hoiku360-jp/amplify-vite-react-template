@@ -1,9 +1,9 @@
 {
   "auth": {
-    "user_pool_id": "ap-northeast-1_HkfzAPObV",
+    "user_pool_id": "ap-northeast-1_7kiFvXxfJ",
     "aws_region": "ap-northeast-1",
-    "user_pool_client_id": "3b1enggqd4tl84a1b4m2uq8guf",
-    "identity_pool_id": "ap-northeast-1:8674e952-4323-44b7-9b48-5e062cf78276",
+    "user_pool_client_id": "7it4f41asi62lff89hvih8b60l",
+    "identity_pool_id": "ap-northeast-1:060c21e1-15a0-4bc3-9fed-40496f82ea00",
     "mfa_methods": [
       "TOTP"
     ],
@@ -28,10 +28,12 @@
     "unauthenticated_identities_enabled": true
   },
   "data": {
-    "url": "https://udzd6xbcbvaz5fb4gksuzj52je.appsync-api.ap-northeast-1.amazonaws.com/graphql",
+    "url": "https://2qmlz5dn5nfvbg6slurwwqyx3q.appsync-api.ap-northeast-1.amazonaws.com/graphql",
     "aws_region": "ap-northeast-1",
+    "api_key": "da2-hu4aukqrcnh33hzewadi4uigam",
     "default_authorization_type": "AMAZON_COGNITO_USER_POOLS",
     "authorization_types": [
+      "API_KEY",
       "AWS_IAM"
     ],
     "model_introspection": {
@@ -303,11 +305,1155 @@
             "primaryKeyFieldName": "id",
             "sortKeyFieldNames": []
           }
+        },
+        "AudioJob": {
+          "name": "AudioJob",
+          "fields": {
+            "id": {
+              "name": "id",
+              "isArray": false,
+              "type": "ID",
+              "isRequired": true,
+              "attributes": []
+            },
+            "tenantId": {
+              "name": "tenantId",
+              "isArray": false,
+              "type": "String",
+              "isRequired": true,
+              "attributes": []
+            },
+            "owner": {
+              "name": "owner",
+              "isArray": false,
+              "type": "String",
+              "isRequired": true,
+              "attributes": []
+            },
+            "audioPath": {
+              "name": "audioPath",
+              "isArray": false,
+              "type": "String",
+              "isRequired": true,
+              "attributes": []
+            },
+            "recordedAt": {
+              "name": "recordedAt",
+              "isArray": false,
+              "type": "AWSDateTime",
+              "isRequired": true,
+              "attributes": []
+            },
+            "status": {
+              "name": "status",
+              "isArray": false,
+              "type": "String",
+              "isRequired": true,
+              "attributes": []
+            },
+            "transcribeJobName": {
+              "name": "transcribeJobName",
+              "isArray": false,
+              "type": "String",
+              "isRequired": false,
+              "attributes": []
+            },
+            "transcribeStatus": {
+              "name": "transcribeStatus",
+              "isArray": false,
+              "type": "String",
+              "isRequired": false,
+              "attributes": []
+            },
+            "transcriptText": {
+              "name": "transcriptText",
+              "isArray": false,
+              "type": "String",
+              "isRequired": false,
+              "attributes": []
+            },
+            "summaryText": {
+              "name": "summaryText",
+              "isArray": false,
+              "type": "String",
+              "isRequired": false,
+              "attributes": []
+            },
+            "errorMessage": {
+              "name": "errorMessage",
+              "isArray": false,
+              "type": "String",
+              "isRequired": false,
+              "attributes": []
+            },
+            "completedAt": {
+              "name": "completedAt",
+              "isArray": false,
+              "type": "AWSDateTime",
+              "isRequired": false,
+              "attributes": []
+            },
+            "createdAt": {
+              "name": "createdAt",
+              "isArray": false,
+              "type": "AWSDateTime",
+              "isRequired": false,
+              "attributes": [],
+              "isReadOnly": true
+            },
+            "updatedAt": {
+              "name": "updatedAt",
+              "isArray": false,
+              "type": "AWSDateTime",
+              "isRequired": false,
+              "attributes": [],
+              "isReadOnly": true
+            }
+          },
+          "syncable": true,
+          "pluralName": "AudioJobs",
+          "attributes": [
+            {
+              "type": "model",
+              "properties": {}
+            },
+            {
+              "type": "key",
+              "properties": {
+                "name": "audioJobsByTenantIdAndRecordedAt",
+                "queryField": "listJobsByTenantDate",
+                "fields": [
+                  "tenantId",
+                  "recordedAt"
+                ]
+              }
+            },
+            {
+              "type": "key",
+              "properties": {
+                "name": "audioJobsByStatusAndRecordedAt",
+                "queryField": "listJobsByStatusDate",
+                "fields": [
+                  "status",
+                  "recordedAt"
+                ]
+              }
+            },
+            {
+              "type": "auth",
+              "properties": {
+                "rules": [
+                  {
+                    "provider": "userPools",
+                    "ownerField": "owner",
+                    "allow": "owner",
+                    "identityClaim": "cognito:username",
+                    "operations": [
+                      "create",
+                      "update",
+                      "delete",
+                      "read"
+                    ]
+                  }
+                ]
+              }
+            }
+          ],
+          "primaryKeyInfo": {
+            "isCustomPrimaryKey": false,
+            "primaryKeyFieldName": "id",
+            "sortKeyFieldNames": []
+          }
+        },
+        "DailyDigest": {
+          "name": "DailyDigest",
+          "fields": {
+            "tenantId": {
+              "name": "tenantId",
+              "isArray": false,
+              "type": "String",
+              "isRequired": true,
+              "attributes": []
+            },
+            "ownerKey": {
+              "name": "ownerKey",
+              "isArray": false,
+              "type": "String",
+              "isRequired": true,
+              "attributes": []
+            },
+            "owner": {
+              "name": "owner",
+              "isArray": false,
+              "type": "String",
+              "isRequired": true,
+              "attributes": []
+            },
+            "digestDate": {
+              "name": "digestDate",
+              "isArray": false,
+              "type": "String",
+              "isRequired": true,
+              "attributes": []
+            },
+            "title": {
+              "name": "title",
+              "isArray": false,
+              "type": "String",
+              "isRequired": true,
+              "attributes": []
+            },
+            "body": {
+              "name": "body",
+              "isArray": false,
+              "type": "String",
+              "isRequired": false,
+              "attributes": []
+            },
+            "sourceCount": {
+              "name": "sourceCount",
+              "isArray": false,
+              "type": "Int",
+              "isRequired": true,
+              "attributes": []
+            },
+            "status": {
+              "name": "status",
+              "isArray": false,
+              "type": "String",
+              "isRequired": true,
+              "attributes": []
+            },
+            "createdAt": {
+              "name": "createdAt",
+              "isArray": false,
+              "type": "AWSDateTime",
+              "isRequired": false,
+              "attributes": [],
+              "isReadOnly": true
+            },
+            "updatedAt": {
+              "name": "updatedAt",
+              "isArray": false,
+              "type": "AWSDateTime",
+              "isRequired": false,
+              "attributes": [],
+              "isReadOnly": true
+            }
+          },
+          "syncable": true,
+          "pluralName": "DailyDigests",
+          "attributes": [
+            {
+              "type": "model",
+              "properties": {}
+            },
+            {
+              "type": "key",
+              "properties": {
+                "fields": [
+                  "tenantId",
+                  "ownerKey",
+                  "digestDate"
+                ]
+              }
+            },
+            {
+              "type": "key",
+              "properties": {
+                "name": "dailyDigestsByTenantIdAndOwnerKeyAndDigestDate",
+                "queryField": "listDigestsByTenantOwnerDate",
+                "fields": [
+                  "tenantId",
+                  "ownerKey",
+                  "digestDate"
+                ]
+              }
+            },
+            {
+              "type": "auth",
+              "properties": {
+                "rules": [
+                  {
+                    "provider": "userPools",
+                    "ownerField": "owner",
+                    "allow": "owner",
+                    "identityClaim": "cognito:username",
+                    "operations": [
+                      "create",
+                      "update",
+                      "delete",
+                      "read"
+                    ]
+                  }
+                ]
+              }
+            }
+          ],
+          "primaryKeyInfo": {
+            "isCustomPrimaryKey": true,
+            "primaryKeyFieldName": "tenantId",
+            "sortKeyFieldNames": [
+              "ownerKey",
+              "digestDate"
+            ]
+          }
+        },
+        "AbilityCode": {
+          "name": "AbilityCode",
+          "fields": {
+            "id": {
+              "name": "id",
+              "isArray": false,
+              "type": "ID",
+              "isRequired": true,
+              "attributes": []
+            },
+            "code": {
+              "name": "code",
+              "isArray": false,
+              "type": "String",
+              "isRequired": true,
+              "attributes": []
+            },
+            "code_display": {
+              "name": "code_display",
+              "isArray": false,
+              "type": "String",
+              "isRequired": true,
+              "attributes": []
+            },
+            "parent_code": {
+              "name": "parent_code",
+              "isArray": false,
+              "type": "String",
+              "isRequired": false,
+              "attributes": []
+            },
+            "level": {
+              "name": "level",
+              "isArray": false,
+              "type": "Int",
+              "isRequired": true,
+              "attributes": []
+            },
+            "name": {
+              "name": "name",
+              "isArray": false,
+              "type": "String",
+              "isRequired": true,
+              "attributes": []
+            },
+            "domain": {
+              "name": "domain",
+              "isArray": false,
+              "type": "String",
+              "isRequired": false,
+              "attributes": []
+            },
+            "category": {
+              "name": "category",
+              "isArray": false,
+              "type": "String",
+              "isRequired": false,
+              "attributes": []
+            },
+            "sort_order": {
+              "name": "sort_order",
+              "isArray": false,
+              "type": "Int",
+              "isRequired": false,
+              "attributes": []
+            },
+            "is_leaf": {
+              "name": "is_leaf",
+              "isArray": false,
+              "type": "Boolean",
+              "isRequired": true,
+              "attributes": []
+            },
+            "status": {
+              "name": "status",
+              "isArray": false,
+              "type": "String",
+              "isRequired": true,
+              "attributes": []
+            },
+            "note": {
+              "name": "note",
+              "isArray": false,
+              "type": "String",
+              "isRequired": false,
+              "attributes": []
+            },
+            "createdAt": {
+              "name": "createdAt",
+              "isArray": false,
+              "type": "AWSDateTime",
+              "isRequired": false,
+              "attributes": [],
+              "isReadOnly": true
+            },
+            "updatedAt": {
+              "name": "updatedAt",
+              "isArray": false,
+              "type": "AWSDateTime",
+              "isRequired": false,
+              "attributes": [],
+              "isReadOnly": true
+            }
+          },
+          "syncable": true,
+          "pluralName": "AbilityCodes",
+          "attributes": [
+            {
+              "type": "model",
+              "properties": {}
+            },
+            {
+              "type": "auth",
+              "properties": {
+                "rules": [
+                  {
+                    "allow": "private",
+                    "operations": [
+                      "read"
+                    ]
+                  }
+                ]
+              }
+            }
+          ],
+          "primaryKeyInfo": {
+            "isCustomPrimaryKey": false,
+            "primaryKeyFieldName": "id",
+            "sortKeyFieldNames": []
+          }
+        },
+        "AbilityPracticeLink": {
+          "name": "AbilityPracticeLink",
+          "fields": {
+            "abilityCode": {
+              "name": "abilityCode",
+              "isArray": false,
+              "type": "String",
+              "isRequired": true,
+              "attributes": []
+            },
+            "practiceCode": {
+              "name": "practiceCode",
+              "isArray": false,
+              "type": "String",
+              "isRequired": true,
+              "attributes": []
+            },
+            "score": {
+              "name": "score",
+              "isArray": false,
+              "type": "Int",
+              "isRequired": true,
+              "attributes": []
+            },
+            "createdAt": {
+              "name": "createdAt",
+              "isArray": false,
+              "type": "AWSDateTime",
+              "isRequired": false,
+              "attributes": [],
+              "isReadOnly": true
+            },
+            "updatedAt": {
+              "name": "updatedAt",
+              "isArray": false,
+              "type": "AWSDateTime",
+              "isRequired": false,
+              "attributes": [],
+              "isReadOnly": true
+            }
+          },
+          "syncable": true,
+          "pluralName": "AbilityPracticeLinks",
+          "attributes": [
+            {
+              "type": "model",
+              "properties": {}
+            },
+            {
+              "type": "key",
+              "properties": {
+                "fields": [
+                  "abilityCode",
+                  "practiceCode"
+                ]
+              }
+            },
+            {
+              "type": "key",
+              "properties": {
+                "name": "abilityPracticeLinksByAbilityCodeAndPracticeCode",
+                "queryField": "listByAbility",
+                "fields": [
+                  "abilityCode",
+                  "practiceCode"
+                ]
+              }
+            },
+            {
+              "type": "key",
+              "properties": {
+                "name": "abilityPracticeLinksByPracticeCodeAndAbilityCode",
+                "queryField": "listByPractice",
+                "fields": [
+                  "practiceCode",
+                  "abilityCode"
+                ]
+              }
+            },
+            {
+              "type": "auth",
+              "properties": {
+                "rules": [
+                  {
+                    "allow": "private",
+                    "operations": [
+                      "read"
+                    ]
+                  }
+                ]
+              }
+            }
+          ],
+          "primaryKeyInfo": {
+            "isCustomPrimaryKey": true,
+            "primaryKeyFieldName": "abilityCode",
+            "sortKeyFieldNames": [
+              "practiceCode"
+            ]
+          }
+        },
+        "AbilityPracticeAgg": {
+          "name": "AbilityPracticeAgg",
+          "fields": {
+            "id": {
+              "name": "id",
+              "isArray": false,
+              "type": "ID",
+              "isRequired": true,
+              "attributes": []
+            },
+            "abilityCode": {
+              "name": "abilityCode",
+              "isArray": false,
+              "type": "String",
+              "isRequired": true,
+              "attributes": []
+            },
+            "practiceCode": {
+              "name": "practiceCode",
+              "isArray": false,
+              "type": "String",
+              "isRequired": true,
+              "attributes": []
+            },
+            "scoreSum": {
+              "name": "scoreSum",
+              "isArray": false,
+              "type": "Int",
+              "isRequired": true,
+              "attributes": []
+            },
+            "scoreMax": {
+              "name": "scoreMax",
+              "isArray": false,
+              "type": "Int",
+              "isRequired": true,
+              "attributes": []
+            },
+            "linkCount": {
+              "name": "linkCount",
+              "isArray": false,
+              "type": "Int",
+              "isRequired": true,
+              "attributes": []
+            },
+            "level": {
+              "name": "level",
+              "isArray": false,
+              "type": "Int",
+              "isRequired": true,
+              "attributes": []
+            },
+            "createdAt": {
+              "name": "createdAt",
+              "isArray": false,
+              "type": "AWSDateTime",
+              "isRequired": false,
+              "attributes": [],
+              "isReadOnly": true
+            },
+            "updatedAt": {
+              "name": "updatedAt",
+              "isArray": false,
+              "type": "AWSDateTime",
+              "isRequired": false,
+              "attributes": [],
+              "isReadOnly": true
+            }
+          },
+          "syncable": true,
+          "pluralName": "AbilityPracticeAggs",
+          "attributes": [
+            {
+              "type": "model",
+              "properties": {}
+            },
+            {
+              "type": "auth",
+              "properties": {
+                "rules": [
+                  {
+                    "allow": "private",
+                    "operations": [
+                      "create",
+                      "read",
+                      "update",
+                      "delete"
+                    ]
+                  }
+                ]
+              }
+            }
+          ],
+          "primaryKeyInfo": {
+            "isCustomPrimaryKey": false,
+            "primaryKeyFieldName": "id",
+            "sortKeyFieldNames": []
+          }
+        },
+        "PracticeCode": {
+          "name": "PracticeCode",
+          "fields": {
+            "id": {
+              "name": "id",
+              "isArray": false,
+              "type": "ID",
+              "isRequired": true,
+              "attributes": []
+            },
+            "practice_code": {
+              "name": "practice_code",
+              "isArray": false,
+              "type": "String",
+              "isRequired": true,
+              "attributes": []
+            },
+            "category_code": {
+              "name": "category_code",
+              "isArray": false,
+              "type": "String",
+              "isRequired": false,
+              "attributes": []
+            },
+            "category_name": {
+              "name": "category_name",
+              "isArray": false,
+              "type": "String",
+              "isRequired": false,
+              "attributes": []
+            },
+            "name": {
+              "name": "name",
+              "isArray": false,
+              "type": "String",
+              "isRequired": true,
+              "attributes": []
+            },
+            "memo": {
+              "name": "memo",
+              "isArray": false,
+              "type": "String",
+              "isRequired": false,
+              "attributes": []
+            },
+            "source_type": {
+              "name": "source_type",
+              "isArray": false,
+              "type": "String",
+              "isRequired": true,
+              "attributes": []
+            },
+            "source_ref": {
+              "name": "source_ref",
+              "isArray": false,
+              "type": "String",
+              "isRequired": false,
+              "attributes": []
+            },
+            "source_url": {
+              "name": "source_url",
+              "isArray": false,
+              "type": "String",
+              "isRequired": false,
+              "attributes": []
+            },
+            "status": {
+              "name": "status",
+              "isArray": false,
+              "type": "String",
+              "isRequired": true,
+              "attributes": []
+            },
+            "version": {
+              "name": "version",
+              "isArray": false,
+              "type": "Int",
+              "isRequired": true,
+              "attributes": []
+            },
+            "createdAt": {
+              "name": "createdAt",
+              "isArray": false,
+              "type": "AWSDateTime",
+              "isRequired": false,
+              "attributes": [],
+              "isReadOnly": true
+            },
+            "updatedAt": {
+              "name": "updatedAt",
+              "isArray": false,
+              "type": "AWSDateTime",
+              "isRequired": false,
+              "attributes": [],
+              "isReadOnly": true
+            }
+          },
+          "syncable": true,
+          "pluralName": "PracticeCodes",
+          "attributes": [
+            {
+              "type": "model",
+              "properties": {}
+            },
+            {
+              "type": "auth",
+              "properties": {
+                "rules": [
+                  {
+                    "allow": "private",
+                    "operations": [
+                      "read"
+                    ]
+                  }
+                ]
+              }
+            }
+          ],
+          "primaryKeyInfo": {
+            "isCustomPrimaryKey": false,
+            "primaryKeyFieldName": "id",
+            "sortKeyFieldNames": []
+          }
+        },
+        "DailyWeeklyPlan": {
+          "name": "DailyWeeklyPlan",
+          "fields": {
+            "owner": {
+              "name": "owner",
+              "isArray": false,
+              "type": "String",
+              "isRequired": true,
+              "attributes": []
+            },
+            "weekOwnerKey": {
+              "name": "weekOwnerKey",
+              "isArray": false,
+              "type": "String",
+              "isRequired": true,
+              "attributes": []
+            },
+            "weekStart": {
+              "name": "weekStart",
+              "isArray": false,
+              "type": "String",
+              "isRequired": true,
+              "attributes": []
+            },
+            "planDate": {
+              "name": "planDate",
+              "isArray": false,
+              "type": "String",
+              "isRequired": true,
+              "attributes": []
+            },
+            "area": {
+              "name": "area",
+              "isArray": false,
+              "type": "String",
+              "isRequired": true,
+              "attributes": []
+            },
+            "practiceCode": {
+              "name": "practiceCode",
+              "isArray": false,
+              "type": "String",
+              "isRequired": true,
+              "attributes": []
+            },
+            "memo": {
+              "name": "memo",
+              "isArray": false,
+              "type": "String",
+              "isRequired": false,
+              "attributes": []
+            },
+            "createdAt": {
+              "name": "createdAt",
+              "isArray": false,
+              "type": "AWSDateTime",
+              "isRequired": false,
+              "attributes": [],
+              "isReadOnly": true
+            },
+            "updatedAt": {
+              "name": "updatedAt",
+              "isArray": false,
+              "type": "AWSDateTime",
+              "isRequired": false,
+              "attributes": [],
+              "isReadOnly": true
+            }
+          },
+          "syncable": true,
+          "pluralName": "DailyWeeklyPlans",
+          "attributes": [
+            {
+              "type": "model",
+              "properties": {}
+            },
+            {
+              "type": "key",
+              "properties": {
+                "fields": [
+                  "weekOwnerKey",
+                  "planDate",
+                  "area"
+                ]
+              }
+            },
+            {
+              "type": "key",
+              "properties": {
+                "name": "dailyWeeklyPlansByOwnerAndWeekStartAndPlanDate",
+                "queryField": "listPlanCellsByOwnerWeekDate",
+                "fields": [
+                  "owner",
+                  "weekStart",
+                  "planDate"
+                ]
+              }
+            },
+            {
+              "type": "key",
+              "properties": {
+                "name": "dailyWeeklyPlansByWeekOwnerKeyAndPlanDateAndArea",
+                "queryField": "listPlanCellsByWeek",
+                "fields": [
+                  "weekOwnerKey",
+                  "planDate",
+                  "area"
+                ]
+              }
+            },
+            {
+              "type": "auth",
+              "properties": {
+                "rules": [
+                  {
+                    "provider": "userPools",
+                    "ownerField": "owner",
+                    "allow": "owner",
+                    "operations": [
+                      "create",
+                      "read",
+                      "update",
+                      "delete"
+                    ],
+                    "identityClaim": "cognito:username"
+                  }
+                ]
+              }
+            }
+          ],
+          "primaryKeyInfo": {
+            "isCustomPrimaryKey": true,
+            "primaryKeyFieldName": "weekOwnerKey",
+            "sortKeyFieldNames": [
+              "planDate",
+              "area"
+            ]
+          }
+        },
+        "DailyTimeBlock": {
+          "name": "DailyTimeBlock",
+          "fields": {
+            "owner": {
+              "name": "owner",
+              "isArray": false,
+              "type": "String",
+              "isRequired": true,
+              "attributes": []
+            },
+            "planDate": {
+              "name": "planDate",
+              "isArray": false,
+              "type": "String",
+              "isRequired": true,
+              "attributes": []
+            },
+            "blockId": {
+              "name": "blockId",
+              "isArray": false,
+              "type": "String",
+              "isRequired": true,
+              "attributes": []
+            },
+            "blockType": {
+              "name": "blockType",
+              "isArray": false,
+              "type": "String",
+              "isRequired": true,
+              "attributes": []
+            },
+            "title": {
+              "name": "title",
+              "isArray": false,
+              "type": "String",
+              "isRequired": true,
+              "attributes": []
+            },
+            "startTime": {
+              "name": "startTime",
+              "isArray": false,
+              "type": "String",
+              "isRequired": true,
+              "attributes": []
+            },
+            "endTime": {
+              "name": "endTime",
+              "isArray": false,
+              "type": "String",
+              "isRequired": true,
+              "attributes": []
+            },
+            "practiceCode": {
+              "name": "practiceCode",
+              "isArray": false,
+              "type": "String",
+              "isRequired": false,
+              "attributes": []
+            },
+            "memo": {
+              "name": "memo",
+              "isArray": false,
+              "type": "String",
+              "isRequired": false,
+              "attributes": []
+            },
+            "source": {
+              "name": "source",
+              "isArray": false,
+              "type": "String",
+              "isRequired": true,
+              "attributes": []
+            },
+            "createdAt": {
+              "name": "createdAt",
+              "isArray": false,
+              "type": "AWSDateTime",
+              "isRequired": false,
+              "attributes": [],
+              "isReadOnly": true
+            },
+            "updatedAt": {
+              "name": "updatedAt",
+              "isArray": false,
+              "type": "AWSDateTime",
+              "isRequired": false,
+              "attributes": [],
+              "isReadOnly": true
+            }
+          },
+          "syncable": true,
+          "pluralName": "DailyTimeBlocks",
+          "attributes": [
+            {
+              "type": "model",
+              "properties": {}
+            },
+            {
+              "type": "key",
+              "properties": {
+                "fields": [
+                  "owner",
+                  "planDate",
+                  "blockId"
+                ]
+              }
+            },
+            {
+              "type": "key",
+              "properties": {
+                "name": "dailyTimeBlocksByOwnerAndPlanDateAndStartTime",
+                "queryField": "listTimeBlocksByOwnerDay",
+                "fields": [
+                  "owner",
+                  "planDate",
+                  "startTime"
+                ]
+              }
+            },
+            {
+              "type": "key",
+              "properties": {
+                "name": "dailyTimeBlocksByPlanDateAndStartTime",
+                "queryField": "listTimeBlocksByDay",
+                "fields": [
+                  "planDate",
+                  "startTime"
+                ]
+              }
+            },
+            {
+              "type": "auth",
+              "properties": {
+                "rules": [
+                  {
+                    "provider": "userPools",
+                    "ownerField": "owner",
+                    "allow": "owner",
+                    "operations": [
+                      "create",
+                      "read",
+                      "update",
+                      "delete"
+                    ],
+                    "identityClaim": "cognito:username"
+                  }
+                ]
+              }
+            }
+          ],
+          "primaryKeyInfo": {
+            "isCustomPrimaryKey": true,
+            "primaryKeyFieldName": "owner",
+            "sortKeyFieldNames": [
+              "planDate",
+              "blockId"
+            ]
+          }
         }
       },
       "enums": {},
-      "nonModels": {}
+      "nonModels": {
+        "SummarizeAudioResponse": {
+          "name": "SummarizeAudioResponse",
+          "fields": {
+            "jobId": {
+              "name": "jobId",
+              "isArray": false,
+              "type": "String",
+              "isRequired": true,
+              "attributes": []
+            },
+            "transcriptText": {
+              "name": "transcriptText",
+              "isArray": false,
+              "type": "String",
+              "isRequired": false,
+              "attributes": []
+            },
+            "summaryText": {
+              "name": "summaryText",
+              "isArray": false,
+              "type": "String",
+              "isRequired": false,
+              "attributes": []
+            },
+            "status": {
+              "name": "status",
+              "isArray": false,
+              "type": "String",
+              "isRequired": true,
+              "attributes": []
+            },
+            "transcribeJobName": {
+              "name": "transcribeJobName",
+              "isArray": false,
+              "type": "String",
+              "isRequired": false,
+              "attributes": []
+            }
+          }
+        }
+      },
+      "mutations": {
+        "summarizeAudio": {
+          "name": "summarizeAudio",
+          "isArray": false,
+          "type": {
+            "nonModel": "SummarizeAudioResponse"
+          },
+          "isRequired": false,
+          "arguments": {
+            "jobId": {
+              "name": "jobId",
+              "isArray": false,
+              "type": "String",
+              "isRequired": true
+            },
+            "audioPath": {
+              "name": "audioPath",
+              "isArray": false,
+              "type": "String",
+              "isRequired": true
+            },
+            "audioUrl": {
+              "name": "audioUrl",
+              "isArray": false,
+              "type": "String",
+              "isRequired": true
+            },
+            "audioS3Uri": {
+              "name": "audioS3Uri",
+              "isArray": false,
+              "type": "String",
+              "isRequired": true
+            }
+          }
+        }
+      }
     }
+  },
+  "storage": {
+    "aws_region": "ap-northeast-1",
+    "bucket_name": "amplify-amplifyvitereactt-hoiku360storagebucket7f2-woi3wkiuuxk9",
+    "buckets": [
+      {
+        "name": "hoiku360Storage",
+        "bucket_name": "amplify-amplifyvitereactt-hoiku360storagebucket7f2-woi3wkiuuxk9",
+        "aws_region": "ap-northeast-1",
+        "paths": {
+          "tenants/${cognito-identity.amazonaws.com:sub}/*": {
+            "entityidentity": [
+              "get",
+              "list",
+              "write",
+              "delete"
+            ]
+          }
+        }
+      }
+    ]
   },
   "version": "1.4"
 }
