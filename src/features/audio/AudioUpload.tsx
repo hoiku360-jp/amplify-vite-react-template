@@ -1,7 +1,9 @@
+"use client";
+
 import { useMemo, useState } from "react";
 import { uploadData } from "aws-amplify/storage";
 import { generateClient } from "aws-amplify/data";
-import type { Schema } from "../../amplify/data/resource";
+import type { Schema } from "../../../amplify/data/resource";
 
 export default function AudioUpload(props: { tenantId: string; owner: string }) {
   const { tenantId, owner } = props;
@@ -13,6 +15,7 @@ export default function AudioUpload(props: { tenantId: string; owner: string }) 
 
   async function onPick(file: File | null) {
     if (!file) return;
+
     setBusy(true);
     setLastPath("");
     setLastJobId("");
@@ -38,7 +41,8 @@ export default function AudioUpload(props: { tenantId: string; owner: string }) 
 
       // ✅ Upload成功したら AudioJob をDBに作成（PENDING）
       const createdAtIso = new Date().toISOString();
-      const { data, errors } = await client.models.AudioJob.create({
+
+      const resp = await client.models.AudioJob.create({
         tenantId,
         owner,
         audioPath: result.path,
@@ -52,11 +56,18 @@ export default function AudioUpload(props: { tenantId: string; owner: string }) 
         completedAt: null,
       });
 
-      if (errors?.length) {
-        throw new Error(errors.map((e) => e.message).join("\n"));
+      if (resp.errors?.length) {
+        throw new Error(resp.errors.map((e) => e.message).join("\n"));
       }
 
-      setLastJobId(data?.id ?? "");
+      // ✅ Amplifyの型差異に強い jobId 取得（単体 or 配列どちらでも潰れるように）
+      const jobId =
+        (resp.data as any)?.id ??
+        (Array.isArray(resp.data) ? (resp.data as any[])[0]?.id : "") ??
+        "";
+
+      setLastJobId(jobId);
+
       alert("Uploaded & Job created!");
     } catch (e: any) {
       console.error(e);

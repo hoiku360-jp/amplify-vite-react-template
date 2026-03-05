@@ -1,4 +1,6 @@
 // src/features/practice/PracticeSearchPanel.tsx
+"use client";
+
 import { useEffect, useMemo, useState } from "react";
 import { generateClient } from "aws-amplify/data";
 import type { Schema } from "../../../amplify/data/resource";
@@ -38,7 +40,6 @@ export default function PracticeSearchPanel() {
   const [rows, setRows] = useState<Array<Schema["AbilityPracticeAgg"]["type"]>>([]);
 
   const [practiceByCode, setPracticeByCode] = useState<PracticeMap>({});
-  const [practiceHitCount, setPracticeHitCount] = useState(0);
 
   const [loadingAbility, setLoadingAbility] = useState(false);
   const [loadingAgg, setLoadingAgg] = useState(false);
@@ -60,11 +61,13 @@ export default function PracticeSearchPanel() {
       setLoadingAbility(true);
       setError("");
       try {
-        const { data, errors } = await client.models.AbilityCode.list(
-          { limit: 10000 },
-          { authMode: "userPool" }
-        );
-        if (errors?.length) throw errors;
+        // ✅ list() は 1引数（options）に統一
+        const { data, errors } = await client.models.AbilityCode.list({
+          authMode: "userPool",
+          limit: 10000,
+        });
+
+        if (errors?.length) throw new Error(errors.map((e) => e.message).join("\n"));
 
         const raw = data ?? [];
         setAbilityRawCount(raw.length);
@@ -110,14 +113,14 @@ export default function PracticeSearchPanel() {
       setLoadingAgg(true);
       setError("");
       try {
-        const { data, errors } = await client.models.AbilityPracticeAgg.list(
-          {
-            filter: { abilityCode: { eq: selectedAbility } },
-            limit: 10000,
-          },
-          { authMode: "userPool" }
-        );
-        if (errors?.length) throw errors;
+        // ✅ list() は 1引数（options）
+        const { data, errors } = await client.models.AbilityPracticeAgg.list({
+          authMode: "userPool",
+          filter: { abilityCode: { eq: selectedAbility } },
+          limit: 10000,
+        });
+
+        if (errors?.length) throw new Error(errors.map((e) => e.message).join("\n"));
 
         const list = data ?? [];
 
@@ -158,7 +161,6 @@ export default function PracticeSearchPanel() {
 
         if (codes.length === 0) {
           setPracticeByCode({});
-          setPracticeHitCount(0);
           return;
         }
 
@@ -166,7 +168,6 @@ export default function PracticeSearchPanel() {
         const need = codes.filter((c) => !baseMap[c]);
         if (need.length === 0) {
           setPracticeByCode(baseMap);
-          setPracticeHitCount(Object.keys(baseMap).length);
           return;
         }
 
@@ -175,11 +176,14 @@ export default function PracticeSearchPanel() {
         for (const batch of batches) {
           const or = batch.map((pc) => ({ practice_code: { eq: pc } }));
 
-          const { data, errors } = await client.models.PracticeCode.list(
-            { filter: { or }, limit: 10000 },
-            { authMode: "userPool" }
-          );
-          if (errors?.length) throw errors;
+          // ✅ list() は 1引数（options）
+          const { data, errors } = await client.models.PracticeCode.list({
+            authMode: "userPool",
+            filter: { or },
+            limit: 10000,
+          });
+
+          if (errors?.length) throw new Error(errors.map((e) => e.message).join("\n"));
 
           for (const it of data ?? []) {
             const pc = s((it as any).practice_code);
@@ -198,7 +202,6 @@ export default function PracticeSearchPanel() {
         }
 
         setPracticeByCode(baseMap);
-        setPracticeHitCount(Object.keys(baseMap).length);
       } catch (e: any) {
         setError(e?.message ?? JSON.stringify(e, null, 2));
       } finally {
@@ -339,7 +342,6 @@ export default function PracticeSearchPanel() {
         <button
           onClick={() => {
             setPracticeByCode({});
-            setPracticeHitCount(0);
             setPracticeReloadKey((k) => k + 1);
           }}
           disabled={loading || rows.length === 0}
@@ -357,11 +359,7 @@ export default function PracticeSearchPanel() {
         表示範囲：{from}〜{to} / {totalRows}（ページ {clampedPage + 1} / {totalPages}）
       </div>
 
-      {error && (
-        <div style={{ color: "crimson", whiteSpace: "pre-wrap" }}>
-          Error: {error}
-        </div>
-      )}
+      {error && <div style={{ color: "crimson", whiteSpace: "pre-wrap" }}>Error: {error}</div>}
       {loading && <div>Loading...</div>}
 
       {/* ★ページング操作 */}
@@ -381,19 +379,14 @@ export default function PracticeSearchPanel() {
         >
           次へ ▶
         </button>
-        <button
-          onClick={() => setPage(totalPages - 1)}
-          disabled={clampedPage >= totalPages - 1 || totalRows === 0}
-        >
+        <button onClick={() => setPage(totalPages - 1)} disabled={clampedPage >= totalPages - 1 || totalRows === 0}>
           最後 ⏭
         </button>
       </div>
 
       {/* ★横はみ出し対策：スクロールさせる */}
       <div style={{ border: "1px solid #ddd", borderRadius: 8, overflow: "hidden" }}>
-        <div style={{ padding: 12, background: "#fafafa", borderBottom: "1px solid #eee" }}>
-          結果一覧（Practice）
-        </div>
+        <div style={{ padding: 12, background: "#fafafa", borderBottom: "1px solid #eee" }}>結果一覧（Practice）</div>
 
         {rows.length === 0 ? (
           <div style={{ padding: 12 }}>データがありません。</div>

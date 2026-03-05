@@ -1,4 +1,6 @@
 // src/features/link/LinkSearchPanel.tsx
+"use client";
+
 import { useMemo, useState } from "react";
 import { generateClient } from "aws-amplify/data";
 import type { Schema } from "../../../amplify/data/resource";
@@ -7,6 +9,8 @@ function s(v: unknown): string {
   return String(v ?? "").trim();
 }
 
+type APLink = Schema["AbilityPracticeLink"]["type"];
+
 export default function LinkSearchPanel() {
   const client = useMemo(() => generateClient<Schema>(), []);
 
@@ -14,11 +18,11 @@ export default function LinkSearchPanel() {
   const [practiceCode, setPracticeCode] = useState("PR-OUT-0001");
 
   // ---- AP1 state ----
-  const [ap1Items, setAp1Items] = useState<Array<Schema["AbilityPracticeLink"]["type"]>>([]);
+  const [ap1Items, setAp1Items] = useState<APLink[]>([]);
   const [ap1NextToken, setAp1NextToken] = useState<string | null>(null);
 
   // ---- AP2 state ----
-  const [ap2Items, setAp2Items] = useState<Array<Schema["AbilityPracticeLink"]["type"]>>([]);
+  const [ap2Items, setAp2Items] = useState<APLink[]>([]);
   const [ap2NextToken, setAp2NextToken] = useState<string | null>(null);
 
   const [loading, setLoading] = useState(false);
@@ -27,12 +31,9 @@ export default function LinkSearchPanel() {
   const PAGE_SIZE = 20;
 
   // 重複排除（同一 ability|practice の混入をUI側でも防ぐ）
-  function uniq(
-    arr: Array<Schema["AbilityPracticeLink"]["type"]>,
-    keyFn: (x: Schema["AbilityPracticeLink"]["type"]) => string
-  ) {
+  function uniq(arr: APLink[], keyFn: (x: APLink) => string) {
     const seen = new Set<string>();
-    const out: Array<Schema["AbilityPracticeLink"]["type"]> = [];
+    const out: APLink[] = [];
     for (const x of arr) {
       const k = keyFn(x);
       if (seen.has(k)) continue;
@@ -50,18 +51,23 @@ export default function LinkSearchPanel() {
     setError("");
 
     try {
-      const { data, errors, nextToken } = await client.models.AbilityPracticeLink.listByAbility(
+      const resp = await client.models.AbilityPracticeLink.listByAbility(
+        // ✅ input は indexキーだけ
+        { abilityCode: a },
+        // ✅ limit / nextToken は options 側
         {
-          abilityCode: a,
+          authMode: "userPool",
           limit: PAGE_SIZE,
-          ...(reset ? {} : ap1NextToken ? { nextToken: ap1NextToken } : {}),
-        },
-        { authMode: "userPool" }
+          nextToken: reset ? null : ap1NextToken,
+        }
       );
-      if (errors?.length) throw errors;
 
-      const newItems = data ?? [];
-      setAp1NextToken(nextToken ?? null);
+      if (resp.errors?.length) {
+        throw new Error(resp.errors.map((e) => e.message).join("\n"));
+      }
+
+      const newItems = (resp.data ?? []) as APLink[];
+      setAp1NextToken((resp.nextToken ?? null) as string | null);
 
       if (reset) {
         setAp1Items(newItems);
@@ -92,18 +98,23 @@ export default function LinkSearchPanel() {
     setError("");
 
     try {
-      const { data, errors, nextToken } = await client.models.AbilityPracticeLink.listByPractice(
+      const resp = await client.models.AbilityPracticeLink.listByPractice(
+        // ✅ input は indexキーだけ
+        { practiceCode: p },
+        // ✅ limit / nextToken は options 側
         {
-          practiceCode: p,
+          authMode: "userPool",
           limit: PAGE_SIZE,
-          ...(reset ? {} : ap2NextToken ? { nextToken: ap2NextToken } : {}),
-        },
-        { authMode: "userPool" }
+          nextToken: reset ? null : ap2NextToken,
+        }
       );
-      if (errors?.length) throw errors;
 
-      const newItems = data ?? [];
-      setAp2NextToken(nextToken ?? null);
+      if (resp.errors?.length) {
+        throw new Error(resp.errors.map((e) => e.message).join("\n"));
+      }
+
+      const newItems = (resp.data ?? []) as APLink[];
+      setAp2NextToken((resp.nextToken ?? null) as string | null);
 
       if (reset) {
         setAp2Items(newItems);
