@@ -6,14 +6,27 @@
   "scripts": {
     "dev": "vite",
     "build": "tsc && vite build",
+    "typecheck": "tsc --noEmit",
     "lint": "eslint . --ext ts,tsx --report-unused-disable-directives --max-warnings 0",
-    "preview": "vite preview"
+    "format": "prettier --write .",
+    "format:check": "prettier --check .",
+    "test": "vitest run",
+    "preview": "vite preview",
+    "prepare": "husky"
+  },
+  "lint-staged": {
+    "*.{ts,tsx,js,jsx,json,md,css,scss,html,yml,yaml}": [
+      "prettier --write"
+    ],
+    "*.{ts,tsx,js,jsx}": [
+      "eslint --fix"
+    ]
   },
   "dependencies": {
-    "@aws-amplify/ui-react": "^6.13.2",
-    "@aws-sdk/client-bedrock-runtime": "^3.992.0",
-    "@aws-sdk/client-transcribe": "^3.990.0",
-    "aws-amplify": "^6.16.0",
+    "@aws-amplify/ui-react": "6.15.2",
+    "@aws-sdk/client-bedrock-runtime": "3.1024.0",
+    "@aws-sdk/client-transcribe": "3.1024.0",
+    "aws-amplify": "6.16.3",
     "react": "~18.3.1",
     "react-dom": "~18.3.1"
   },
@@ -22,9 +35,9 @@
     "npm": ">= 10.8.0"
   },
   "devDependencies": {
-    "@aws-amplify/backend": "~1.19.0",
-    "@aws-amplify/backend-cli": "~1.8.1",
-    "@aws-amplify/seed": "^1.1.1",
+    "@aws-amplify/backend": "1.22.0",
+    "@aws-amplify/backend-cli": "1.8.2",
+    "@aws-amplify/seed": "1.1.2",
     "@eslint/compat": "~2.0.1",
     "@eslint/eslintrc": "~3.3.3",
     "@eslint/js": "~9.39.2",
@@ -37,11 +50,17 @@
     "@vitejs/plugin-react": "~5.1.2",
     "esbuild": "~0.27.2",
     "eslint": "~9.39.2",
+    "eslint-plugin-react": "^7.37.5",
     "eslint-plugin-react-hooks": "~7.0.1",
     "eslint-plugin-react-refresh": "~0.4.26",
     "globals": "~17.0.0",
+    "husky": "^9.1.7",
+    "lint-staged": "^16.3.2",
     "papaparse": "^5.5.3",
+    "prettier": "^3.8.1",
     "typescript": "~5.9.3",
-    "vite": "~7.3.1"
+    "typescript-eslint": "^8.56.1",
+    "vite": "~7.3.1",
+    "vitest": "^4.0.18"
   }
 }

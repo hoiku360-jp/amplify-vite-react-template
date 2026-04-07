@@ -1,7 +1,12 @@
 import type { Schema } from "../resource";
-import { TranscribeClient, StartTranscriptionJobCommand } from "@aws-sdk/client-transcribe";
+import {
+  TranscribeClient,
+  StartTranscriptionJobCommand,
+} from "@aws-sdk/client-transcribe";
 
-function guessMediaFormat(audioPath: string): "mp3" | "mp4" | "wav" | "flac" | "ogg" | "amr" | "webm" {
+function guessMediaFormat(
+  audioPath: string,
+): "mp3" | "mp4" | "wav" | "flac" | "ogg" | "amr" | "webm" {
   const ext = audioPath.split(".").pop()?.toLowerCase();
   if (ext === "m4a" || ext === "mp4") return "mp4";
   if (ext === "mp3") return "mp3";
@@ -10,30 +15,34 @@ function guessMediaFormat(audioPath: string): "mp3" | "mp4" | "wav" | "flac" | "
   if (ext === "ogg") return "ogg";
   if (ext === "amr") return "amr";
   if (ext === "webm") return "webm";
-  // 迷ったら mp4（m4a を想定）
   return "mp4";
 }
 
-export const handler: Schema["summarizeAudio"]["functionHandler"] = async (event) => {
+export const handler: Schema["summarizeAudio"]["functionHandler"] = async (
+  event,
+) => {
   const { jobId } = event.arguments;
-
-  // audioS3Uri は mutation から渡している想定（あなたのUIは渡せている）
   const audioS3Uri = (event.arguments as any).audioS3Uri as string | undefined;
 
   const roleArn = process.env.TRANSCRIBE_DATA_ACCESS_ROLE_ARN;
   const outBucket = process.env.TRANSCRIBE_OUTPUT_BUCKET;
-  const outPrefix = process.env.TRANSCRIBE_OUTPUT_PREFIX ?? "transcribe-output/";
+  const outPrefix =
+    process.env.TRANSCRIBE_OUTPUT_PREFIX ?? "transcribe-output/";
 
   if (!audioS3Uri) {
     return { jobId, status: "FAILED", summaryText: "audioS3Uri is required" };
   }
   if (!roleArn || !outBucket) {
-    return { jobId, status: "FAILED", summaryText: "Missing TRANSCRIBE_DATA_ACCESS_ROLE_ARN / TRANSCRIBE_OUTPUT_BUCKET" };
+    return {
+      jobId,
+      status: "FAILED",
+      summaryText:
+        "Missing TRANSCRIBE_DATA_ACCESS_ROLE_ARN / TRANSCRIBE_OUTPUT_BUCKET",
+    };
   }
 
   const region = process.env.AWS_REGION || "ap-northeast-1";
   const client = new TranscribeClient({ region });
-
   const jobName = `hoiku360-${jobId}-${Date.now()}`;
 
   try {
@@ -42,12 +51,13 @@ export const handler: Schema["summarizeAudio"]["functionHandler"] = async (event
       jobId,
       jobName,
       audioS3Uri,
+      mediaFormat: guessMediaFormat(audioS3Uri),
       outBucket,
       outKey: `${outPrefix}${jobId}/`,
       roleArn,
     });
 
-    await client.send(
+    const resp = await client.send(
       new StartTranscriptionJobCommand({
         TranscriptionJobName: jobName,
         LanguageCode: "ja-JP",
@@ -57,10 +67,16 @@ export const handler: Schema["summarizeAudio"]["functionHandler"] = async (event
         OutputKey: `${outPrefix}${jobId}/`,
         JobExecutionSettings: {
           DataAccessRoleArn: roleArn,
-          // AllowDeferredExecution: true, // 必要なら（基本はなくてもOK）
         },
-      })
+      }),
     );
+
+    console.log("StartTranscriptionJob response", {
+      jobId,
+      jobName,
+      returnedJobName: resp.TranscriptionJob?.TranscriptionJobName,
+      returnedStatus: resp.TranscriptionJob?.TranscriptionJobStatus,
+    });
 
     return {
       jobId,
@@ -73,8 +89,13 @@ export const handler: Schema["summarizeAudio"]["functionHandler"] = async (event
     console.error("StartTranscriptionJob failed", {
       jobId,
       jobName,
+      audioS3Uri,
+      roleArn,
+      outBucket,
+      outPrefix,
       name: e?.name,
       msg: e?.message,
+      stack: e?.stack,
     });
 
     return {

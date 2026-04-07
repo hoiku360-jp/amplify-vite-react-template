@@ -3,88 +3,102 @@ import { useState } from "react";
 import TodosPanel from "./features/todos/TodosPanel";
 import BoardPanel from "./features/boards/BoardPanel";
 import PracticeSearchPanel from "./features/practice/PracticeSearchPanel";
+import PracticeRegisterPanel from "./features/practice-register/PracticeRegisterPanel";
 import LinkSearchPanel from "./features/link/LinkSearchPanel";
-
 import AudioUpload from "./features/audio/AudioUpload";
 import AudioJobsPanel from "./features/audio/AudioJobsPanel";
-
-// ✅ 追加
 import DailyDigestPanel from "./features/digest/DailyDigestPanel";
+import PlanWorkspacePanel from "./features/plan/PlanWorkspacePanel";
+import PlanV2DebugPanel from "./features/plan-v2/PlanV2DebugPanel";
+import PlanV2WorkspacePanel from "./features/plan-v2/PlanV2WorkspacePanel";
+import ScheduleDayPanel from "./features/schedule/ScheduleDayPanel";
+import SimpleScheduleWorkspacePanel from "./features/schedule/SimpleScheduleWorkspacePanel";
 
-type TabKey = "todos" | "board" | "practice" | "link" | "audio" | "digest";
+type TabKey =
+  | "plan"
+  | "planV2"
+  | "planV2Workspace"
+  | "schedulePlan"
+  | "scheduleDay"
+  | "todos"
+  | "board"
+  | "practice"
+  | "practiceRegister"
+  | "link"
+  | "audio"
+  | "digest";
 
-export default function SignedInApp(props: { owner: string; signOut: () => void }) {
+export default function SignedInApp(props: {
+  owner: string;
+  signOut: () => void;
+}) {
   const { owner, signOut } = props;
-  const [tab, setTab] = useState<TabKey>("todos");
+  const [tab, setTab] = useState<TabKey>("plan");
 
-  // ✅ ひとまず固定（後でログインユーザーの所属園から決める）
+  // ひとまず固定。後でログインユーザー所属園・tenant選択に置き換える
   const tenantId = "demo-tenant";
 
   return (
-    <div>
-      <div style={{ padding: 16, display: "flex", gap: 12, alignItems: "center" }}>
-        <div>
-          Signed in as: {owner} / tenant: <code>{tenantId}</code>
-        </div>
-
-        <div style={{ display: "flex", gap: 8, marginLeft: 12, flexWrap: "wrap" }}>
-          <button onClick={() => setTab("todos")} disabled={tab === "todos"}>
-            Todos
-          </button>
-          <button onClick={() => setTab("board")} disabled={tab === "board"}>
-            Board
-          </button>
-          <button onClick={() => setTab("practice")} disabled={tab === "practice"}>
-            Practice検索
-          </button>
-          <button onClick={() => setTab("link")} disabled={tab === "link"}>
-            Link検索
-          </button>
-
-          <button onClick={() => setTab("audio")} disabled={tab === "audio"}>
-            Audio（Upload/Jobs）
-          </button>
-
-          {/* ✅ 追加：Digest */}
-          <button onClick={() => setTab("digest")} disabled={tab === "digest"}>
-            Digest（日次）
-          </button>
-        </div>
+    <div
+      style={{
+        padding: 16,
+        minHeight: "100vh",
+        alignItems: "stretch",
+      }}
+    >
+      <div
+        style={{
+          display: "flex",
+          gap: 8,
+          flexWrap: "wrap",
+          marginBottom: 16,
+          alignItems: "center",
+        }}
+      >
+        <button onClick={() => setTab("plan")}>PLAN</button>
+        <button onClick={() => setTab("planV2")}>PLAN v2確認</button>
+        <button onClick={() => setTab("planV2Workspace")}>PLAN v2</button>
+        <button onClick={() => setTab("schedulePlan")}>月案＞週案</button>
+        <button onClick={() => setTab("scheduleDay")}>日案</button>
+        <button onClick={() => setTab("todos")}>Todos</button>
+        <button onClick={() => setTab("board")}>Board</button>
+        <button onClick={() => setTab("practice")}>Practice</button>
+        <button onClick={() => setTab("practiceRegister")}>Practice登録</button>
+        <button onClick={() => setTab("link")}>Link</button>
+        <button onClick={() => setTab("audio")}>Audio</button>
+        <button onClick={() => setTab("digest")}>Digest</button>
 
         <div style={{ marginLeft: "auto" }}>
           <button onClick={signOut}>Sign out</button>
         </div>
       </div>
 
-      <div style={{ padding: 16 }}>
-        {tab === "todos" && <TodosPanel owner={owner} />}
-        {tab === "board" && <BoardPanel owner={owner} />}
-        {tab === "practice" && <PracticeSearchPanel />}
-        {tab === "link" && <LinkSearchPanel />}
+      {tab === "plan" && <PlanWorkspacePanel owner={owner} />}
+      {tab === "planV2" && <PlanV2DebugPanel />}
+      {tab === "planV2Workspace" && <PlanV2WorkspacePanel owner={owner} />}
 
-        {tab === "audio" && (
-          <div style={{ display: "grid", gap: 16, maxWidth: 900 }}>
-            <div style={{ border: "1px solid #ddd", borderRadius: 10, padding: 12 }}>
-              <div style={{ fontWeight: 600, marginBottom: 8 }}>1) Upload</div>
-              <AudioUpload tenantId={tenantId} owner={owner} />
-            </div>
+      {tab === "schedulePlan" && (
+        <SimpleScheduleWorkspacePanel owner={owner} />
+      )}
 
-            <div style={{ border: "1px solid #ddd", borderRadius: 10, padding: 12 }}>
-              <div style={{ fontWeight: 600, marginBottom: 8 }}>
-                2) Jobs（10秒ごと自動更新）
-              </div>
-              <AudioJobsPanel tenantId={tenantId} owner={owner} />
-            </div>
-          </div>
-        )}
+      {tab === "scheduleDay" && <ScheduleDayPanel owner={owner} />}
 
-        {/* ✅ 追加：Digestタブ */}
-        {tab === "digest" && (
-          <div style={{ border: "1px solid #ddd", borderRadius: 10, padding: 12 }}>
-            <DailyDigestPanel tenantId={tenantId} owner={owner} />
-          </div>
-        )}
-      </div>
+      {tab === "todos" && <TodosPanel owner={owner} />}
+      {tab === "board" && <BoardPanel owner={owner} />}
+      {tab === "practice" && <PracticeSearchPanel owner={owner} />}
+      {tab === "practiceRegister" && <PracticeRegisterPanel owner={owner} />}
+      {tab === "link" && <LinkSearchPanel />}
+
+      {tab === "audio" && (
+        <div style={{ display: "grid", gap: 16 }}>
+          <AudioUpload owner={owner} tenantId={tenantId} />
+          <AudioJobsPanel owner={owner} tenantId={tenantId} />
+        </div>
+      )}
+
+      {tab === "digest" && (
+        <DailyDigestPanel owner={owner} tenantId={tenantId} />
+      )}
     </div>
   );
 }

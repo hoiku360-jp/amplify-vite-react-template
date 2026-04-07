@@ -13,7 +13,8 @@ import {
   InvokeModelCommand,
 } from "@aws-sdk/client-bedrock-runtime";
 
-const { resourceConfig, libraryOptions } = await getAmplifyDataClientConfig(env);
+const { resourceConfig, libraryOptions } =
+  await getAmplifyDataClientConfig(env);
 Amplify.configure(resourceConfig, libraryOptions);
 
 const client = generateClient<Schema>();
@@ -56,7 +57,7 @@ async function invokeBedrockWithBackoff<T>(
     maxDelaySeconds?: number; // 240 or 300
     maxAttempts?: number; // 5~8
     jitterRatio?: number; // 0.2（±20%）
-  }
+  },
 ) {
   const base = opts?.baseSeconds ?? 60;
   const step = opts?.stepSeconds ?? 60;
@@ -91,7 +92,7 @@ async function invokeBedrockWithBackoff<T>(
           requestId: e?.$metadata?.requestId,
           name: e?.name,
           message: e?.message,
-        }
+        },
       );
 
       await sleep(delaySec * 1000);
@@ -147,19 +148,19 @@ function getYesterdayRangeUtcIso() {
     new Intl.DateTimeFormat("sv-SE", {
       timeZone: "Asia/Tokyo",
       year: "numeric",
-    }).format(yesterdayJst)
+    }).format(yesterdayJst),
   );
   const m2 = Number(
     new Intl.DateTimeFormat("sv-SE", {
       timeZone: "Asia/Tokyo",
       month: "2-digit",
-    }).format(yesterdayJst)
+    }).format(yesterdayJst),
   );
   const d2 = Number(
     new Intl.DateTimeFormat("sv-SE", {
       timeZone: "Asia/Tokyo",
       day: "2-digit",
-    }).format(yesterdayJst)
+    }).format(yesterdayJst),
   );
 
   const yesterdayStartUtcIso = jstMidnightToUtcIso(y2, m2, d2);
@@ -185,7 +186,9 @@ type DigestInput = {
  * - summaryText が無ければ transcriptText を使う
  * - 入力量を抑えるために上限を入れる
  */
-function buildDigestInputs(jobs: Array<Schema["AudioJob"]["type"]>): DigestInput[] {
+function buildDigestInputs(
+  jobs: Array<Schema["AudioJob"]["type"]>,
+): DigestInput[] {
   const MAX_CHARS_PER_ITEM = 1200;
 
   const out: DigestInput[] = [];
@@ -194,12 +197,15 @@ function buildDigestInputs(jobs: Array<Schema["AudioJob"]["type"]>): DigestInput
     const summary = (j.summaryText ?? "").trim();
     const transcript = (j.transcriptText ?? "").trim();
 
-    const kind: "summary" | "transcript" = summary.length > 0 ? "summary" : "transcript";
+    const kind: "summary" | "transcript" =
+      summary.length > 0 ? "summary" : "transcript";
     const text0 = summary.length > 0 ? summary : transcript;
     if (!text0) continue;
 
     const text =
-      text0.length > MAX_CHARS_PER_ITEM ? text0.slice(0, MAX_CHARS_PER_ITEM) + "…" : text0;
+      text0.length > MAX_CHARS_PER_ITEM
+        ? text0.slice(0, MAX_CHARS_PER_ITEM) + "…"
+        : text0;
 
     out.push({ recordedAt, kind, text });
   }
@@ -264,15 +270,15 @@ ${JSON.stringify(inputs)}
           contentType: "application/json",
           accept: "application/json",
           body: JSON.stringify(body),
-        })
+        }),
       ),
     {
       baseSeconds: 60,
       stepSeconds: 60,
       maxDelaySeconds: 240, // 必要なら 300 に
-      maxAttempts: 6,       // 60+120+180+240+240=840秒待ち得る（約14分）
+      maxAttempts: 6, // 60+120+180+240+240=840秒待ち得る（約14分）
       jitterRatio: 0.2,
-    }
+    },
   );
 
   const decoded = new TextDecoder().decode((res as any).body);
@@ -307,7 +313,8 @@ async function upsertDailyDigest(args: {
   body: string;
   sourceCount: number;
 }) {
-  const { tenantId, ownerKey, owner, digestDate, title, body, sourceCount } = args;
+  const { tenantId, ownerKey, owner, digestDate, title, body, sourceCount } =
+    args;
 
   // まず create を試す（同じキーが既にあれば conditional で落ちる想定）
   const created = await (client.models.DailyDigest as any).create({
@@ -328,7 +335,9 @@ async function upsertDailyDigest(args: {
 
   const msg = created.errors.map((e: any) => e.message).join("\n");
   const isConditional =
-    created.errors.some((e: any) => (e.errorType ?? "").includes("ConditionalCheckFailedException")) ||
+    created.errors.some((e: any) =>
+      (e.errorType ?? "").includes("ConditionalCheckFailedException"),
+    ) ||
     msg.includes("ConditionalCheckFailedException") ||
     msg.toLowerCase().includes("conditional request failed");
 
@@ -343,7 +352,7 @@ async function upsertDailyDigest(args: {
     tenantId,
     ownerKey,
     digestDate, // ✅ PKの一部
-    owner,      // 認可フィールドは維持
+    owner, // 認可フィールドは維持
     title,
     body,
     sourceCount,
@@ -351,7 +360,10 @@ async function upsertDailyDigest(args: {
   });
 
   if (updated.errors?.length) {
-    console.error("update DailyDigest errors (after conflict):", updated.errors);
+    console.error(
+      "update DailyDigest errors (after conflict):",
+      updated.errors,
+    );
     throw new Error(updated.errors.map((e: any) => e.message).join("\n"));
   }
 
@@ -396,7 +408,11 @@ async function saveFallbackDigest(args: {
   });
 }
 
-export const handler: EventBridgeHandler<"Scheduled Event", null, void> = async (event) => {
+export const handler: EventBridgeHandler<
+  "Scheduled Event",
+  null,
+  void
+> = async (event) => {
   console.log("daily-digest event:", JSON.stringify(event, null, 2));
 
   const tenantId = "demo-tenant";
@@ -420,9 +436,9 @@ export const handler: EventBridgeHandler<"Scheduled Event", null, void> = async 
     throw new Error(jobsRes.errors.map((e) => e.message).join("\n"));
   }
 
-  const jobsAll = (jobsRes.data ?? []).slice().sort((a, b) =>
-    (a.recordedAt ?? "").localeCompare(b.recordedAt ?? "")
-  );
+  const jobsAll = (jobsRes.data ?? [])
+    .slice()
+    .sort((a, b) => (a.recordedAt ?? "").localeCompare(b.recordedAt ?? ""));
 
   console.log("jobs fetched:", jobsAll.length);
 
@@ -491,8 +507,7 @@ export const handler: EventBridgeHandler<"Scheduled Event", null, void> = async 
           ownerKey,
           digestDate,
           jobsCount: jobs.length,
-          note:
-            "Bedrock が混雑（429 Throttling）しており、Digest 生成に失敗しました。次回実行で再試行してください。",
+          note: "Bedrock が混雑（429 Throttling）しており、Digest 生成に失敗しました。次回実行で再試行してください。",
         });
         continue;
       }

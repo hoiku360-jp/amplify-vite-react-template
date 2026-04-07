@@ -4,16 +4,32 @@ import Papa from "papaparse";
 
 import { Amplify } from "aws-amplify";
 import { generateClient } from "aws-amplify/api";
-import { signIn, confirmSignIn, fetchAuthSession, signOut } from "aws-amplify/auth";
+import {
+  signIn,
+  confirmSignIn,
+  fetchAuthSession,
+  signOut,
+} from "aws-amplify/auth";
 
-import { getSecret } from "@aws-amplify/seed";
 import type { Schema } from "../data/resource";
+import readline from "node:readline/promises";
+import { stdin as input, stdout as output } from "node:process";
 
 const outputsUrl = new URL("../../amplify_outputs.json", import.meta.url);
 
 const abilityCsvUrl = new URL("./data/ability_codes_lang.csv", import.meta.url);
-const linkCsvUrl = new URL("./data/AbilityPracticeLink.csv", import.meta.url);
-const practiceCsvUrl = new URL("./data/practice_codes_lang.csv", import.meta.url);
+const observationHintCsvUrl = new URL(
+  "./data/AbilityObservationHint.csv",
+  import.meta.url,
+);
+
+// 固定ユーザー名
+const DEFAULT_SEED_USERNAME = "noreply-test01@hoiku360.jp";
+
+// 通常は wipe しない。
+// 明示的に入れ直したいときだけ SEED_WIPE_CORE_MASTER=true を付ける。
+const SHOULD_WIPE =
+  String(process.env.SEED_WIPE_CORE_MASTER ?? "").toLowerCase() === "true";
 
 type AbilityRow = {
   code: string;
@@ -29,20 +45,14 @@ type AbilityRow = {
   note?: string;
 };
 
-type PracticeRow = {
-  practice_code: string;
-  category_code?: string;
-  category_name?: string;
-  name: string;
-  memo?: string;
-  source_type: string;
-  source_ref?: string;
-  source_url?: string;
-  status?: string;
-  version?: string | number;
+type AbilityObservationHintRow = {
+  abilityCode: string;
+  abilityName: string;
+  startingAge: string | number;
+  episode1?: string;
+  episode2?: string;
+  episode3?: string;
 };
-
-type LinkCrossRow = Record<string, string>;
 
 function toInt(v: unknown): number | null {
   const s = String(v ?? "").trim();
@@ -51,18 +61,19 @@ function toInt(v: unknown): number | null {
   if (!Number.isFinite(n)) return null;
   return Math.trunc(n);
 }
-function toScore(v: unknown): number | null {
-  const n = toInt(v);
-  if (n === null) return null;
-  if (n < 1 || n > 3) return null;
-  return n;
-}
+
 function asStr(v: unknown): string {
   const s = String(v ?? "").trim();
   if (!s) return "";
   if (/^\d+(\.0+)?$/.test(s)) return s.replace(/\.0+$/, "");
   return s;
 }
+
+function asNullable(v: unknown): string | null {
+  const s = asStr(v);
+  return s || null;
+}
+
 async function parseCsv<T extends object>(url: URL): Promise<T[]> {
   const text = await readFile(url, { encoding: "utf8" });
   const parsed = Papa.parse<T>(text, { header: true, skipEmptyLines: true });
@@ -70,23 +81,62 @@ async function parseCsv<T extends object>(url: URL): Promise<T[]> {
   return parsed.data;
 }
 
+async function promptLine(message: string): Promise<string> {
+  const rl = readline.createInterface({ input, output });
+  try {
+    const value = await rl.question(message);
+    return value.trim();
+  } finally {
+    rl.close();
+  }
+}
+
+async function getUsername(): Promise<string> {
+  return (process.env.SEED_USERNAME ?? DEFAULT_SEED_USERNAME).trim();
+}
+
+async function getPassword(): Promise<string> {
+  const envPassword = process.env.SEED_PASSWORD?.trim();
+  if (envPassword) return envPassword;
+
+  const password = await promptLine(
+    "Enter seed password (input is visible): ",
+  );
+  if (!password) {
+    throw new Error("Seed password is empty.");
+  }
+  return password;
+}
+
+async function getTotpCode(): Promise<string> {
+  const code = await promptLine("Enter current TOTP code: ");
+  const normalized = code.replace(/\s+/g, "");
+  if (!/^\d{6}$/.test(normalized)) {
+    throw new Error("TOTP code must be 6 digits.");
+  }
+  return normalized;
+}
+
 async function listAll(model: any, limit = 1000): Promise<any[]> {
   const out: any[] = [];
   let nextToken: string | null | undefined = undefined;
 
   for (;;) {
-    // ★TS7022回避：明示的に any
-    const res: any = await model.list({ limit, nextToken }, { authMode: "userPool" });
+    const res: any = await model.list({
+      limit,
+      nextToken,
+      authMode: "userPool",
+    });
     if (res.errors?.length) throw res.errors;
 
     out.push(...(res.data ?? []));
     nextToken = res.nextToken;
     if (!nextToken) break;
   }
+
   return out;
 }
 
-/** デフォルト id のモデルを安全に全削除 */
 async function wipeModelById(model: any, label: string) {
   const items = await listAll(model, 1000);
   let deleted = 0;
@@ -99,226 +149,261 @@ async function wipeModelById(model: any, label: string) {
     if (res.errors?.length) throw res.errors;
     deleted += 1;
   }
+
   console.log(`wiped ${label}: ${deleted}`);
 }
 
-function buildAgg(
-  links: Array<{ abilityCode: string; practiceCode: string; score: number }>,
-  parentOf: Map<string, string>,
-  levelOf: Map<string, number>
-) {
-  type AggKey = string;
-  const agg = new Map<
-    AggKey,
-    { abilityCode: string; practiceCode: string; scoreSum: number; scoreMax: number; linkCount: number; level: number }
-  >();
+async function confirmTotpWithRetry(maxAttempts = 3) {
+  let lastError: unknown = null;
 
-  function add(abilityCode: string, practiceCode: string, score: number) {
-    const level = levelOf.get(abilityCode) ?? 0;
-    const key = `${abilityCode}|${practiceCode}`;
-    const cur = agg.get(key);
-    if (!cur) {
-      agg.set(key, { abilityCode, practiceCode, scoreSum: score, scoreMax: score, linkCount: 1, level });
-    } else {
-      cur.scoreSum += score;
-      cur.scoreMax = Math.max(cur.scoreMax, score);
-      cur.linkCount += 1;
+  for (let i = 1; i <= maxAttempts; i += 1) {
+    try {
+      const mfaCode = await getTotpCode();
+      const confirmed = await confirmSignIn({ challengeResponse: mfaCode });
+
+      if (confirmed.isSignedIn) {
+        return;
+      }
+
+      const nextStep = confirmed.nextStep?.signInStep;
+      if (nextStep === "CONFIRM_SIGN_IN_WITH_TOTP_CODE") {
+        console.log(`TOTP retry required (${i}/${maxAttempts})`);
+        continue;
+      }
+
+      throw new Error(
+        `MFA confirm did not complete. nextStep=${nextStep ?? "unknown"}`,
+      );
+    } catch (error) {
+      lastError = error;
+      if (i < maxAttempts) {
+        console.log(`TOTP confirm failed (${i}/${maxAttempts}). Try again.`);
+        continue;
+      }
     }
   }
 
-  for (const l of links) {
-    const leaf = l.abilityCode;
-    const mid = parentOf.get(leaf);
-    const top = mid ? parentOf.get(mid) : undefined;
-
-    add(leaf, l.practiceCode, l.score);
-    if (mid) add(mid, l.practiceCode, l.score);
-    if (top) add(top, l.practiceCode, l.score);
-  }
-  return Array.from(agg.values());
+  throw lastError ?? new Error("TOTP confirmation failed.");
 }
 
-async function signInWithMfa(username: string, password: string) {
-  const res = await signIn({ username, password });
-  if (res.isSignedIn) return;
+async function signInWithTotp(username: string, password: string) {
+  let result;
 
-  const step = res.nextStep?.signInStep;
-  console.log("SEED signIn nextStep:", step);
-
-  if (step === "CONFIRM_SIGN_IN_WITH_TOTP_CODE") {
-    const mfaCode = await getSecret("mfaCode");
-    const confirmed = await confirmSignIn({ challengeResponse: mfaCode });
-    if (!confirmed.isSignedIn) {
-      throw new Error(`MFA confirm did not complete. nextStep=${confirmed.nextStep?.signInStep ?? "unknown"}`);
-    }
-    return;
+  try {
+    result = await signIn({ username, password });
+  } catch (error: any) {
+    const message =
+      error?.message ??
+      error?.name ??
+      "Unknown signIn error before TOTP step.";
+    throw new Error(
+      `Initial signIn failed before TOTP. username=${username} message=${message}`,
+    );
   }
 
-  throw new Error(`Unexpected signIn nextStep: ${step ?? "unknown"}`);
+  if (result.isSignedIn) return;
+
+  for (let guard = 0; guard < 6; guard += 1) {
+    const step = result.nextStep?.signInStep;
+    console.log("SEED signIn nextStep:", step);
+
+    switch (step) {
+      case "CONFIRM_SIGN_IN_WITH_TOTP_CODE": {
+        await confirmTotpWithRetry(3);
+        return;
+      }
+
+      case "CONTINUE_SIGN_IN_WITH_MFA_SELECTION": {
+        result = await confirmSignIn({ challengeResponse: "TOTP" });
+        if (result.isSignedIn) return;
+        break;
+      }
+
+      case "CONFIRM_SIGN_IN_WITH_PASSWORD": {
+        result = await confirmSignIn({ challengeResponse: password });
+        if (result.isSignedIn) return;
+        break;
+      }
+
+      default:
+        throw new Error(`Unexpected signIn nextStep: ${step ?? "unknown"}`);
+    }
+  }
+
+  throw new Error("signIn loop exceeded guard limit.");
+}
+
+async function findFirstByField(model: any, field: string, value: string) {
+  const res: any = await model.list({
+    authMode: "userPool",
+    filter: { [field]: { eq: value } },
+    limit: 1,
+  });
+  if (res.errors?.length) throw res.errors;
+  return (res.data ?? [])[0] ?? null;
+}
+
+async function upsertAbilityCode(model: any, row: AbilityRow) {
+  const code = asStr(row.code);
+  if (!code) return false;
+
+  const payload = {
+    code,
+    code_display: asStr(row.code_display),
+    parent_code: asNullable(row.parent_code),
+    level: toInt(row.level) ?? 0,
+    name: asStr(row.name),
+    domain: asNullable(row.domain),
+    category: asNullable(row.category),
+    sort_order: toInt(row.sort_order),
+    is_leaf: String(row.is_leaf).toLowerCase() === "true",
+    status: asStr(row.status) || "active",
+    note: asNullable(row.note),
+  };
+
+  const existing = await findFirstByField(model, "code", code);
+
+  if (existing?.id) {
+    const res: any = await model.update(
+      {
+        id: existing.id,
+        ...payload,
+      },
+      { authMode: "userPool" },
+    );
+    if (res.errors?.length) throw res.errors;
+    return "updated";
+  }
+
+  const res: any = await model.create(payload, { authMode: "userPool" });
+  if (res.errors?.length) throw res.errors;
+  return "created";
+}
+
+async function upsertAbilityObservationHint(
+  model: any,
+  row: AbilityObservationHintRow,
+) {
+  const abilityCode = asStr(row.abilityCode);
+  if (!abilityCode) return false;
+
+  const payload = {
+    abilityCode,
+    abilityName: asStr(row.abilityName),
+    startingAge: toInt(row.startingAge) ?? 0,
+    episode1: asNullable(row.episode1),
+    episode2: asNullable(row.episode2),
+    episode3: asNullable(row.episode3),
+    isActive: true,
+  };
+
+  const existing = await findFirstByField(model, "abilityCode", abilityCode);
+
+  if (existing?.id) {
+    const res: any = await model.update(
+      {
+        id: existing.id,
+        ...payload,
+      },
+      { authMode: "userPool" },
+    );
+    if (res.errors?.length) throw res.errors;
+    return "updated";
+  }
+
+  const res: any = await model.create(payload, { authMode: "userPool" });
+  if (res.errors?.length) throw res.errors;
+  return "created";
 }
 
 (async () => {
-  const outputs = JSON.parse(await readFile(outputsUrl, { encoding: "utf8" }));
-  Amplify.configure(outputs);
+  let signedIn = false;
 
-  const username = await getSecret("username");
-  const password = await getSecret("password");
+  try {
+    const outputs = JSON.parse(await readFile(outputsUrl, { encoding: "utf8" }));
+    Amplify.configure(outputs);
 
-  await signInWithMfa(username, password);
+    const username = await getUsername();
+    const password = await getPassword();
 
-  const session = await fetchAuthSession();
-  const hasIdToken = !!session.tokens?.idToken;
-  const hasAccessToken = !!session.tokens?.accessToken;
-  console.log("SEED authSession:", { hasIdToken, hasAccessToken });
-  if (!hasIdToken || !hasAccessToken) throw new Error("UserPool tokens are missing after MFA.");
+    console.log("SEED user:", `${username.slice(0, 4)}***`);
+    console.log("SEED wipe:", SHOULD_WIPE);
 
-  const client = generateClient<Schema>();
+    await signInWithTotp(username, password);
+    signedIn = true;
 
-  // wipe（idで安全に消す）
-  await wipeModelById((client.models as any).AbilityPracticeAgg, "AbilityPracticeAgg");
-  await wipeModelById((client.models as any).AbilityPracticeLink, "AbilityPracticeLink");
-  await wipeModelById((client.models as any).AbilityCode, "AbilityCode");
-  await wipeModelById((client.models as any).PracticeCode, "PracticeCode");
+    const session = await fetchAuthSession();
+    const hasIdToken = !!session.tokens?.idToken;
+    const hasAccessToken = !!session.tokens?.accessToken;
+    console.log("SEED authSession:", { hasIdToken, hasAccessToken });
 
-  // 0) PracticeCode投入
-  const practiceRows = await parseCsv<PracticeRow>(practiceCsvUrl);
-  let createdPractice = 0;
+    if (!hasIdToken || !hasAccessToken) {
+      throw new Error("UserPool tokens are missing after sign-in.");
+    }
 
-  for (const r of practiceRows) {
-    const practice_code = asStr((r as any).practice_code);
-    if (!practice_code) continue;
+    const client = generateClient<Schema>();
 
-    const source_type = asStr((r as any).source_type) || "internal";
-    const status = asStr((r as any).status) || "active";
-    const version = toInt((r as any).version) ?? 1;
+    if (SHOULD_WIPE) {
+      await wipeModelById(
+        (client.models as any).AbilityObservationHint,
+        "AbilityObservationHint",
+      );
+      await wipeModelById((client.models as any).AbilityCode, "AbilityCode");
+    } else {
+      console.log("core master wipe skipped");
+    }
 
-    const res: any = await (client.models as any).PracticeCode.create(
-      {
-        practice_code,
-        category_code: asStr((r as any).category_code) || null,
-        category_name: asStr((r as any).category_name) || null,
-        name: asStr((r as any).name),
-        memo: asStr((r as any).memo) || null,
-        source_type,
-        source_ref: asStr((r as any).source_ref) || null,
-        source_url: asStr((r as any).source_url) || null,
-        status,
-        version,
-      },
-      { authMode: "userPool" }
+    // 1) AbilityCode投入
+    const abilityRows = await parseCsv<AbilityRow>(abilityCsvUrl);
+
+    let createdAbility = 0;
+    let updatedAbility = 0;
+
+    for (const r of abilityRows) {
+      const result = await upsertAbilityCode(
+        (client.models as any).AbilityCode,
+        r,
+      );
+      if (result === "created") createdAbility += 1;
+      if (result === "updated") updatedAbility += 1;
+    }
+
+    console.log(
+      `seeded AbilityCode: created=${createdAbility} updated=${updatedAbility}`,
     );
-    if (res.errors?.length) throw res.errors;
-    createdPractice += 1;
-  }
-  console.log(`seeded PracticeCode: ${createdPractice}`);
 
-  // 1) AbilityCode投入
-  const abilityRows = await parseCsv<AbilityRow>(abilityCsvUrl);
+    // 2) AbilityObservationHint投入
+    const hintRows = await parseCsv<AbilityObservationHintRow>(
+      observationHintCsvUrl,
+    );
 
-  const parentOf = new Map<string, string>();
-  const levelOf = new Map<string, number>();
+    let createdHints = 0;
+    let updatedHints = 0;
 
-  for (const r of abilityRows) {
-    const code = asStr((r as any).code);
-    const parent = asStr((r as any).parent_code);
-    const level = toInt((r as any).level) ?? 0;
-    if (code) {
-      if (parent) parentOf.set(code, parent);
-      if (level) levelOf.set(code, level);
+    for (const r of hintRows) {
+      const result = await upsertAbilityObservationHint(
+        (client.models as any).AbilityObservationHint,
+        r,
+      );
+      if (result === "created") createdHints += 1;
+      if (result === "updated") updatedHints += 1;
+    }
+
+    console.log(
+      `seeded AbilityObservationHint: created=${createdHints} updated=${updatedHints}`,
+    );
+
+    console.log("seed done.");
+  } finally {
+    if (signedIn) {
+      try {
+        await signOut();
+      } catch {
+        // no-op
+      }
     }
   }
-
-  let createdAbility = 0;
-  for (const r of abilityRows) {
-    const code = asStr((r as any).code);
-    if (!code) continue;
-
-    const res: any = await (client.models as any).AbilityCode.create(
-      {
-        code,
-        code_display: asStr((r as any).code_display),
-        parent_code: asStr((r as any).parent_code) || null,
-        level: toInt((r as any).level) ?? 0,
-        name: asStr((r as any).name),
-        domain: asStr((r as any).domain) || null,
-        category: asStr((r as any).category) || null,
-        sort_order: toInt((r as any).sort_order) ?? null,
-        is_leaf: String((r as any).is_leaf).toLowerCase() === "true",
-        status: asStr((r as any).status) || "active",
-        note: asStr((r as any).note) || null,
-      },
-      { authMode: "userPool" }
-    );
-    if (res.errors?.length) throw res.errors;
-    createdAbility += 1;
-  }
-  console.log(`seeded AbilityCode: ${createdAbility}`);
-
-  // 2) Link（クロス表→縦持ち、かつ小分類のみ）
-  const crossRows = await parseCsv<LinkCrossRow>(linkCsvUrl);
-  if (!crossRows.length) throw new Error("AbilityPracticeLink.csv が空です");
-
-  const headerRow = crossRows.find((r) => asStr(r["Practice"]) === "code");
-  if (!headerRow) throw new Error("practiceCode行（Practice=code）が見つかりません");
-
-  const abilityCodeCol = "Practice";
-  const abilityNameCol = "ability/Practice";
-  const ignoreCols = new Set(["Unnamed: 0", abilityNameCol, abilityCodeCol]);
-  const practiceNameCols = Object.keys(headerRow).filter((c) => !ignoreCols.has(c));
-
-  const practiceCodeByCol = new Map<string, string>();
-  for (const col of practiceNameCols) {
-    const pc = asStr(headerRow[col]);
-    if (pc.startsWith("PR-")) practiceCodeByCol.set(col, pc);
-  }
-
-  const linkItems: Array<{ abilityCode: string; practiceCode: string; score: number }> = [];
-
-  for (const r of crossRows) {
-    const abilityCode = asStr(r[abilityCodeCol]);
-    if (!abilityCode || abilityCode === "code") continue;
-
-    if ((levelOf.get(abilityCode) ?? 0) !== 3) continue;
-
-    for (const [col, practiceCode] of practiceCodeByCol.entries()) {
-      const score = toScore(r[col]);
-      if (!score) continue;
-      linkItems.push({ abilityCode, practiceCode, score });
-    }
-  }
-
-  let createdLinks = 0;
-  for (const it of linkItems) {
-    const res: any = await (client.models as any).AbilityPracticeLink.create(
-      { abilityCode: it.abilityCode, practiceCode: it.practiceCode, score: it.score },
-      { authMode: "userPool" }
-    );
-    if (res.errors?.length) throw res.errors;
-    createdLinks += 1;
-  }
-  console.log(`seeded AbilityPracticeLink (leaf only): ${createdLinks}`);
-
-  // 3) Agg（小→中→大）
-  const aggs = buildAgg(linkItems, parentOf, levelOf);
-
-  let createdAgg = 0;
-  for (const a of aggs) {
-    const res: any = await (client.models as any).AbilityPracticeAgg.create(
-      {
-        abilityCode: a.abilityCode,
-        practiceCode: a.practiceCode,
-        scoreSum: a.scoreSum,
-        scoreMax: a.scoreMax,
-        linkCount: a.linkCount,
-        level: a.level,
-      },
-      { authMode: "userPool" }
-    );
-    if (res.errors?.length) throw res.errors;
-    createdAgg += 1;
-  }
-  console.log(`seeded AbilityPracticeAgg: ${createdAgg}`);
-
-  await signOut();
-  console.log("seed done.");
-})();
+})().catch((error) => {
+  console.error("SEED failed:", error);
+  process.exit(1);
+});

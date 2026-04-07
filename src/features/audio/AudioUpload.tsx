@@ -5,7 +5,10 @@ import { uploadData } from "aws-amplify/storage";
 import { generateClient } from "aws-amplify/data";
 import type { Schema } from "../../../amplify/data/resource";
 
-export default function AudioUpload(props: { tenantId: string; owner: string }) {
+export default function AudioUpload(props: {
+  tenantId: string;
+  owner: string;
+}) {
   const { tenantId, owner } = props;
 
   const client = useMemo(() => generateClient<Schema>(), []);
@@ -45,6 +48,7 @@ export default function AudioUpload(props: { tenantId: string; owner: string }) 
       const resp = await client.models.AudioJob.create({
         tenantId,
         owner,
+        sourceEntityType: "PracticeCode",
         audioPath: result.path,
         recordedAt: createdAtIso,
         status: "PENDING",

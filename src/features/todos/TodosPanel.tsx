@@ -33,7 +33,10 @@ export default function TodosPanel(props: { owner: string }) {
     const content = window.prompt("Todo content") ?? "";
     if (!content.trim()) return;
 
-    const res = await client.models.Todo.create({ content: content.trim(), owner });
+    const res = await client.models.Todo.create({
+      content: content.trim(),
+      owner,
+    });
     const created = (res as any)?.data;
 
     // ✅ 即時反映（配列の展開が必要）
@@ -65,11 +68,18 @@ export default function TodosPanel(props: { owner: string }) {
           <div key={todo.id} style={{ position: "relative" }}>
             <TodoListItem
               overrides={{
-                "Todo content": { children: todo.content, fontSize: "16px", lineHeight: "20px" },
-                "Due": { children: "", fontSize: "12px", lineHeight: "16px" },
+                "Todo content": {
+                  children: todo.content,
+                  fontSize: "16px",
+                  lineHeight: "20px",
+                },
+                Due: { children: "", fontSize: "12px", lineHeight: "16px" },
               }}
             />
-            <button onClick={() => deleteTodo(todo.id)} style={{ marginTop: 8 }}>
+            <button
+              onClick={() => deleteTodo(todo.id)}
+              style={{ marginTop: 8 }}
+            >
               delete
             </button>
           </div>

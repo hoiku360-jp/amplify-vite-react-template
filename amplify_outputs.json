@@ -1,9 +1,9 @@
 {
   "auth": {
-    "user_pool_id": "ap-northeast-1_7kiFvXxfJ",
+    "user_pool_id": "ap-northeast-1_HrVpAqAoH",
     "aws_region": "ap-northeast-1",
-    "user_pool_client_id": "7it4f41asi62lff89hvih8b60l",
-    "identity_pool_id": "ap-northeast-1:060c21e1-15a0-4bc3-9fed-40496f82ea00",
+    "user_pool_client_id": "3ha7dufuv5iunk2tbmpl6bil2c",
+    "identity_pool_id": "ap-northeast-1:3c8f0e39-cb6b-4647-92c0-75a20697dbdd",
     "mfa_methods": [
       "TOTP"
     ],
@@ -28,9 +28,9 @@
     "unauthenticated_identities_enabled": true
   },
   "data": {
-    "url": "https://2qmlz5dn5nfvbg6slurwwqyx3q.appsync-api.ap-northeast-1.amazonaws.com/graphql",
+    "url": "https://4sdu5elhjvagpgvtkgg6oe4lqy.appsync-api.ap-northeast-1.amazonaws.com/graphql",
     "aws_region": "ap-northeast-1",
-    "api_key": "da2-hu4aukqrcnh33hzewadi4uigam",
+    "api_key": "da2-jpuku6m24zc3dflay7wpfjcyvq",
     "default_authorization_type": "AMAZON_COGNITO_USER_POOLS",
     "authorization_types": [
       "API_KEY",
@@ -330,6 +330,41 @@
               "isRequired": true,
               "attributes": []
             },
+            "jobType": {
+              "name": "jobType",
+              "isArray": false,
+              "type": "String",
+              "isRequired": false,
+              "attributes": []
+            },
+            "sourceEntityType": {
+              "name": "sourceEntityType",
+              "isArray": false,
+              "type": "String",
+              "isRequired": false,
+              "attributes": []
+            },
+            "sourceEntityId": {
+              "name": "sourceEntityId",
+              "isArray": false,
+              "type": "String",
+              "isRequired": false,
+              "attributes": []
+            },
+            "scheduleDayId": {
+              "name": "scheduleDayId",
+              "isArray": false,
+              "type": "ID",
+              "isRequired": false,
+              "attributes": []
+            },
+            "scheduleDayItemId": {
+              "name": "scheduleDayItemId",
+              "isArray": false,
+              "type": "ID",
+              "isRequired": false,
+              "attributes": []
+            },
             "audioPath": {
               "name": "audioPath",
               "isArray": false,
@@ -599,6 +634,283 @@
             ]
           }
         },
+        "Tenant": {
+          "name": "Tenant",
+          "fields": {
+            "tenantId": {
+              "name": "tenantId",
+              "isArray": false,
+              "type": "String",
+              "isRequired": true,
+              "attributes": []
+            },
+            "name": {
+              "name": "name",
+              "isArray": false,
+              "type": "String",
+              "isRequired": true,
+              "attributes": []
+            },
+            "legalName": {
+              "name": "legalName",
+              "isArray": false,
+              "type": "String",
+              "isRequired": false,
+              "attributes": []
+            },
+            "status": {
+              "name": "status",
+              "isArray": false,
+              "type": "String",
+              "isRequired": true,
+              "attributes": []
+            },
+            "plan": {
+              "name": "plan",
+              "isArray": false,
+              "type": "String",
+              "isRequired": false,
+              "attributes": []
+            },
+            "note": {
+              "name": "note",
+              "isArray": false,
+              "type": "String",
+              "isRequired": false,
+              "attributes": []
+            },
+            "createdAt": {
+              "name": "createdAt",
+              "isArray": false,
+              "type": "AWSDateTime",
+              "isRequired": false,
+              "attributes": [],
+              "isReadOnly": true
+            },
+            "updatedAt": {
+              "name": "updatedAt",
+              "isArray": false,
+              "type": "AWSDateTime",
+              "isRequired": false,
+              "attributes": [],
+              "isReadOnly": true
+            }
+          },
+          "syncable": true,
+          "pluralName": "Tenants",
+          "attributes": [
+            {
+              "type": "model",
+              "properties": {}
+            },
+            {
+              "type": "key",
+              "properties": {
+                "fields": [
+                  "tenantId"
+                ]
+              }
+            },
+            {
+              "type": "auth",
+              "properties": {
+                "rules": [
+                  {
+                    "allow": "private",
+                    "operations": [
+                      "create",
+                      "read"
+                    ]
+                  }
+                ]
+              }
+            }
+          ],
+          "primaryKeyInfo": {
+            "isCustomPrimaryKey": true,
+            "primaryKeyFieldName": "tenantId",
+            "sortKeyFieldNames": []
+          }
+        },
+        "UserProfile": {
+          "name": "UserProfile",
+          "fields": {
+            "userId": {
+              "name": "userId",
+              "isArray": false,
+              "type": "String",
+              "isRequired": true,
+              "attributes": []
+            },
+            "tenantId": {
+              "name": "tenantId",
+              "isArray": false,
+              "type": "String",
+              "isRequired": true,
+              "attributes": []
+            },
+            "fullName": {
+              "name": "fullName",
+              "isArray": false,
+              "type": "String",
+              "isRequired": true,
+              "attributes": []
+            },
+            "displayName": {
+              "name": "displayName",
+              "isArray": false,
+              "type": "String",
+              "isRequired": false,
+              "attributes": []
+            },
+            "phoneticName": {
+              "name": "phoneticName",
+              "isArray": false,
+              "type": "String",
+              "isRequired": false,
+              "attributes": []
+            },
+            "email": {
+              "name": "email",
+              "isArray": false,
+              "type": "String",
+              "isRequired": false,
+              "attributes": []
+            },
+            "role": {
+              "name": "role",
+              "isArray": false,
+              "type": "String",
+              "isRequired": true,
+              "attributes": []
+            },
+            "status": {
+              "name": "status",
+              "isArray": false,
+              "type": "String",
+              "isRequired": true,
+              "attributes": []
+            },
+            "department": {
+              "name": "department",
+              "isArray": false,
+              "type": "String",
+              "isRequired": false,
+              "attributes": []
+            },
+            "position": {
+              "name": "position",
+              "isArray": false,
+              "type": "String",
+              "isRequired": false,
+              "attributes": []
+            },
+            "profileVisibility": {
+              "name": "profileVisibility",
+              "isArray": false,
+              "type": "String",
+              "isRequired": false,
+              "attributes": []
+            },
+            "practiceDefaultVisibility": {
+              "name": "practiceDefaultVisibility",
+              "isArray": false,
+              "type": "String",
+              "isRequired": false,
+              "attributes": []
+            },
+            "owner": {
+              "name": "owner",
+              "isArray": false,
+              "type": "String",
+              "isRequired": true,
+              "attributes": []
+            },
+            "createdAt": {
+              "name": "createdAt",
+              "isArray": false,
+              "type": "AWSDateTime",
+              "isRequired": false,
+              "attributes": [],
+              "isReadOnly": true
+            },
+            "updatedAt": {
+              "name": "updatedAt",
+              "isArray": false,
+              "type": "AWSDateTime",
+              "isRequired": false,
+              "attributes": [],
+              "isReadOnly": true
+            }
+          },
+          "syncable": true,
+          "pluralName": "UserProfiles",
+          "attributes": [
+            {
+              "type": "model",
+              "properties": {}
+            },
+            {
+              "type": "key",
+              "properties": {
+                "fields": [
+                  "userId"
+                ]
+              }
+            },
+            {
+              "type": "key",
+              "properties": {
+                "name": "userProfilesByTenantIdAndFullName",
+                "queryField": "listUserProfilesByTenant",
+                "fields": [
+                  "tenantId",
+                  "fullName"
+                ]
+              }
+            },
+            {
+              "type": "key",
+              "properties": {
+                "name": "userProfilesByOwner",
+                "queryField": "listMyUserProfile",
+                "fields": [
+                  "owner"
+                ]
+              }
+            },
+            {
+              "type": "auth",
+              "properties": {
+                "rules": [
+                  {
+                    "provider": "userPools",
+                    "ownerField": "owner",
+                    "allow": "owner",
+                    "identityClaim": "cognito:username",
+                    "operations": [
+                      "create",
+                      "update",
+                      "delete",
+                      "read"
+                    ]
+                  },
+                  {
+                    "allow": "private",
+                    "operations": [
+                      "read"
+                    ]
+                  }
+                ]
+              }
+            }
+          ],
+          "primaryKeyInfo": {
+            "isCustomPrimaryKey": true,
+            "primaryKeyFieldName": "userId",
+            "sortKeyFieldNames": []
+          }
+        },
         "AbilityCode": {
           "name": "AbilityCode",
           "fields": {
@@ -717,7 +1029,10 @@
                   {
                     "allow": "private",
                     "operations": [
-                      "read"
+                      "create",
+                      "read",
+                      "update",
+                      "delete"
                     ]
                   }
                 ]
@@ -816,7 +1131,10 @@
                   {
                     "allow": "private",
                     "operations": [
-                      "read"
+                      "create",
+                      "read",
+                      "update",
+                      "delete"
                     ]
                   }
                 ]
@@ -1010,6 +1328,153 @@
               "isRequired": true,
               "attributes": []
             },
+            "tenantId": {
+              "name": "tenantId",
+              "isArray": false,
+              "type": "String",
+              "isRequired": false,
+              "attributes": []
+            },
+            "createdBy": {
+              "name": "createdBy",
+              "isArray": false,
+              "type": "String",
+              "isRequired": false,
+              "attributes": []
+            },
+            "updatedBy": {
+              "name": "updatedBy",
+              "isArray": false,
+              "type": "String",
+              "isRequired": false,
+              "attributes": []
+            },
+            "visibility": {
+              "name": "visibility",
+              "isArray": false,
+              "type": "String",
+              "isRequired": false,
+              "attributes": []
+            },
+            "publishScope": {
+              "name": "publishScope",
+              "isArray": false,
+              "type": "String",
+              "isRequired": false,
+              "attributes": []
+            },
+            "ownerType": {
+              "name": "ownerType",
+              "isArray": false,
+              "type": "String",
+              "isRequired": false,
+              "attributes": []
+            },
+            "owner": {
+              "name": "owner",
+              "isArray": false,
+              "type": "String",
+              "isRequired": false,
+              "attributes": []
+            },
+            "practiceCategory": {
+              "name": "practiceCategory",
+              "isArray": false,
+              "type": "String",
+              "isRequired": false,
+              "attributes": []
+            },
+            "practiceSourceType": {
+              "name": "practiceSourceType",
+              "isArray": false,
+              "type": "String",
+              "isRequired": false,
+              "attributes": []
+            },
+            "audioKey": {
+              "name": "audioKey",
+              "isArray": false,
+              "type": "String",
+              "isRequired": false,
+              "attributes": []
+            },
+            "recordedAt": {
+              "name": "recordedAt",
+              "isArray": false,
+              "type": "AWSDateTime",
+              "isRequired": false,
+              "attributes": []
+            },
+            "transcriptKey": {
+              "name": "transcriptKey",
+              "isArray": false,
+              "type": "String",
+              "isRequired": false,
+              "attributes": []
+            },
+            "transcriptText": {
+              "name": "transcriptText",
+              "isArray": false,
+              "type": "String",
+              "isRequired": false,
+              "attributes": []
+            },
+            "transcribeJobName": {
+              "name": "transcribeJobName",
+              "isArray": false,
+              "type": "String",
+              "isRequired": false,
+              "attributes": []
+            },
+            "transcribeStatus": {
+              "name": "transcribeStatus",
+              "isArray": false,
+              "type": "String",
+              "isRequired": false,
+              "attributes": []
+            },
+            "aiStatus": {
+              "name": "aiStatus",
+              "isArray": false,
+              "type": "String",
+              "isRequired": false,
+              "attributes": []
+            },
+            "aiModel": {
+              "name": "aiModel",
+              "isArray": false,
+              "type": "String",
+              "isRequired": false,
+              "attributes": []
+            },
+            "aiRawJson": {
+              "name": "aiRawJson",
+              "isArray": false,
+              "type": "String",
+              "isRequired": false,
+              "attributes": []
+            },
+            "errorMessage": {
+              "name": "errorMessage",
+              "isArray": false,
+              "type": "String",
+              "isRequired": false,
+              "attributes": []
+            },
+            "reviewedAt": {
+              "name": "reviewedAt",
+              "isArray": false,
+              "type": "AWSDateTime",
+              "isRequired": false,
+              "attributes": []
+            },
+            "completedAt": {
+              "name": "completedAt",
+              "isArray": false,
+              "type": "AWSDateTime",
+              "isRequired": false,
+              "attributes": []
+            },
             "createdAt": {
               "name": "createdAt",
               "isArray": false,
@@ -1035,13 +1500,218 @@
               "properties": {}
             },
             {
+              "type": "key",
+              "properties": {
+                "name": "practiceCodesByTenantIdAndPractice_code",
+                "queryField": "listPracticeCodesByTenant",
+                "fields": [
+                  "tenantId",
+                  "practice_code"
+                ]
+              }
+            },
+            {
+              "type": "key",
+              "properties": {
+                "name": "practiceCodesByTenantIdAndStatusAndPractice_code",
+                "queryField": "listPracticeCodesByTenantStatus",
+                "fields": [
+                  "tenantId",
+                  "status",
+                  "practice_code"
+                ]
+              }
+            },
+            {
+              "type": "key",
+              "properties": {
+                "name": "practiceCodesByTenantIdAndPracticeCategoryAndPractice_code",
+                "queryField": "listPracticeCodesByTenantCategory",
+                "fields": [
+                  "tenantId",
+                  "practiceCategory",
+                  "practice_code"
+                ]
+              }
+            },
+            {
+              "type": "key",
+              "properties": {
+                "name": "practiceCodesByTenantIdAndVisibilityAndPractice_code",
+                "queryField": "listPracticeCodesByTenantVisibility",
+                "fields": [
+                  "tenantId",
+                  "visibility",
+                  "practice_code"
+                ]
+              }
+            },
+            {
+              "type": "key",
+              "properties": {
+                "name": "practiceCodesByOwnerAndPractice_code",
+                "queryField": "listPracticeCodesByOwner",
+                "fields": [
+                  "owner",
+                  "practice_code"
+                ]
+              }
+            },
+            {
               "type": "auth",
               "properties": {
                 "rules": [
                   {
                     "allow": "private",
                     "operations": [
-                      "read"
+                      "create",
+                      "read",
+                      "update",
+                      "delete"
+                    ]
+                  }
+                ]
+              }
+            }
+          ],
+          "primaryKeyInfo": {
+            "isCustomPrimaryKey": false,
+            "primaryKeyFieldName": "id",
+            "sortKeyFieldNames": []
+          }
+        },
+        "PracticeLinkSuggestion": {
+          "name": "PracticeLinkSuggestion",
+          "fields": {
+            "id": {
+              "name": "id",
+              "isArray": false,
+              "type": "ID",
+              "isRequired": true,
+              "attributes": []
+            },
+            "tenantId": {
+              "name": "tenantId",
+              "isArray": false,
+              "type": "String",
+              "isRequired": true,
+              "attributes": []
+            },
+            "practiceCode": {
+              "name": "practiceCode",
+              "isArray": false,
+              "type": "String",
+              "isRequired": true,
+              "attributes": []
+            },
+            "abilityCode": {
+              "name": "abilityCode",
+              "isArray": false,
+              "type": "String",
+              "isRequired": true,
+              "attributes": []
+            },
+            "score": {
+              "name": "score",
+              "isArray": false,
+              "type": "Int",
+              "isRequired": true,
+              "attributes": []
+            },
+            "reason": {
+              "name": "reason",
+              "isArray": false,
+              "type": "String",
+              "isRequired": false,
+              "attributes": []
+            },
+            "status": {
+              "name": "status",
+              "isArray": false,
+              "type": "String",
+              "isRequired": true,
+              "attributes": []
+            },
+            "sortOrder": {
+              "name": "sortOrder",
+              "isArray": false,
+              "type": "Int",
+              "isRequired": false,
+              "attributes": []
+            },
+            "createdBy": {
+              "name": "createdBy",
+              "isArray": false,
+              "type": "String",
+              "isRequired": false,
+              "attributes": []
+            },
+            "updatedBy": {
+              "name": "updatedBy",
+              "isArray": false,
+              "type": "String",
+              "isRequired": false,
+              "attributes": []
+            },
+            "createdAt": {
+              "name": "createdAt",
+              "isArray": false,
+              "type": "AWSDateTime",
+              "isRequired": false,
+              "attributes": [],
+              "isReadOnly": true
+            },
+            "updatedAt": {
+              "name": "updatedAt",
+              "isArray": false,
+              "type": "AWSDateTime",
+              "isRequired": false,
+              "attributes": [],
+              "isReadOnly": true
+            }
+          },
+          "syncable": true,
+          "pluralName": "PracticeLinkSuggestions",
+          "attributes": [
+            {
+              "type": "model",
+              "properties": {}
+            },
+            {
+              "type": "key",
+              "properties": {
+                "name": "practiceLinkSuggestionsByTenantIdAndPracticeCodeAndStatus",
+                "queryField": "listPracticeLinkSuggestionsByTenantPractice",
+                "fields": [
+                  "tenantId",
+                  "practiceCode",
+                  "status"
+                ]
+              }
+            },
+            {
+              "type": "key",
+              "properties": {
+                "name": "practiceLinkSuggestionsByPracticeCodeAndStatusAndSortOrder",
+                "queryField": "listPracticeLinkSuggestionsByPractice",
+                "fields": [
+                  "practiceCode",
+                  "status",
+                  "sortOrder"
+                ]
+              }
+            },
+            {
+              "type": "auth",
+              "properties": {
+                "rules": [
+                  {
+                    "allow": "private",
+                    "operations": [
+                      "create",
+                      "read",
+                      "update",
+                      "delete"
                     ]
                   }
                 ]
@@ -1351,9 +2021,5119 @@
               "blockId"
             ]
           }
+        },
+        "Classroom": {
+          "name": "Classroom",
+          "fields": {
+            "id": {
+              "name": "id",
+              "isArray": false,
+              "type": "ID",
+              "isRequired": true,
+              "attributes": []
+            },
+            "tenantId": {
+              "name": "tenantId",
+              "isArray": false,
+              "type": "String",
+              "isRequired": false,
+              "attributes": []
+            },
+            "name": {
+              "name": "name",
+              "isArray": false,
+              "type": "String",
+              "isRequired": true,
+              "attributes": []
+            },
+            "ageBand": {
+              "name": "ageBand",
+              "isArray": false,
+              "type": "String",
+              "isRequired": false,
+              "attributes": []
+            },
+            "schoolName": {
+              "name": "schoolName",
+              "isArray": false,
+              "type": "String",
+              "isRequired": false,
+              "attributes": []
+            },
+            "status": {
+              "name": "status",
+              "isArray": false,
+              "type": "String",
+              "isRequired": false,
+              "attributes": []
+            },
+            "plans": {
+              "name": "plans",
+              "isArray": true,
+              "type": {
+                "model": "Plan"
+              },
+              "isRequired": false,
+              "attributes": [],
+              "isArrayNullable": true,
+              "association": {
+                "connectionType": "HAS_MANY",
+                "associatedWith": [
+                  "classroomId"
+                ]
+              }
+            },
+            "classAnnualPlans": {
+              "name": "classAnnualPlans",
+              "isArray": true,
+              "type": {
+                "model": "ClassAnnualPlan"
+              },
+              "isRequired": false,
+              "attributes": [],
+              "isArrayNullable": true,
+              "association": {
+                "connectionType": "HAS_MANY",
+                "associatedWith": [
+                  "classroomId"
+                ]
+              }
+            },
+            "scheduleMonths": {
+              "name": "scheduleMonths",
+              "isArray": true,
+              "type": {
+                "model": "ScheduleMonth"
+              },
+              "isRequired": false,
+              "attributes": [],
+              "isArrayNullable": true,
+              "association": {
+                "connectionType": "HAS_MANY",
+                "associatedWith": [
+                  "classroomId"
+                ]
+              }
+            },
+            "scheduleWeeks": {
+              "name": "scheduleWeeks",
+              "isArray": true,
+              "type": {
+                "model": "ScheduleWeek"
+              },
+              "isRequired": false,
+              "attributes": [],
+              "isArrayNullable": true,
+              "association": {
+                "connectionType": "HAS_MANY",
+                "associatedWith": [
+                  "classroomId"
+                ]
+              }
+            },
+            "scheduleDays": {
+              "name": "scheduleDays",
+              "isArray": true,
+              "type": {
+                "model": "ScheduleDay"
+              },
+              "isRequired": false,
+              "attributes": [],
+              "isArrayNullable": true,
+              "association": {
+                "connectionType": "HAS_MANY",
+                "associatedWith": [
+                  "classroomId"
+                ]
+              }
+            },
+            "createdAt": {
+              "name": "createdAt",
+              "isArray": false,
+              "type": "AWSDateTime",
+              "isRequired": false,
+              "attributes": [],
+              "isReadOnly": true
+            },
+            "updatedAt": {
+              "name": "updatedAt",
+              "isArray": false,
+              "type": "AWSDateTime",
+              "isRequired": false,
+              "attributes": [],
+              "isReadOnly": true
+            }
+          },
+          "syncable": true,
+          "pluralName": "Classrooms",
+          "attributes": [
+            {
+              "type": "model",
+              "properties": {}
+            },
+            {
+              "type": "key",
+              "properties": {
+                "name": "classroomsByTenantIdAndAgeBandAndName",
+                "queryField": "listClassroomsByTenantAgeName",
+                "fields": [
+                  "tenantId",
+                  "ageBand",
+                  "name"
+                ]
+              }
+            },
+            {
+              "type": "key",
+              "properties": {
+                "name": "classroomsByName",
+                "queryField": "listClassroomsByName",
+                "fields": [
+                  "name"
+                ]
+              }
+            },
+            {
+              "type": "auth",
+              "properties": {
+                "rules": [
+                  {
+                    "allow": "private",
+                    "operations": [
+                      "create",
+                      "read",
+                      "update",
+                      "delete"
+                    ]
+                  }
+                ]
+              }
+            }
+          ],
+          "primaryKeyInfo": {
+            "isCustomPrimaryKey": false,
+            "primaryKeyFieldName": "id",
+            "sortKeyFieldNames": []
+          }
+        },
+        "Plan": {
+          "name": "Plan",
+          "fields": {
+            "id": {
+              "name": "id",
+              "isArray": false,
+              "type": "ID",
+              "isRequired": true,
+              "attributes": []
+            },
+            "classroomId": {
+              "name": "classroomId",
+              "isArray": false,
+              "type": "ID",
+              "isRequired": true,
+              "attributes": []
+            },
+            "classroom": {
+              "name": "classroom",
+              "isArray": false,
+              "type": {
+                "model": "Classroom"
+              },
+              "isRequired": false,
+              "attributes": [],
+              "association": {
+                "connectionType": "BELONGS_TO",
+                "targetNames": [
+                  "classroomId"
+                ]
+              }
+            },
+            "parentPlanId": {
+              "name": "parentPlanId",
+              "isArray": false,
+              "type": "ID",
+              "isRequired": false,
+              "attributes": []
+            },
+            "parentPlan": {
+              "name": "parentPlan",
+              "isArray": false,
+              "type": {
+                "model": "Plan"
+              },
+              "isRequired": false,
+              "attributes": [],
+              "association": {
+                "connectionType": "BELONGS_TO",
+                "targetNames": [
+                  "parentPlanId"
+                ]
+              }
+            },
+            "childPlans": {
+              "name": "childPlans",
+              "isArray": true,
+              "type": {
+                "model": "Plan"
+              },
+              "isRequired": false,
+              "attributes": [],
+              "isArrayNullable": true,
+              "association": {
+                "connectionType": "HAS_MANY",
+                "associatedWith": [
+                  "parentPlanId"
+                ]
+              }
+            },
+            "planType": {
+              "name": "planType",
+              "isArray": false,
+              "type": {
+                "enum": "PlanType"
+              },
+              "isRequired": true,
+              "attributes": []
+            },
+            "title": {
+              "name": "title",
+              "isArray": false,
+              "type": "String",
+              "isRequired": true,
+              "attributes": []
+            },
+            "fiscalYear": {
+              "name": "fiscalYear",
+              "isArray": false,
+              "type": "Int",
+              "isRequired": false,
+              "attributes": []
+            },
+            "termNo": {
+              "name": "termNo",
+              "isArray": false,
+              "type": "Int",
+              "isRequired": false,
+              "attributes": []
+            },
+            "monthKey": {
+              "name": "monthKey",
+              "isArray": false,
+              "type": "String",
+              "isRequired": false,
+              "attributes": []
+            },
+            "planKey": {
+              "name": "planKey",
+              "isArray": false,
+              "type": "String",
+              "isRequired": false,
+              "attributes": []
+            },
+            "periodStart": {
+              "name": "periodStart",
+              "isArray": false,
+              "type": "AWSDate",
+              "isRequired": false,
+              "attributes": []
+            },
+            "periodEnd": {
+              "name": "periodEnd",
+              "isArray": false,
+              "type": "AWSDate",
+              "isRequired": false,
+              "attributes": []
+            },
+            "weekStartDate": {
+              "name": "weekStartDate",
+              "isArray": false,
+              "type": "AWSDate",
+              "isRequired": false,
+              "attributes": []
+            },
+            "targetDate": {
+              "name": "targetDate",
+              "isArray": false,
+              "type": "AWSDate",
+              "isRequired": false,
+              "attributes": []
+            },
+            "classAgeLabel": {
+              "name": "classAgeLabel",
+              "isArray": false,
+              "type": "String",
+              "isRequired": false,
+              "attributes": []
+            },
+            "schoolPolicy": {
+              "name": "schoolPolicy",
+              "isArray": false,
+              "type": "String",
+              "isRequired": false,
+              "attributes": []
+            },
+            "goalText": {
+              "name": "goalText",
+              "isArray": false,
+              "type": "String",
+              "isRequired": false,
+              "attributes": []
+            },
+            "draftText": {
+              "name": "draftText",
+              "isArray": false,
+              "type": "String",
+              "isRequired": false,
+              "attributes": []
+            },
+            "aiSuggestedText": {
+              "name": "aiSuggestedText",
+              "isArray": false,
+              "type": "String",
+              "isRequired": false,
+              "attributes": []
+            },
+            "finalText": {
+              "name": "finalText",
+              "isArray": false,
+              "type": "String",
+              "isRequired": false,
+              "attributes": []
+            },
+            "status": {
+              "name": "status",
+              "isArray": false,
+              "type": {
+                "enum": "PlanStatus"
+              },
+              "isRequired": false,
+              "attributes": []
+            },
+            "abilityHealth": {
+              "name": "abilityHealth",
+              "isArray": false,
+              "type": "Int",
+              "isRequired": false,
+              "attributes": []
+            },
+            "abilityHumanRelations": {
+              "name": "abilityHumanRelations",
+              "isArray": false,
+              "type": "Int",
+              "isRequired": false,
+              "attributes": []
+            },
+            "abilityEnvironment": {
+              "name": "abilityEnvironment",
+              "isArray": false,
+              "type": "Int",
+              "isRequired": false,
+              "attributes": []
+            },
+            "abilityLanguage": {
+              "name": "abilityLanguage",
+              "isArray": false,
+              "type": "Int",
+              "isRequired": false,
+              "attributes": []
+            },
+            "abilityExpression": {
+              "name": "abilityExpression",
+              "isArray": false,
+              "type": "Int",
+              "isRequired": false,
+              "attributes": []
+            },
+            "events": {
+              "name": "events",
+              "isArray": true,
+              "type": {
+                "model": "PlanEvent"
+              },
+              "isRequired": false,
+              "attributes": [],
+              "isArrayNullable": true,
+              "association": {
+                "connectionType": "HAS_MANY",
+                "associatedWith": [
+                  "planId"
+                ]
+              }
+            },
+            "weekAssignments": {
+              "name": "weekAssignments",
+              "isArray": true,
+              "type": {
+                "model": "WeekPracticeAssignment"
+              },
+              "isRequired": false,
+              "attributes": [],
+              "isArrayNullable": true,
+              "association": {
+                "connectionType": "HAS_MANY",
+                "associatedWith": [
+                  "weekPlanId"
+                ]
+              }
+            },
+            "dayProgramItems": {
+              "name": "dayProgramItems",
+              "isArray": true,
+              "type": {
+                "model": "DayProgramItem"
+              },
+              "isRequired": false,
+              "attributes": [],
+              "isArrayNullable": true,
+              "association": {
+                "connectionType": "HAS_MANY",
+                "associatedWith": [
+                  "dayPlanId"
+                ]
+              }
+            },
+            "createdAt": {
+              "name": "createdAt",
+              "isArray": false,
+              "type": "AWSDateTime",
+              "isRequired": false,
+              "attributes": [],
+              "isReadOnly": true
+            },
+            "updatedAt": {
+              "name": "updatedAt",
+              "isArray": false,
+              "type": "AWSDateTime",
+              "isRequired": false,
+              "attributes": [],
+              "isReadOnly": true
+            }
+          },
+          "syncable": true,
+          "pluralName": "Plans",
+          "attributes": [
+            {
+              "type": "model",
+              "properties": {}
+            },
+            {
+              "type": "key",
+              "properties": {
+                "name": "plansByClassroomIdAndPeriodStart",
+                "queryField": "listPlansByClassroomAndPeriod",
+                "fields": [
+                  "classroomId",
+                  "periodStart"
+                ]
+              }
+            },
+            {
+              "type": "key",
+              "properties": {
+                "name": "plansByParentPlanIdAndPeriodStart",
+                "queryField": "listChildPlansByParentAndPeriod",
+                "fields": [
+                  "parentPlanId",
+                  "periodStart"
+                ]
+              }
+            },
+            {
+              "type": "key",
+              "properties": {
+                "name": "plansByPlanKey",
+                "queryField": "listPlansByPlanKey",
+                "fields": [
+                  "planKey"
+                ]
+              }
+            },
+            {
+              "type": "auth",
+              "properties": {
+                "rules": [
+                  {
+                    "allow": "private",
+                    "operations": [
+                      "create",
+                      "read",
+                      "update",
+                      "delete"
+                    ]
+                  }
+                ]
+              }
+            }
+          ],
+          "primaryKeyInfo": {
+            "isCustomPrimaryKey": false,
+            "primaryKeyFieldName": "id",
+            "sortKeyFieldNames": []
+          }
+        },
+        "PlanEvent": {
+          "name": "PlanEvent",
+          "fields": {
+            "id": {
+              "name": "id",
+              "isArray": false,
+              "type": "ID",
+              "isRequired": true,
+              "attributes": []
+            },
+            "planId": {
+              "name": "planId",
+              "isArray": false,
+              "type": "ID",
+              "isRequired": true,
+              "attributes": []
+            },
+            "plan": {
+              "name": "plan",
+              "isArray": false,
+              "type": {
+                "model": "Plan"
+              },
+              "isRequired": false,
+              "attributes": [],
+              "association": {
+                "connectionType": "BELONGS_TO",
+                "targetNames": [
+                  "planId"
+                ]
+              }
+            },
+            "label": {
+              "name": "label",
+              "isArray": false,
+              "type": "String",
+              "isRequired": true,
+              "attributes": []
+            },
+            "eventMonth": {
+              "name": "eventMonth",
+              "isArray": false,
+              "type": "Int",
+              "isRequired": false,
+              "attributes": []
+            },
+            "eventDate": {
+              "name": "eventDate",
+              "isArray": false,
+              "type": "AWSDate",
+              "isRequired": false,
+              "attributes": []
+            },
+            "sortOrder": {
+              "name": "sortOrder",
+              "isArray": false,
+              "type": "Int",
+              "isRequired": false,
+              "attributes": []
+            },
+            "createdAt": {
+              "name": "createdAt",
+              "isArray": false,
+              "type": "AWSDateTime",
+              "isRequired": false,
+              "attributes": [],
+              "isReadOnly": true
+            },
+            "updatedAt": {
+              "name": "updatedAt",
+              "isArray": false,
+              "type": "AWSDateTime",
+              "isRequired": false,
+              "attributes": [],
+              "isReadOnly": true
+            }
+          },
+          "syncable": true,
+          "pluralName": "PlanEvents",
+          "attributes": [
+            {
+              "type": "model",
+              "properties": {}
+            },
+            {
+              "type": "key",
+              "properties": {
+                "name": "planEventsByPlanIdAndSortOrder",
+                "queryField": "listEventsByPlan",
+                "fields": [
+                  "planId",
+                  "sortOrder"
+                ]
+              }
+            },
+            {
+              "type": "auth",
+              "properties": {
+                "rules": [
+                  {
+                    "allow": "private",
+                    "operations": [
+                      "create",
+                      "read",
+                      "update",
+                      "delete"
+                    ]
+                  }
+                ]
+              }
+            }
+          ],
+          "primaryKeyInfo": {
+            "isCustomPrimaryKey": false,
+            "primaryKeyFieldName": "id",
+            "sortKeyFieldNames": []
+          }
+        },
+        "WeekPracticeAssignment": {
+          "name": "WeekPracticeAssignment",
+          "fields": {
+            "id": {
+              "name": "id",
+              "isArray": false,
+              "type": "ID",
+              "isRequired": true,
+              "attributes": []
+            },
+            "weekPlanId": {
+              "name": "weekPlanId",
+              "isArray": false,
+              "type": "ID",
+              "isRequired": true,
+              "attributes": []
+            },
+            "weekPlan": {
+              "name": "weekPlan",
+              "isArray": false,
+              "type": {
+                "model": "Plan"
+              },
+              "isRequired": false,
+              "attributes": [],
+              "association": {
+                "connectionType": "BELONGS_TO",
+                "targetNames": [
+                  "weekPlanId"
+                ]
+              }
+            },
+            "targetDate": {
+              "name": "targetDate",
+              "isArray": false,
+              "type": "AWSDate",
+              "isRequired": true,
+              "attributes": []
+            },
+            "practiceCodeId": {
+              "name": "practiceCodeId",
+              "isArray": false,
+              "type": "String",
+              "isRequired": false,
+              "attributes": []
+            },
+            "note": {
+              "name": "note",
+              "isArray": false,
+              "type": "String",
+              "isRequired": false,
+              "attributes": []
+            },
+            "sortOrder": {
+              "name": "sortOrder",
+              "isArray": false,
+              "type": "Int",
+              "isRequired": false,
+              "attributes": []
+            },
+            "createdAt": {
+              "name": "createdAt",
+              "isArray": false,
+              "type": "AWSDateTime",
+              "isRequired": false,
+              "attributes": [],
+              "isReadOnly": true
+            },
+            "updatedAt": {
+              "name": "updatedAt",
+              "isArray": false,
+              "type": "AWSDateTime",
+              "isRequired": false,
+              "attributes": [],
+              "isReadOnly": true
+            }
+          },
+          "syncable": true,
+          "pluralName": "WeekPracticeAssignments",
+          "attributes": [
+            {
+              "type": "model",
+              "properties": {}
+            },
+            {
+              "type": "key",
+              "properties": {
+                "name": "weekPracticeAssignmentsByWeekPlanIdAndTargetDate",
+                "queryField": "listWeekAssignmentsByWeekAndDate",
+                "fields": [
+                  "weekPlanId",
+                  "targetDate"
+                ]
+              }
+            },
+            {
+              "type": "auth",
+              "properties": {
+                "rules": [
+                  {
+                    "allow": "private",
+                    "operations": [
+                      "create",
+                      "read",
+                      "update",
+                      "delete"
+                    ]
+                  }
+                ]
+              }
+            }
+          ],
+          "primaryKeyInfo": {
+            "isCustomPrimaryKey": false,
+            "primaryKeyFieldName": "id",
+            "sortKeyFieldNames": []
+          }
+        },
+        "DayProgramItem": {
+          "name": "DayProgramItem",
+          "fields": {
+            "id": {
+              "name": "id",
+              "isArray": false,
+              "type": "ID",
+              "isRequired": true,
+              "attributes": []
+            },
+            "dayPlanId": {
+              "name": "dayPlanId",
+              "isArray": false,
+              "type": "ID",
+              "isRequired": true,
+              "attributes": []
+            },
+            "dayPlan": {
+              "name": "dayPlan",
+              "isArray": false,
+              "type": {
+                "model": "Plan"
+              },
+              "isRequired": false,
+              "attributes": [],
+              "association": {
+                "connectionType": "BELONGS_TO",
+                "targetNames": [
+                  "dayPlanId"
+                ]
+              }
+            },
+            "programType": {
+              "name": "programType",
+              "isArray": false,
+              "type": {
+                "enum": "DayProgramType"
+              },
+              "isRequired": true,
+              "attributes": []
+            },
+            "title": {
+              "name": "title",
+              "isArray": false,
+              "type": "String",
+              "isRequired": true,
+              "attributes": []
+            },
+            "startTime": {
+              "name": "startTime",
+              "isArray": false,
+              "type": "AWSTime",
+              "isRequired": false,
+              "attributes": []
+            },
+            "endTime": {
+              "name": "endTime",
+              "isArray": false,
+              "type": "AWSTime",
+              "isRequired": false,
+              "attributes": []
+            },
+            "practiceCodeId": {
+              "name": "practiceCodeId",
+              "isArray": false,
+              "type": "String",
+              "isRequired": false,
+              "attributes": []
+            },
+            "note": {
+              "name": "note",
+              "isArray": false,
+              "type": "String",
+              "isRequired": false,
+              "attributes": []
+            },
+            "sortOrder": {
+              "name": "sortOrder",
+              "isArray": false,
+              "type": "Int",
+              "isRequired": false,
+              "attributes": []
+            },
+            "createdAt": {
+              "name": "createdAt",
+              "isArray": false,
+              "type": "AWSDateTime",
+              "isRequired": false,
+              "attributes": [],
+              "isReadOnly": true
+            },
+            "updatedAt": {
+              "name": "updatedAt",
+              "isArray": false,
+              "type": "AWSDateTime",
+              "isRequired": false,
+              "attributes": [],
+              "isReadOnly": true
+            }
+          },
+          "syncable": true,
+          "pluralName": "DayProgramItems",
+          "attributes": [
+            {
+              "type": "model",
+              "properties": {}
+            },
+            {
+              "type": "key",
+              "properties": {
+                "name": "dayProgramItemsByDayPlanIdAndSortOrder",
+                "queryField": "listDayProgramItemsByDay",
+                "fields": [
+                  "dayPlanId",
+                  "sortOrder"
+                ]
+              }
+            },
+            {
+              "type": "auth",
+              "properties": {
+                "rules": [
+                  {
+                    "allow": "private",
+                    "operations": [
+                      "create",
+                      "read",
+                      "update",
+                      "delete"
+                    ]
+                  }
+                ]
+              }
+            }
+          ],
+          "primaryKeyInfo": {
+            "isCustomPrimaryKey": false,
+            "primaryKeyFieldName": "id",
+            "sortKeyFieldNames": []
+          }
+        },
+        "AbilityObservationHint": {
+          "name": "AbilityObservationHint",
+          "fields": {
+            "id": {
+              "name": "id",
+              "isArray": false,
+              "type": "ID",
+              "isRequired": true,
+              "attributes": []
+            },
+            "abilityCode": {
+              "name": "abilityCode",
+              "isArray": false,
+              "type": "String",
+              "isRequired": true,
+              "attributes": []
+            },
+            "abilityName": {
+              "name": "abilityName",
+              "isArray": false,
+              "type": "String",
+              "isRequired": true,
+              "attributes": []
+            },
+            "startingAge": {
+              "name": "startingAge",
+              "isArray": false,
+              "type": "Int",
+              "isRequired": true,
+              "attributes": []
+            },
+            "episode1": {
+              "name": "episode1",
+              "isArray": false,
+              "type": "String",
+              "isRequired": false,
+              "attributes": []
+            },
+            "episode2": {
+              "name": "episode2",
+              "isArray": false,
+              "type": "String",
+              "isRequired": false,
+              "attributes": []
+            },
+            "episode3": {
+              "name": "episode3",
+              "isArray": false,
+              "type": "String",
+              "isRequired": false,
+              "attributes": []
+            },
+            "isActive": {
+              "name": "isActive",
+              "isArray": false,
+              "type": "Boolean",
+              "isRequired": true,
+              "attributes": []
+            },
+            "createdAt": {
+              "name": "createdAt",
+              "isArray": false,
+              "type": "AWSDateTime",
+              "isRequired": false,
+              "attributes": [],
+              "isReadOnly": true
+            },
+            "updatedAt": {
+              "name": "updatedAt",
+              "isArray": false,
+              "type": "AWSDateTime",
+              "isRequired": false,
+              "attributes": [],
+              "isReadOnly": true
+            }
+          },
+          "syncable": true,
+          "pluralName": "AbilityObservationHints",
+          "attributes": [
+            {
+              "type": "model",
+              "properties": {}
+            },
+            {
+              "type": "key",
+              "properties": {
+                "name": "abilityObservationHintsByAbilityCode",
+                "queryField": "listAbilityObservationHintsByAbility",
+                "fields": [
+                  "abilityCode"
+                ]
+              }
+            },
+            {
+              "type": "key",
+              "properties": {
+                "name": "abilityObservationHintsByStartingAge",
+                "queryField": "listAbilityObservationHintsByStartingAge",
+                "fields": [
+                  "startingAge"
+                ]
+              }
+            },
+            {
+              "type": "auth",
+              "properties": {
+                "rules": [
+                  {
+                    "allow": "private",
+                    "operations": [
+                      "create",
+                      "read",
+                      "update",
+                      "delete"
+                    ]
+                  }
+                ]
+              }
+            }
+          ],
+          "primaryKeyInfo": {
+            "isCustomPrimaryKey": false,
+            "primaryKeyFieldName": "id",
+            "sortKeyFieldNames": []
+          }
+        },
+        "ScheduleWeek": {
+          "name": "ScheduleWeek",
+          "fields": {
+            "id": {
+              "name": "id",
+              "isArray": false,
+              "type": "ID",
+              "isRequired": true,
+              "attributes": []
+            },
+            "tenantId": {
+              "name": "tenantId",
+              "isArray": false,
+              "type": "String",
+              "isRequired": true,
+              "attributes": []
+            },
+            "owner": {
+              "name": "owner",
+              "isArray": false,
+              "type": "String",
+              "isRequired": true,
+              "attributes": []
+            },
+            "classroomId": {
+              "name": "classroomId",
+              "isArray": false,
+              "type": "ID",
+              "isRequired": true,
+              "attributes": []
+            },
+            "classroom": {
+              "name": "classroom",
+              "isArray": false,
+              "type": {
+                "model": "Classroom"
+              },
+              "isRequired": false,
+              "attributes": [],
+              "association": {
+                "connectionType": "BELONGS_TO",
+                "targetNames": [
+                  "classroomId"
+                ]
+              }
+            },
+            "ageTargetId": {
+              "name": "ageTargetId",
+              "isArray": false,
+              "type": "ID",
+              "isRequired": true,
+              "attributes": []
+            },
+            "ageTarget": {
+              "name": "ageTarget",
+              "isArray": false,
+              "type": {
+                "model": "SchoolAnnualAgeTarget"
+              },
+              "isRequired": false,
+              "attributes": [],
+              "association": {
+                "connectionType": "BELONGS_TO",
+                "targetNames": [
+                  "ageTargetId"
+                ]
+              }
+            },
+            "sourceScheduleMonthId": {
+              "name": "sourceScheduleMonthId",
+              "isArray": false,
+              "type": "ID",
+              "isRequired": false,
+              "attributes": []
+            },
+            "sourceScheduleMonth": {
+              "name": "sourceScheduleMonth",
+              "isArray": false,
+              "type": {
+                "model": "ScheduleMonth"
+              },
+              "isRequired": false,
+              "attributes": [],
+              "association": {
+                "connectionType": "BELONGS_TO",
+                "targetNames": [
+                  "sourceScheduleMonthId"
+                ]
+              }
+            },
+            "sourceClassMonthPlanId": {
+              "name": "sourceClassMonthPlanId",
+              "isArray": false,
+              "type": "ID",
+              "isRequired": false,
+              "attributes": []
+            },
+            "sourceClassWeekPlanId": {
+              "name": "sourceClassWeekPlanId",
+              "isArray": false,
+              "type": "ID",
+              "isRequired": false,
+              "attributes": []
+            },
+            "monthKey": {
+              "name": "monthKey",
+              "isArray": false,
+              "type": "String",
+              "isRequired": false,
+              "attributes": []
+            },
+            "weekNo": {
+              "name": "weekNo",
+              "isArray": false,
+              "type": "Int",
+              "isRequired": false,
+              "attributes": []
+            },
+            "weekStartDate": {
+              "name": "weekStartDate",
+              "isArray": false,
+              "type": "AWSDate",
+              "isRequired": true,
+              "attributes": []
+            },
+            "weekEndDate": {
+              "name": "weekEndDate",
+              "isArray": false,
+              "type": "AWSDate",
+              "isRequired": true,
+              "attributes": []
+            },
+            "status": {
+              "name": "status",
+              "isArray": false,
+              "type": {
+                "enum": "SchedulePlanStatus"
+              },
+              "isRequired": true,
+              "attributes": []
+            },
+            "issueType": {
+              "name": "issueType",
+              "isArray": false,
+              "type": {
+                "enum": "ScheduleIssueType"
+              },
+              "isRequired": false,
+              "attributes": []
+            },
+            "issueVersion": {
+              "name": "issueVersion",
+              "isArray": false,
+              "type": "Int",
+              "isRequired": false,
+              "attributes": []
+            },
+            "title": {
+              "name": "title",
+              "isArray": false,
+              "type": "String",
+              "isRequired": false,
+              "attributes": []
+            },
+            "notes": {
+              "name": "notes",
+              "isArray": false,
+              "type": "String",
+              "isRequired": false,
+              "attributes": []
+            },
+            "issuedAt": {
+              "name": "issuedAt",
+              "isArray": false,
+              "type": "AWSDateTime",
+              "isRequired": false,
+              "attributes": []
+            },
+            "closedAt": {
+              "name": "closedAt",
+              "isArray": false,
+              "type": "AWSDateTime",
+              "isRequired": false,
+              "attributes": []
+            },
+            "items": {
+              "name": "items",
+              "isArray": true,
+              "type": {
+                "model": "ScheduleWeekItem"
+              },
+              "isRequired": false,
+              "attributes": [],
+              "isArrayNullable": true,
+              "association": {
+                "connectionType": "HAS_MANY",
+                "associatedWith": [
+                  "scheduleWeekId"
+                ]
+              }
+            },
+            "days": {
+              "name": "days",
+              "isArray": true,
+              "type": {
+                "model": "ScheduleDay"
+              },
+              "isRequired": false,
+              "attributes": [],
+              "isArrayNullable": true,
+              "association": {
+                "connectionType": "HAS_MANY",
+                "associatedWith": [
+                  "sourceWeekId"
+                ]
+              }
+            },
+            "createdAt": {
+              "name": "createdAt",
+              "isArray": false,
+              "type": "AWSDateTime",
+              "isRequired": false,
+              "attributes": [],
+              "isReadOnly": true
+            },
+            "updatedAt": {
+              "name": "updatedAt",
+              "isArray": false,
+              "type": "AWSDateTime",
+              "isRequired": false,
+              "attributes": [],
+              "isReadOnly": true
+            }
+          },
+          "syncable": true,
+          "pluralName": "ScheduleWeeks",
+          "attributes": [
+            {
+              "type": "model",
+              "properties": {}
+            },
+            {
+              "type": "key",
+              "properties": {
+                "name": "scheduleWeeksByOwnerAndWeekStartDate",
+                "queryField": "listScheduleWeeksByOwnerWeekStart",
+                "fields": [
+                  "owner",
+                  "weekStartDate"
+                ]
+              }
+            },
+            {
+              "type": "key",
+              "properties": {
+                "name": "scheduleWeeksByClassroomIdAndWeekStartDate",
+                "queryField": "listScheduleWeeksByClassroomWeekStart",
+                "fields": [
+                  "classroomId",
+                  "weekStartDate"
+                ]
+              }
+            },
+            {
+              "type": "key",
+              "properties": {
+                "name": "scheduleWeeksByAgeTargetIdAndWeekStartDate",
+                "queryField": "listScheduleWeeksByAgeTargetWeekStart",
+                "fields": [
+                  "ageTargetId",
+                  "weekStartDate"
+                ]
+              }
+            },
+            {
+              "type": "key",
+              "properties": {
+                "name": "scheduleWeeksBySourceScheduleMonthIdAndWeekStartDate",
+                "queryField": "listScheduleWeeksBySourceScheduleMonth",
+                "fields": [
+                  "sourceScheduleMonthId",
+                  "weekStartDate"
+                ]
+              }
+            },
+            {
+              "type": "key",
+              "properties": {
+                "name": "scheduleWeeksBySourceClassWeekPlanIdAndWeekStartDate",
+                "queryField": "listScheduleWeeksBySourceClassWeekPlan",
+                "fields": [
+                  "sourceClassWeekPlanId",
+                  "weekStartDate"
+                ]
+              }
+            },
+            {
+              "type": "auth",
+              "properties": {
+                "rules": [
+                  {
+                    "provider": "userPools",
+                    "ownerField": "owner",
+                    "allow": "owner",
+                    "identityClaim": "cognito:username",
+                    "operations": [
+                      "create",
+                      "update",
+                      "delete",
+                      "read"
+                    ]
+                  },
+                  {
+                    "allow": "private",
+                    "operations": [
+                      "read",
+                      "create",
+                      "update"
+                    ]
+                  }
+                ]
+              }
+            }
+          ],
+          "primaryKeyInfo": {
+            "isCustomPrimaryKey": false,
+            "primaryKeyFieldName": "id",
+            "sortKeyFieldNames": []
+          }
+        },
+        "ScheduleWeekItem": {
+          "name": "ScheduleWeekItem",
+          "fields": {
+            "id": {
+              "name": "id",
+              "isArray": false,
+              "type": "ID",
+              "isRequired": true,
+              "attributes": []
+            },
+            "tenantId": {
+              "name": "tenantId",
+              "isArray": false,
+              "type": "String",
+              "isRequired": true,
+              "attributes": []
+            },
+            "owner": {
+              "name": "owner",
+              "isArray": false,
+              "type": "String",
+              "isRequired": true,
+              "attributes": []
+            },
+            "scheduleWeekId": {
+              "name": "scheduleWeekId",
+              "isArray": false,
+              "type": "ID",
+              "isRequired": true,
+              "attributes": []
+            },
+            "scheduleWeek": {
+              "name": "scheduleWeek",
+              "isArray": false,
+              "type": {
+                "model": "ScheduleWeek"
+              },
+              "isRequired": false,
+              "attributes": [],
+              "association": {
+                "connectionType": "BELONGS_TO",
+                "targetNames": [
+                  "scheduleWeekId"
+                ]
+              }
+            },
+            "sourceMonthItemId": {
+              "name": "sourceMonthItemId",
+              "isArray": false,
+              "type": "ID",
+              "isRequired": false,
+              "attributes": []
+            },
+            "sourceMonthItem": {
+              "name": "sourceMonthItem",
+              "isArray": false,
+              "type": {
+                "model": "ScheduleMonthItem"
+              },
+              "isRequired": false,
+              "attributes": [],
+              "association": {
+                "connectionType": "BELONGS_TO",
+                "targetNames": [
+                  "sourceMonthItemId"
+                ]
+              }
+            },
+            "sourceClassWeekPracticeAssignmentId": {
+              "name": "sourceClassWeekPracticeAssignmentId",
+              "isArray": false,
+              "type": "ID",
+              "isRequired": false,
+              "attributes": []
+            },
+            "dayOfWeek": {
+              "name": "dayOfWeek",
+              "isArray": false,
+              "type": "Int",
+              "isRequired": true,
+              "attributes": []
+            },
+            "targetDate": {
+              "name": "targetDate",
+              "isArray": false,
+              "type": "AWSDate",
+              "isRequired": false,
+              "attributes": []
+            },
+            "sourceType": {
+              "name": "sourceType",
+              "isArray": false,
+              "type": {
+                "enum": "ScheduleSourceType"
+              },
+              "isRequired": true,
+              "attributes": []
+            },
+            "title": {
+              "name": "title",
+              "isArray": false,
+              "type": "String",
+              "isRequired": true,
+              "attributes": []
+            },
+            "eventLabel": {
+              "name": "eventLabel",
+              "isArray": false,
+              "type": "String",
+              "isRequired": false,
+              "attributes": []
+            },
+            "description": {
+              "name": "description",
+              "isArray": false,
+              "type": "String",
+              "isRequired": false,
+              "attributes": []
+            },
+            "startTime": {
+              "name": "startTime",
+              "isArray": false,
+              "type": "String",
+              "isRequired": true,
+              "attributes": []
+            },
+            "endTime": {
+              "name": "endTime",
+              "isArray": false,
+              "type": "String",
+              "isRequired": true,
+              "attributes": []
+            },
+            "sortOrder": {
+              "name": "sortOrder",
+              "isArray": false,
+              "type": "Int",
+              "isRequired": true,
+              "attributes": []
+            },
+            "practiceCode": {
+              "name": "practiceCode",
+              "isArray": false,
+              "type": "String",
+              "isRequired": false,
+              "attributes": []
+            },
+            "practiceTitleSnapshot": {
+              "name": "practiceTitleSnapshot",
+              "isArray": false,
+              "type": "String",
+              "isRequired": false,
+              "attributes": []
+            },
+            "scoreHealth": {
+              "name": "scoreHealth",
+              "isArray": false,
+              "type": "Int",
+              "isRequired": false,
+              "attributes": []
+            },
+            "scoreHumanRelations": {
+              "name": "scoreHumanRelations",
+              "isArray": false,
+              "type": "Int",
+              "isRequired": false,
+              "attributes": []
+            },
+            "scoreEnvironment": {
+              "name": "scoreEnvironment",
+              "isArray": false,
+              "type": "Int",
+              "isRequired": false,
+              "attributes": []
+            },
+            "scoreLanguage": {
+              "name": "scoreLanguage",
+              "isArray": false,
+              "type": "Int",
+              "isRequired": false,
+              "attributes": []
+            },
+            "scoreExpression": {
+              "name": "scoreExpression",
+              "isArray": false,
+              "type": "Int",
+              "isRequired": false,
+              "attributes": []
+            },
+            "createdAt": {
+              "name": "createdAt",
+              "isArray": false,
+              "type": "AWSDateTime",
+              "isRequired": false,
+              "attributes": [],
+              "isReadOnly": true
+            },
+            "updatedAt": {
+              "name": "updatedAt",
+              "isArray": false,
+              "type": "AWSDateTime",
+              "isRequired": false,
+              "attributes": [],
+              "isReadOnly": true
+            }
+          },
+          "syncable": true,
+          "pluralName": "ScheduleWeekItems",
+          "attributes": [
+            {
+              "type": "model",
+              "properties": {}
+            },
+            {
+              "type": "key",
+              "properties": {
+                "name": "scheduleWeekItemsByScheduleWeekIdAndDayOfWeekAndSortOrder",
+                "queryField": "listScheduleWeekItemsByWeekDaySort",
+                "fields": [
+                  "scheduleWeekId",
+                  "dayOfWeek",
+                  "sortOrder"
+                ]
+              }
+            },
+            {
+              "type": "key",
+              "properties": {
+                "name": "scheduleWeekItemsBySourceMonthItemId",
+                "queryField": "listScheduleWeekItemsBySourceMonthItem",
+                "fields": [
+                  "sourceMonthItemId"
+                ]
+              }
+            },
+            {
+              "type": "key",
+              "properties": {
+                "name": "scheduleWeekItemsBySourceClassWeekPracticeAssignmentId",
+                "queryField": "listScheduleWeekItemsBySourceAssignment",
+                "fields": [
+                  "sourceClassWeekPracticeAssignmentId"
+                ]
+              }
+            },
+            {
+              "type": "key",
+              "properties": {
+                "name": "scheduleWeekItemsByPracticeCode",
+                "queryField": "listScheduleWeekItemsByPracticeCode",
+                "fields": [
+                  "practiceCode"
+                ]
+              }
+            },
+            {
+              "type": "auth",
+              "properties": {
+                "rules": [
+                  {
+                    "provider": "userPools",
+                    "ownerField": "owner",
+                    "allow": "owner",
+                    "identityClaim": "cognito:username",
+                    "operations": [
+                      "create",
+                      "update",
+                      "delete",
+                      "read"
+                    ]
+                  },
+                  {
+                    "allow": "private",
+                    "operations": [
+                      "read",
+                      "create",
+                      "update"
+                    ]
+                  }
+                ]
+              }
+            }
+          ],
+          "primaryKeyInfo": {
+            "isCustomPrimaryKey": false,
+            "primaryKeyFieldName": "id",
+            "sortKeyFieldNames": []
+          }
+        },
+        "ScheduleDay": {
+          "name": "ScheduleDay",
+          "fields": {
+            "id": {
+              "name": "id",
+              "isArray": false,
+              "type": "ID",
+              "isRequired": true,
+              "attributes": []
+            },
+            "tenantId": {
+              "name": "tenantId",
+              "isArray": false,
+              "type": "String",
+              "isRequired": true,
+              "attributes": []
+            },
+            "owner": {
+              "name": "owner",
+              "isArray": false,
+              "type": "String",
+              "isRequired": true,
+              "attributes": []
+            },
+            "classroomId": {
+              "name": "classroomId",
+              "isArray": false,
+              "type": "ID",
+              "isRequired": true,
+              "attributes": []
+            },
+            "classroom": {
+              "name": "classroom",
+              "isArray": false,
+              "type": {
+                "model": "Classroom"
+              },
+              "isRequired": false,
+              "attributes": [],
+              "association": {
+                "connectionType": "BELONGS_TO",
+                "targetNames": [
+                  "classroomId"
+                ]
+              }
+            },
+            "ageTargetId": {
+              "name": "ageTargetId",
+              "isArray": false,
+              "type": "ID",
+              "isRequired": true,
+              "attributes": []
+            },
+            "ageTarget": {
+              "name": "ageTarget",
+              "isArray": false,
+              "type": {
+                "model": "SchoolAnnualAgeTarget"
+              },
+              "isRequired": false,
+              "attributes": [],
+              "association": {
+                "connectionType": "BELONGS_TO",
+                "targetNames": [
+                  "ageTargetId"
+                ]
+              }
+            },
+            "sourceWeekId": {
+              "name": "sourceWeekId",
+              "isArray": false,
+              "type": "ID",
+              "isRequired": true,
+              "attributes": []
+            },
+            "sourceWeek": {
+              "name": "sourceWeek",
+              "isArray": false,
+              "type": {
+                "model": "ScheduleWeek"
+              },
+              "isRequired": false,
+              "attributes": [],
+              "association": {
+                "connectionType": "BELONGS_TO",
+                "targetNames": [
+                  "sourceWeekId"
+                ]
+              }
+            },
+            "sourceClassWeekPlanId": {
+              "name": "sourceClassWeekPlanId",
+              "isArray": false,
+              "type": "ID",
+              "isRequired": false,
+              "attributes": []
+            },
+            "targetDate": {
+              "name": "targetDate",
+              "isArray": false,
+              "type": "AWSDate",
+              "isRequired": true,
+              "attributes": []
+            },
+            "status": {
+              "name": "status",
+              "isArray": false,
+              "type": {
+                "enum": "ScheduleDayStatus"
+              },
+              "isRequired": true,
+              "attributes": []
+            },
+            "issueType": {
+              "name": "issueType",
+              "isArray": false,
+              "type": {
+                "enum": "ScheduleIssueType"
+              },
+              "isRequired": true,
+              "attributes": []
+            },
+            "issueVersion": {
+              "name": "issueVersion",
+              "isArray": false,
+              "type": "Int",
+              "isRequired": true,
+              "attributes": []
+            },
+            "issuedAt": {
+              "name": "issuedAt",
+              "isArray": false,
+              "type": "AWSDateTime",
+              "isRequired": false,
+              "attributes": []
+            },
+            "openedAt": {
+              "name": "openedAt",
+              "isArray": false,
+              "type": "AWSDateTime",
+              "isRequired": false,
+              "attributes": []
+            },
+            "closedAt": {
+              "name": "closedAt",
+              "isArray": false,
+              "type": "AWSDateTime",
+              "isRequired": false,
+              "attributes": []
+            },
+            "closedBySub": {
+              "name": "closedBySub",
+              "isArray": false,
+              "type": "String",
+              "isRequired": false,
+              "attributes": []
+            },
+            "totalHealth": {
+              "name": "totalHealth",
+              "isArray": false,
+              "type": "Int",
+              "isRequired": false,
+              "attributes": []
+            },
+            "totalHumanRelations": {
+              "name": "totalHumanRelations",
+              "isArray": false,
+              "type": "Int",
+              "isRequired": false,
+              "attributes": []
+            },
+            "totalEnvironment": {
+              "name": "totalEnvironment",
+              "isArray": false,
+              "type": "Int",
+              "isRequired": false,
+              "attributes": []
+            },
+            "totalLanguage": {
+              "name": "totalLanguage",
+              "isArray": false,
+              "type": "Int",
+              "isRequired": false,
+              "attributes": []
+            },
+            "totalExpression": {
+              "name": "totalExpression",
+              "isArray": false,
+              "type": "Int",
+              "isRequired": false,
+              "attributes": []
+            },
+            "items": {
+              "name": "items",
+              "isArray": true,
+              "type": {
+                "model": "ScheduleDayItem"
+              },
+              "isRequired": false,
+              "attributes": [],
+              "isArrayNullable": true,
+              "association": {
+                "connectionType": "HAS_MANY",
+                "associatedWith": [
+                  "scheduleDayId"
+                ]
+              }
+            },
+            "records": {
+              "name": "records",
+              "isArray": true,
+              "type": {
+                "model": "ScheduleRecord"
+              },
+              "isRequired": false,
+              "attributes": [],
+              "isArrayNullable": true,
+              "association": {
+                "connectionType": "HAS_MANY",
+                "associatedWith": [
+                  "scheduleDayId"
+                ]
+              }
+            },
+            "createdAt": {
+              "name": "createdAt",
+              "isArray": false,
+              "type": "AWSDateTime",
+              "isRequired": false,
+              "attributes": [],
+              "isReadOnly": true
+            },
+            "updatedAt": {
+              "name": "updatedAt",
+              "isArray": false,
+              "type": "AWSDateTime",
+              "isRequired": false,
+              "attributes": [],
+              "isReadOnly": true
+            }
+          },
+          "syncable": true,
+          "pluralName": "ScheduleDays",
+          "attributes": [
+            {
+              "type": "model",
+              "properties": {}
+            },
+            {
+              "type": "key",
+              "properties": {
+                "name": "scheduleDaysByOwnerAndTargetDate",
+                "queryField": "listScheduleDaysByOwnerDate",
+                "fields": [
+                  "owner",
+                  "targetDate"
+                ]
+              }
+            },
+            {
+              "type": "key",
+              "properties": {
+                "name": "scheduleDaysByClassroomIdAndTargetDate",
+                "queryField": "listScheduleDaysByClassroomDate",
+                "fields": [
+                  "classroomId",
+                  "targetDate"
+                ]
+              }
+            },
+            {
+              "type": "key",
+              "properties": {
+                "name": "scheduleDaysBySourceWeekIdAndTargetDate",
+                "queryField": "listScheduleDaysByWeekDate",
+                "fields": [
+                  "sourceWeekId",
+                  "targetDate"
+                ]
+              }
+            },
+            {
+              "type": "key",
+              "properties": {
+                "name": "scheduleDaysBySourceClassWeekPlanIdAndTargetDate",
+                "queryField": "listScheduleDaysBySourceClassWeekPlanDate",
+                "fields": [
+                  "sourceClassWeekPlanId",
+                  "targetDate"
+                ]
+              }
+            },
+            {
+              "type": "auth",
+              "properties": {
+                "rules": [
+                  {
+                    "provider": "userPools",
+                    "ownerField": "owner",
+                    "allow": "owner",
+                    "identityClaim": "cognito:username",
+                    "operations": [
+                      "create",
+                      "update",
+                      "delete",
+                      "read"
+                    ]
+                  },
+                  {
+                    "allow": "private",
+                    "operations": [
+                      "read",
+                      "create",
+                      "update"
+                    ]
+                  }
+                ]
+              }
+            }
+          ],
+          "primaryKeyInfo": {
+            "isCustomPrimaryKey": false,
+            "primaryKeyFieldName": "id",
+            "sortKeyFieldNames": []
+          }
+        },
+        "ScheduleDayItem": {
+          "name": "ScheduleDayItem",
+          "fields": {
+            "id": {
+              "name": "id",
+              "isArray": false,
+              "type": "ID",
+              "isRequired": true,
+              "attributes": []
+            },
+            "tenantId": {
+              "name": "tenantId",
+              "isArray": false,
+              "type": "String",
+              "isRequired": true,
+              "attributes": []
+            },
+            "owner": {
+              "name": "owner",
+              "isArray": false,
+              "type": "String",
+              "isRequired": true,
+              "attributes": []
+            },
+            "scheduleDayId": {
+              "name": "scheduleDayId",
+              "isArray": false,
+              "type": "ID",
+              "isRequired": true,
+              "attributes": []
+            },
+            "scheduleDay": {
+              "name": "scheduleDay",
+              "isArray": false,
+              "type": {
+                "model": "ScheduleDay"
+              },
+              "isRequired": false,
+              "attributes": [],
+              "association": {
+                "connectionType": "BELONGS_TO",
+                "targetNames": [
+                  "scheduleDayId"
+                ]
+              }
+            },
+            "sourceWeekItemId": {
+              "name": "sourceWeekItemId",
+              "isArray": false,
+              "type": "ID",
+              "isRequired": false,
+              "attributes": []
+            },
+            "sourceType": {
+              "name": "sourceType",
+              "isArray": false,
+              "type": {
+                "enum": "ScheduleSourceType"
+              },
+              "isRequired": true,
+              "attributes": []
+            },
+            "status": {
+              "name": "status",
+              "isArray": false,
+              "type": {
+                "enum": "ScheduleItemStatus"
+              },
+              "isRequired": true,
+              "attributes": []
+            },
+            "title": {
+              "name": "title",
+              "isArray": false,
+              "type": "String",
+              "isRequired": true,
+              "attributes": []
+            },
+            "description": {
+              "name": "description",
+              "isArray": false,
+              "type": "String",
+              "isRequired": false,
+              "attributes": []
+            },
+            "startTime": {
+              "name": "startTime",
+              "isArray": false,
+              "type": "String",
+              "isRequired": true,
+              "attributes": []
+            },
+            "endTime": {
+              "name": "endTime",
+              "isArray": false,
+              "type": "String",
+              "isRequired": true,
+              "attributes": []
+            },
+            "sortOrder": {
+              "name": "sortOrder",
+              "isArray": false,
+              "type": "Int",
+              "isRequired": true,
+              "attributes": []
+            },
+            "practiceCode": {
+              "name": "practiceCode",
+              "isArray": false,
+              "type": "String",
+              "isRequired": false,
+              "attributes": []
+            },
+            "practiceTitleSnapshot": {
+              "name": "practiceTitleSnapshot",
+              "isArray": false,
+              "type": "String",
+              "isRequired": false,
+              "attributes": []
+            },
+            "observationAbilityCodes": {
+              "name": "observationAbilityCodes",
+              "isArray": true,
+              "type": "String",
+              "isRequired": false,
+              "attributes": [],
+              "isArrayNullable": true
+            },
+            "observationSummaryJson": {
+              "name": "observationSummaryJson",
+              "isArray": false,
+              "type": "String",
+              "isRequired": false,
+              "attributes": []
+            },
+            "scoreHealth": {
+              "name": "scoreHealth",
+              "isArray": false,
+              "type": "Int",
+              "isRequired": false,
+              "attributes": []
+            },
+            "scoreHumanRelations": {
+              "name": "scoreHumanRelations",
+              "isArray": false,
+              "type": "Int",
+              "isRequired": false,
+              "attributes": []
+            },
+            "scoreEnvironment": {
+              "name": "scoreEnvironment",
+              "isArray": false,
+              "type": "Int",
+              "isRequired": false,
+              "attributes": []
+            },
+            "scoreLanguage": {
+              "name": "scoreLanguage",
+              "isArray": false,
+              "type": "Int",
+              "isRequired": false,
+              "attributes": []
+            },
+            "scoreExpression": {
+              "name": "scoreExpression",
+              "isArray": false,
+              "type": "Int",
+              "isRequired": false,
+              "attributes": []
+            },
+            "records": {
+              "name": "records",
+              "isArray": true,
+              "type": {
+                "model": "ScheduleRecord"
+              },
+              "isRequired": false,
+              "attributes": [],
+              "isArrayNullable": true,
+              "association": {
+                "connectionType": "HAS_MANY",
+                "associatedWith": [
+                  "scheduleDayItemId"
+                ]
+              }
+            },
+            "createdAt": {
+              "name": "createdAt",
+              "isArray": false,
+              "type": "AWSDateTime",
+              "isRequired": false,
+              "attributes": [],
+              "isReadOnly": true
+            },
+            "updatedAt": {
+              "name": "updatedAt",
+              "isArray": false,
+              "type": "AWSDateTime",
+              "isRequired": false,
+              "attributes": [],
+              "isReadOnly": true
+            }
+          },
+          "syncable": true,
+          "pluralName": "ScheduleDayItems",
+          "attributes": [
+            {
+              "type": "model",
+              "properties": {}
+            },
+            {
+              "type": "key",
+              "properties": {
+                "name": "scheduleDayItemsByScheduleDayIdAndSortOrder",
+                "queryField": "listScheduleDayItemsByDaySort",
+                "fields": [
+                  "scheduleDayId",
+                  "sortOrder"
+                ]
+              }
+            },
+            {
+              "type": "key",
+              "properties": {
+                "name": "scheduleDayItemsByPracticeCode",
+                "queryField": "listScheduleDayItemsByPracticeCode",
+                "fields": [
+                  "practiceCode"
+                ]
+              }
+            },
+            {
+              "type": "auth",
+              "properties": {
+                "rules": [
+                  {
+                    "provider": "userPools",
+                    "ownerField": "owner",
+                    "allow": "owner",
+                    "identityClaim": "cognito:username",
+                    "operations": [
+                      "create",
+                      "update",
+                      "delete",
+                      "read"
+                    ]
+                  },
+                  {
+                    "allow": "private",
+                    "operations": [
+                      "read"
+                    ]
+                  }
+                ]
+              }
+            }
+          ],
+          "primaryKeyInfo": {
+            "isCustomPrimaryKey": false,
+            "primaryKeyFieldName": "id",
+            "sortKeyFieldNames": []
+          }
+        },
+        "ScheduleRecord": {
+          "name": "ScheduleRecord",
+          "fields": {
+            "id": {
+              "name": "id",
+              "isArray": false,
+              "type": "ID",
+              "isRequired": true,
+              "attributes": []
+            },
+            "tenantId": {
+              "name": "tenantId",
+              "isArray": false,
+              "type": "String",
+              "isRequired": true,
+              "attributes": []
+            },
+            "owner": {
+              "name": "owner",
+              "isArray": false,
+              "type": "String",
+              "isRequired": true,
+              "attributes": []
+            },
+            "scheduleDayId": {
+              "name": "scheduleDayId",
+              "isArray": false,
+              "type": "ID",
+              "isRequired": true,
+              "attributes": []
+            },
+            "scheduleDay": {
+              "name": "scheduleDay",
+              "isArray": false,
+              "type": {
+                "model": "ScheduleDay"
+              },
+              "isRequired": false,
+              "attributes": [],
+              "association": {
+                "connectionType": "BELONGS_TO",
+                "targetNames": [
+                  "scheduleDayId"
+                ]
+              }
+            },
+            "scheduleDayItemId": {
+              "name": "scheduleDayItemId",
+              "isArray": false,
+              "type": "ID",
+              "isRequired": true,
+              "attributes": []
+            },
+            "scheduleDayItem": {
+              "name": "scheduleDayItem",
+              "isArray": false,
+              "type": {
+                "model": "ScheduleDayItem"
+              },
+              "isRequired": false,
+              "attributes": [],
+              "association": {
+                "connectionType": "BELONGS_TO",
+                "targetNames": [
+                  "scheduleDayItemId"
+                ]
+              }
+            },
+            "recordType": {
+              "name": "recordType",
+              "isArray": false,
+              "type": {
+                "enum": "ScheduleRecordType"
+              },
+              "isRequired": true,
+              "attributes": []
+            },
+            "body": {
+              "name": "body",
+              "isArray": false,
+              "type": "String",
+              "isRequired": false,
+              "attributes": []
+            },
+            "payloadJson": {
+              "name": "payloadJson",
+              "isArray": false,
+              "type": "String",
+              "isRequired": false,
+              "attributes": []
+            },
+            "appendOnly": {
+              "name": "appendOnly",
+              "isArray": false,
+              "type": "Boolean",
+              "isRequired": true,
+              "attributes": []
+            },
+            "createdBySub": {
+              "name": "createdBySub",
+              "isArray": false,
+              "type": "String",
+              "isRequired": true,
+              "attributes": []
+            },
+            "recordedAt": {
+              "name": "recordedAt",
+              "isArray": false,
+              "type": "AWSDateTime",
+              "isRequired": true,
+              "attributes": []
+            },
+            "createdAt": {
+              "name": "createdAt",
+              "isArray": false,
+              "type": "AWSDateTime",
+              "isRequired": false,
+              "attributes": [],
+              "isReadOnly": true
+            },
+            "updatedAt": {
+              "name": "updatedAt",
+              "isArray": false,
+              "type": "AWSDateTime",
+              "isRequired": false,
+              "attributes": [],
+              "isReadOnly": true
+            }
+          },
+          "syncable": true,
+          "pluralName": "ScheduleRecords",
+          "attributes": [
+            {
+              "type": "model",
+              "properties": {}
+            },
+            {
+              "type": "key",
+              "properties": {
+                "name": "scheduleRecordsByScheduleDayIdAndRecordedAt",
+                "queryField": "listScheduleRecordsByDayRecordedAt",
+                "fields": [
+                  "scheduleDayId",
+                  "recordedAt"
+                ]
+              }
+            },
+            {
+              "type": "key",
+              "properties": {
+                "name": "scheduleRecordsByScheduleDayItemIdAndRecordedAt",
+                "queryField": "listScheduleRecordsByDayItemRecordedAt",
+                "fields": [
+                  "scheduleDayItemId",
+                  "recordedAt"
+                ]
+              }
+            },
+            {
+              "type": "auth",
+              "properties": {
+                "rules": [
+                  {
+                    "provider": "userPools",
+                    "ownerField": "owner",
+                    "allow": "owner",
+                    "identityClaim": "cognito:username",
+                    "operations": [
+                      "create",
+                      "update",
+                      "delete",
+                      "read"
+                    ]
+                  },
+                  {
+                    "allow": "private",
+                    "operations": [
+                      "read",
+                      "create"
+                    ]
+                  }
+                ]
+              }
+            }
+          ],
+          "primaryKeyInfo": {
+            "isCustomPrimaryKey": false,
+            "primaryKeyFieldName": "id",
+            "sortKeyFieldNames": []
+          }
+        },
+        "SchoolAnnualPlan": {
+          "name": "SchoolAnnualPlan",
+          "fields": {
+            "id": {
+              "name": "id",
+              "isArray": false,
+              "type": "ID",
+              "isRequired": true,
+              "attributes": []
+            },
+            "tenantId": {
+              "name": "tenantId",
+              "isArray": false,
+              "type": "String",
+              "isRequired": true,
+              "attributes": []
+            },
+            "fiscalYear": {
+              "name": "fiscalYear",
+              "isArray": false,
+              "type": "Int",
+              "isRequired": true,
+              "attributes": []
+            },
+            "title": {
+              "name": "title",
+              "isArray": false,
+              "type": "String",
+              "isRequired": true,
+              "attributes": []
+            },
+            "periodStart": {
+              "name": "periodStart",
+              "isArray": false,
+              "type": "AWSDate",
+              "isRequired": false,
+              "attributes": []
+            },
+            "periodEnd": {
+              "name": "periodEnd",
+              "isArray": false,
+              "type": "AWSDate",
+              "isRequired": false,
+              "attributes": []
+            },
+            "schoolPolicy": {
+              "name": "schoolPolicy",
+              "isArray": false,
+              "type": "String",
+              "isRequired": false,
+              "attributes": []
+            },
+            "status": {
+              "name": "status",
+              "isArray": false,
+              "type": {
+                "enum": "PlanStatus"
+              },
+              "isRequired": false,
+              "attributes": []
+            },
+            "ageTargets": {
+              "name": "ageTargets",
+              "isArray": true,
+              "type": {
+                "model": "SchoolAnnualAgeTarget"
+              },
+              "isRequired": false,
+              "attributes": [],
+              "isArrayNullable": true,
+              "association": {
+                "connectionType": "HAS_MANY",
+                "associatedWith": [
+                  "schoolAnnualPlanId"
+                ]
+              }
+            },
+            "createdAt": {
+              "name": "createdAt",
+              "isArray": false,
+              "type": "AWSDateTime",
+              "isRequired": false,
+              "attributes": [],
+              "isReadOnly": true
+            },
+            "updatedAt": {
+              "name": "updatedAt",
+              "isArray": false,
+              "type": "AWSDateTime",
+              "isRequired": false,
+              "attributes": [],
+              "isReadOnly": true
+            }
+          },
+          "syncable": true,
+          "pluralName": "SchoolAnnualPlans",
+          "attributes": [
+            {
+              "type": "model",
+              "properties": {}
+            },
+            {
+              "type": "key",
+              "properties": {
+                "name": "schoolAnnualPlansByTenantIdAndFiscalYear",
+                "queryField": "listSchoolAnnualPlansByTenantYear",
+                "fields": [
+                  "tenantId",
+                  "fiscalYear"
+                ]
+              }
+            },
+            {
+              "type": "auth",
+              "properties": {
+                "rules": [
+                  {
+                    "allow": "private",
+                    "operations": [
+                      "create",
+                      "read",
+                      "update",
+                      "delete"
+                    ]
+                  }
+                ]
+              }
+            }
+          ],
+          "primaryKeyInfo": {
+            "isCustomPrimaryKey": false,
+            "primaryKeyFieldName": "id",
+            "sortKeyFieldNames": []
+          }
+        },
+        "SchoolAnnualAgeTarget": {
+          "name": "SchoolAnnualAgeTarget",
+          "fields": {
+            "id": {
+              "name": "id",
+              "isArray": false,
+              "type": "ID",
+              "isRequired": true,
+              "attributes": []
+            },
+            "tenantId": {
+              "name": "tenantId",
+              "isArray": false,
+              "type": "String",
+              "isRequired": true,
+              "attributes": []
+            },
+            "fiscalYear": {
+              "name": "fiscalYear",
+              "isArray": false,
+              "type": "Int",
+              "isRequired": true,
+              "attributes": []
+            },
+            "schoolAnnualPlanId": {
+              "name": "schoolAnnualPlanId",
+              "isArray": false,
+              "type": "ID",
+              "isRequired": true,
+              "attributes": []
+            },
+            "schoolAnnualPlan": {
+              "name": "schoolAnnualPlan",
+              "isArray": false,
+              "type": {
+                "model": "SchoolAnnualPlan"
+              },
+              "isRequired": false,
+              "attributes": [],
+              "association": {
+                "connectionType": "BELONGS_TO",
+                "targetNames": [
+                  "schoolAnnualPlanId"
+                ]
+              }
+            },
+            "ageBand": {
+              "name": "ageBand",
+              "isArray": false,
+              "type": "String",
+              "isRequired": true,
+              "attributes": []
+            },
+            "goalTextA": {
+              "name": "goalTextA",
+              "isArray": false,
+              "type": "String",
+              "isRequired": false,
+              "attributes": []
+            },
+            "abilityHealthA": {
+              "name": "abilityHealthA",
+              "isArray": false,
+              "type": "Int",
+              "isRequired": false,
+              "attributes": []
+            },
+            "abilityHumanRelationsA": {
+              "name": "abilityHumanRelationsA",
+              "isArray": false,
+              "type": "Int",
+              "isRequired": false,
+              "attributes": []
+            },
+            "abilityEnvironmentA": {
+              "name": "abilityEnvironmentA",
+              "isArray": false,
+              "type": "Int",
+              "isRequired": false,
+              "attributes": []
+            },
+            "abilityLanguageA": {
+              "name": "abilityLanguageA",
+              "isArray": false,
+              "type": "Int",
+              "isRequired": false,
+              "attributes": []
+            },
+            "abilityExpressionA": {
+              "name": "abilityExpressionA",
+              "isArray": false,
+              "type": "Int",
+              "isRequired": false,
+              "attributes": []
+            },
+            "draftText": {
+              "name": "draftText",
+              "isArray": false,
+              "type": "String",
+              "isRequired": false,
+              "attributes": []
+            },
+            "aiSuggestedText": {
+              "name": "aiSuggestedText",
+              "isArray": false,
+              "type": "String",
+              "isRequired": false,
+              "attributes": []
+            },
+            "finalText": {
+              "name": "finalText",
+              "isArray": false,
+              "type": "String",
+              "isRequired": false,
+              "attributes": []
+            },
+            "status": {
+              "name": "status",
+              "isArray": false,
+              "type": {
+                "enum": "PlanStatus"
+              },
+              "isRequired": false,
+              "attributes": []
+            },
+            "sortOrder": {
+              "name": "sortOrder",
+              "isArray": false,
+              "type": "Int",
+              "isRequired": false,
+              "attributes": []
+            },
+            "classAnnualPlans": {
+              "name": "classAnnualPlans",
+              "isArray": true,
+              "type": {
+                "model": "ClassAnnualPlan"
+              },
+              "isRequired": false,
+              "attributes": [],
+              "isArrayNullable": true,
+              "association": {
+                "connectionType": "HAS_MANY",
+                "associatedWith": [
+                  "schoolAnnualAgeTargetId"
+                ]
+              }
+            },
+            "scheduleMonths": {
+              "name": "scheduleMonths",
+              "isArray": true,
+              "type": {
+                "model": "ScheduleMonth"
+              },
+              "isRequired": false,
+              "attributes": [],
+              "isArrayNullable": true,
+              "association": {
+                "connectionType": "HAS_MANY",
+                "associatedWith": [
+                  "ageTargetId"
+                ]
+              }
+            },
+            "scheduleWeeks": {
+              "name": "scheduleWeeks",
+              "isArray": true,
+              "type": {
+                "model": "ScheduleWeek"
+              },
+              "isRequired": false,
+              "attributes": [],
+              "isArrayNullable": true,
+              "association": {
+                "connectionType": "HAS_MANY",
+                "associatedWith": [
+                  "ageTargetId"
+                ]
+              }
+            },
+            "scheduleDays": {
+              "name": "scheduleDays",
+              "isArray": true,
+              "type": {
+                "model": "ScheduleDay"
+              },
+              "isRequired": false,
+              "attributes": [],
+              "isArrayNullable": true,
+              "association": {
+                "connectionType": "HAS_MANY",
+                "associatedWith": [
+                  "ageTargetId"
+                ]
+              }
+            },
+            "createdAt": {
+              "name": "createdAt",
+              "isArray": false,
+              "type": "AWSDateTime",
+              "isRequired": false,
+              "attributes": [],
+              "isReadOnly": true
+            },
+            "updatedAt": {
+              "name": "updatedAt",
+              "isArray": false,
+              "type": "AWSDateTime",
+              "isRequired": false,
+              "attributes": [],
+              "isReadOnly": true
+            }
+          },
+          "syncable": true,
+          "pluralName": "SchoolAnnualAgeTargets",
+          "attributes": [
+            {
+              "type": "model",
+              "properties": {}
+            },
+            {
+              "type": "key",
+              "properties": {
+                "name": "schoolAnnualAgeTargetsByTenantIdAndFiscalYearAndAgeBand",
+                "queryField": "listSchoolAnnualAgeTargetsByTenantYearAge",
+                "fields": [
+                  "tenantId",
+                  "fiscalYear",
+                  "ageBand"
+                ]
+              }
+            },
+            {
+              "type": "key",
+              "properties": {
+                "name": "schoolAnnualAgeTargetsBySchoolAnnualPlanIdAndAgeBand",
+                "queryField": "listSchoolAnnualAgeTargetsByPlanAge",
+                "fields": [
+                  "schoolAnnualPlanId",
+                  "ageBand"
+                ]
+              }
+            },
+            {
+              "type": "auth",
+              "properties": {
+                "rules": [
+                  {
+                    "allow": "private",
+                    "operations": [
+                      "create",
+                      "read",
+                      "update",
+                      "delete"
+                    ]
+                  }
+                ]
+              }
+            }
+          ],
+          "primaryKeyInfo": {
+            "isCustomPrimaryKey": false,
+            "primaryKeyFieldName": "id",
+            "sortKeyFieldNames": []
+          }
+        },
+        "ClassAnnualPlan": {
+          "name": "ClassAnnualPlan",
+          "fields": {
+            "id": {
+              "name": "id",
+              "isArray": false,
+              "type": "ID",
+              "isRequired": true,
+              "attributes": []
+            },
+            "tenantId": {
+              "name": "tenantId",
+              "isArray": false,
+              "type": "String",
+              "isRequired": true,
+              "attributes": []
+            },
+            "classroomId": {
+              "name": "classroomId",
+              "isArray": false,
+              "type": "ID",
+              "isRequired": true,
+              "attributes": []
+            },
+            "classroom": {
+              "name": "classroom",
+              "isArray": false,
+              "type": {
+                "model": "Classroom"
+              },
+              "isRequired": false,
+              "attributes": [],
+              "association": {
+                "connectionType": "BELONGS_TO",
+                "targetNames": [
+                  "classroomId"
+                ]
+              }
+            },
+            "schoolAnnualPlanId": {
+              "name": "schoolAnnualPlanId",
+              "isArray": false,
+              "type": "ID",
+              "isRequired": true,
+              "attributes": []
+            },
+            "schoolAnnualAgeTargetId": {
+              "name": "schoolAnnualAgeTargetId",
+              "isArray": false,
+              "type": "ID",
+              "isRequired": true,
+              "attributes": []
+            },
+            "schoolAnnualAgeTarget": {
+              "name": "schoolAnnualAgeTarget",
+              "isArray": false,
+              "type": {
+                "model": "SchoolAnnualAgeTarget"
+              },
+              "isRequired": false,
+              "attributes": [],
+              "association": {
+                "connectionType": "BELONGS_TO",
+                "targetNames": [
+                  "schoolAnnualAgeTargetId"
+                ]
+              }
+            },
+            "fiscalYear": {
+              "name": "fiscalYear",
+              "isArray": false,
+              "type": "Int",
+              "isRequired": true,
+              "attributes": []
+            },
+            "title": {
+              "name": "title",
+              "isArray": false,
+              "type": "String",
+              "isRequired": true,
+              "attributes": []
+            },
+            "periodStart": {
+              "name": "periodStart",
+              "isArray": false,
+              "type": "AWSDate",
+              "isRequired": false,
+              "attributes": []
+            },
+            "periodEnd": {
+              "name": "periodEnd",
+              "isArray": false,
+              "type": "AWSDate",
+              "isRequired": false,
+              "attributes": []
+            },
+            "ageBand": {
+              "name": "ageBand",
+              "isArray": false,
+              "type": "String",
+              "isRequired": true,
+              "attributes": []
+            },
+            "goalTextA": {
+              "name": "goalTextA",
+              "isArray": false,
+              "type": "String",
+              "isRequired": false,
+              "attributes": []
+            },
+            "abilityHealthA": {
+              "name": "abilityHealthA",
+              "isArray": false,
+              "type": "Int",
+              "isRequired": false,
+              "attributes": []
+            },
+            "abilityHumanRelationsA": {
+              "name": "abilityHumanRelationsA",
+              "isArray": false,
+              "type": "Int",
+              "isRequired": false,
+              "attributes": []
+            },
+            "abilityEnvironmentA": {
+              "name": "abilityEnvironmentA",
+              "isArray": false,
+              "type": "Int",
+              "isRequired": false,
+              "attributes": []
+            },
+            "abilityLanguageA": {
+              "name": "abilityLanguageA",
+              "isArray": false,
+              "type": "Int",
+              "isRequired": false,
+              "attributes": []
+            },
+            "abilityExpressionA": {
+              "name": "abilityExpressionA",
+              "isArray": false,
+              "type": "Int",
+              "isRequired": false,
+              "attributes": []
+            },
+            "draftText": {
+              "name": "draftText",
+              "isArray": false,
+              "type": "String",
+              "isRequired": false,
+              "attributes": []
+            },
+            "aiSuggestedText": {
+              "name": "aiSuggestedText",
+              "isArray": false,
+              "type": "String",
+              "isRequired": false,
+              "attributes": []
+            },
+            "finalText": {
+              "name": "finalText",
+              "isArray": false,
+              "type": "String",
+              "isRequired": false,
+              "attributes": []
+            },
+            "status": {
+              "name": "status",
+              "isArray": false,
+              "type": {
+                "enum": "PlanStatus"
+              },
+              "isRequired": false,
+              "attributes": []
+            },
+            "quarterPlans": {
+              "name": "quarterPlans",
+              "isArray": true,
+              "type": {
+                "model": "ClassQuarterPlan"
+              },
+              "isRequired": false,
+              "attributes": [],
+              "isArrayNullable": true,
+              "association": {
+                "connectionType": "HAS_MANY",
+                "associatedWith": [
+                  "classAnnualPlanId"
+                ]
+              }
+            },
+            "createdAt": {
+              "name": "createdAt",
+              "isArray": false,
+              "type": "AWSDateTime",
+              "isRequired": false,
+              "attributes": [],
+              "isReadOnly": true
+            },
+            "updatedAt": {
+              "name": "updatedAt",
+              "isArray": false,
+              "type": "AWSDateTime",
+              "isRequired": false,
+              "attributes": [],
+              "isReadOnly": true
+            }
+          },
+          "syncable": true,
+          "pluralName": "ClassAnnualPlans",
+          "attributes": [
+            {
+              "type": "model",
+              "properties": {}
+            },
+            {
+              "type": "key",
+              "properties": {
+                "name": "classAnnualPlansByTenantIdAndFiscalYearAndAgeBand",
+                "queryField": "listClassAnnualPlansByTenantYearAge",
+                "fields": [
+                  "tenantId",
+                  "fiscalYear",
+                  "ageBand"
+                ]
+              }
+            },
+            {
+              "type": "key",
+              "properties": {
+                "name": "classAnnualPlansByClassroomIdAndFiscalYear",
+                "queryField": "listClassAnnualPlansByClassroomYear",
+                "fields": [
+                  "classroomId",
+                  "fiscalYear"
+                ]
+              }
+            },
+            {
+              "type": "key",
+              "properties": {
+                "name": "classAnnualPlansBySchoolAnnualAgeTargetIdAndFiscalYear",
+                "queryField": "listClassAnnualPlansByAgeTargetYear",
+                "fields": [
+                  "schoolAnnualAgeTargetId",
+                  "fiscalYear"
+                ]
+              }
+            },
+            {
+              "type": "auth",
+              "properties": {
+                "rules": [
+                  {
+                    "allow": "private",
+                    "operations": [
+                      "create",
+                      "read",
+                      "update",
+                      "delete"
+                    ]
+                  }
+                ]
+              }
+            }
+          ],
+          "primaryKeyInfo": {
+            "isCustomPrimaryKey": false,
+            "primaryKeyFieldName": "id",
+            "sortKeyFieldNames": []
+          }
+        },
+        "ClassQuarterPlan": {
+          "name": "ClassQuarterPlan",
+          "fields": {
+            "id": {
+              "name": "id",
+              "isArray": false,
+              "type": "ID",
+              "isRequired": true,
+              "attributes": []
+            },
+            "tenantId": {
+              "name": "tenantId",
+              "isArray": false,
+              "type": "String",
+              "isRequired": true,
+              "attributes": []
+            },
+            "classAnnualPlanId": {
+              "name": "classAnnualPlanId",
+              "isArray": false,
+              "type": "ID",
+              "isRequired": true,
+              "attributes": []
+            },
+            "classAnnualPlan": {
+              "name": "classAnnualPlan",
+              "isArray": false,
+              "type": {
+                "model": "ClassAnnualPlan"
+              },
+              "isRequired": false,
+              "attributes": [],
+              "association": {
+                "connectionType": "BELONGS_TO",
+                "targetNames": [
+                  "classAnnualPlanId"
+                ]
+              }
+            },
+            "fiscalYear": {
+              "name": "fiscalYear",
+              "isArray": false,
+              "type": "Int",
+              "isRequired": true,
+              "attributes": []
+            },
+            "termNo": {
+              "name": "termNo",
+              "isArray": false,
+              "type": "Int",
+              "isRequired": true,
+              "attributes": []
+            },
+            "title": {
+              "name": "title",
+              "isArray": false,
+              "type": "String",
+              "isRequired": true,
+              "attributes": []
+            },
+            "periodStart": {
+              "name": "periodStart",
+              "isArray": false,
+              "type": "AWSDate",
+              "isRequired": false,
+              "attributes": []
+            },
+            "periodEnd": {
+              "name": "periodEnd",
+              "isArray": false,
+              "type": "AWSDate",
+              "isRequired": false,
+              "attributes": []
+            },
+            "ageBand": {
+              "name": "ageBand",
+              "isArray": false,
+              "type": "String",
+              "isRequired": true,
+              "attributes": []
+            },
+            "goalTextB": {
+              "name": "goalTextB",
+              "isArray": false,
+              "type": "String",
+              "isRequired": false,
+              "attributes": []
+            },
+            "abilityHealthB": {
+              "name": "abilityHealthB",
+              "isArray": false,
+              "type": "Int",
+              "isRequired": false,
+              "attributes": []
+            },
+            "abilityHumanRelationsB": {
+              "name": "abilityHumanRelationsB",
+              "isArray": false,
+              "type": "Int",
+              "isRequired": false,
+              "attributes": []
+            },
+            "abilityEnvironmentB": {
+              "name": "abilityEnvironmentB",
+              "isArray": false,
+              "type": "Int",
+              "isRequired": false,
+              "attributes": []
+            },
+            "abilityLanguageB": {
+              "name": "abilityLanguageB",
+              "isArray": false,
+              "type": "Int",
+              "isRequired": false,
+              "attributes": []
+            },
+            "abilityExpressionB": {
+              "name": "abilityExpressionB",
+              "isArray": false,
+              "type": "Int",
+              "isRequired": false,
+              "attributes": []
+            },
+            "draftText": {
+              "name": "draftText",
+              "isArray": false,
+              "type": "String",
+              "isRequired": false,
+              "attributes": []
+            },
+            "aiSuggestedText": {
+              "name": "aiSuggestedText",
+              "isArray": false,
+              "type": "String",
+              "isRequired": false,
+              "attributes": []
+            },
+            "finalText": {
+              "name": "finalText",
+              "isArray": false,
+              "type": "String",
+              "isRequired": false,
+              "attributes": []
+            },
+            "status": {
+              "name": "status",
+              "isArray": false,
+              "type": {
+                "enum": "PlanStatus"
+              },
+              "isRequired": false,
+              "attributes": []
+            },
+            "quarterEvents": {
+              "name": "quarterEvents",
+              "isArray": true,
+              "type": {
+                "model": "QuarterEvent"
+              },
+              "isRequired": false,
+              "attributes": [],
+              "isArrayNullable": true,
+              "association": {
+                "connectionType": "HAS_MANY",
+                "associatedWith": [
+                  "classQuarterPlanId"
+                ]
+              }
+            },
+            "monthPlans": {
+              "name": "monthPlans",
+              "isArray": true,
+              "type": {
+                "model": "ClassMonthPlan"
+              },
+              "isRequired": false,
+              "attributes": [],
+              "isArrayNullable": true,
+              "association": {
+                "connectionType": "HAS_MANY",
+                "associatedWith": [
+                  "classQuarterPlanId"
+                ]
+              }
+            },
+            "createdAt": {
+              "name": "createdAt",
+              "isArray": false,
+              "type": "AWSDateTime",
+              "isRequired": false,
+              "attributes": [],
+              "isReadOnly": true
+            },
+            "updatedAt": {
+              "name": "updatedAt",
+              "isArray": false,
+              "type": "AWSDateTime",
+              "isRequired": false,
+              "attributes": [],
+              "isReadOnly": true
+            }
+          },
+          "syncable": true,
+          "pluralName": "ClassQuarterPlans",
+          "attributes": [
+            {
+              "type": "model",
+              "properties": {}
+            },
+            {
+              "type": "key",
+              "properties": {
+                "name": "classQuarterPlansByClassAnnualPlanIdAndTermNo",
+                "queryField": "listClassQuarterPlansByAnnualTerm",
+                "fields": [
+                  "classAnnualPlanId",
+                  "termNo"
+                ]
+              }
+            },
+            {
+              "type": "auth",
+              "properties": {
+                "rules": [
+                  {
+                    "allow": "private",
+                    "operations": [
+                      "create",
+                      "read",
+                      "update",
+                      "delete"
+                    ]
+                  }
+                ]
+              }
+            }
+          ],
+          "primaryKeyInfo": {
+            "isCustomPrimaryKey": false,
+            "primaryKeyFieldName": "id",
+            "sortKeyFieldNames": []
+          }
+        },
+        "QuarterEvent": {
+          "name": "QuarterEvent",
+          "fields": {
+            "id": {
+              "name": "id",
+              "isArray": false,
+              "type": "ID",
+              "isRequired": true,
+              "attributes": []
+            },
+            "classQuarterPlanId": {
+              "name": "classQuarterPlanId",
+              "isArray": false,
+              "type": "ID",
+              "isRequired": true,
+              "attributes": []
+            },
+            "classQuarterPlan": {
+              "name": "classQuarterPlan",
+              "isArray": false,
+              "type": {
+                "model": "ClassQuarterPlan"
+              },
+              "isRequired": false,
+              "attributes": [],
+              "association": {
+                "connectionType": "BELONGS_TO",
+                "targetNames": [
+                  "classQuarterPlanId"
+                ]
+              }
+            },
+            "label": {
+              "name": "label",
+              "isArray": false,
+              "type": "String",
+              "isRequired": true,
+              "attributes": []
+            },
+            "eventMonth": {
+              "name": "eventMonth",
+              "isArray": false,
+              "type": "Int",
+              "isRequired": false,
+              "attributes": []
+            },
+            "sortOrder": {
+              "name": "sortOrder",
+              "isArray": false,
+              "type": "Int",
+              "isRequired": false,
+              "attributes": []
+            },
+            "createdAt": {
+              "name": "createdAt",
+              "isArray": false,
+              "type": "AWSDateTime",
+              "isRequired": false,
+              "attributes": [],
+              "isReadOnly": true
+            },
+            "updatedAt": {
+              "name": "updatedAt",
+              "isArray": false,
+              "type": "AWSDateTime",
+              "isRequired": false,
+              "attributes": [],
+              "isReadOnly": true
+            }
+          },
+          "syncable": true,
+          "pluralName": "QuarterEvents",
+          "attributes": [
+            {
+              "type": "model",
+              "properties": {}
+            },
+            {
+              "type": "key",
+              "properties": {
+                "name": "quarterEventsByClassQuarterPlanIdAndSortOrder",
+                "queryField": "listQuarterEventsByPlan",
+                "fields": [
+                  "classQuarterPlanId",
+                  "sortOrder"
+                ]
+              }
+            },
+            {
+              "type": "auth",
+              "properties": {
+                "rules": [
+                  {
+                    "allow": "private",
+                    "operations": [
+                      "create",
+                      "read",
+                      "update",
+                      "delete"
+                    ]
+                  }
+                ]
+              }
+            }
+          ],
+          "primaryKeyInfo": {
+            "isCustomPrimaryKey": false,
+            "primaryKeyFieldName": "id",
+            "sortKeyFieldNames": []
+          }
+        },
+        "ClassMonthPlan": {
+          "name": "ClassMonthPlan",
+          "fields": {
+            "id": {
+              "name": "id",
+              "isArray": false,
+              "type": "ID",
+              "isRequired": true,
+              "attributes": []
+            },
+            "tenantId": {
+              "name": "tenantId",
+              "isArray": false,
+              "type": "String",
+              "isRequired": true,
+              "attributes": []
+            },
+            "classQuarterPlanId": {
+              "name": "classQuarterPlanId",
+              "isArray": false,
+              "type": "ID",
+              "isRequired": true,
+              "attributes": []
+            },
+            "classQuarterPlan": {
+              "name": "classQuarterPlan",
+              "isArray": false,
+              "type": {
+                "model": "ClassQuarterPlan"
+              },
+              "isRequired": false,
+              "attributes": [],
+              "association": {
+                "connectionType": "BELONGS_TO",
+                "targetNames": [
+                  "classQuarterPlanId"
+                ]
+              }
+            },
+            "fiscalYear": {
+              "name": "fiscalYear",
+              "isArray": false,
+              "type": "Int",
+              "isRequired": true,
+              "attributes": []
+            },
+            "monthKey": {
+              "name": "monthKey",
+              "isArray": false,
+              "type": "String",
+              "isRequired": true,
+              "attributes": []
+            },
+            "title": {
+              "name": "title",
+              "isArray": false,
+              "type": "String",
+              "isRequired": true,
+              "attributes": []
+            },
+            "periodStart": {
+              "name": "periodStart",
+              "isArray": false,
+              "type": "AWSDate",
+              "isRequired": false,
+              "attributes": []
+            },
+            "periodEnd": {
+              "name": "periodEnd",
+              "isArray": false,
+              "type": "AWSDate",
+              "isRequired": false,
+              "attributes": []
+            },
+            "ageBand": {
+              "name": "ageBand",
+              "isArray": false,
+              "type": "String",
+              "isRequired": true,
+              "attributes": []
+            },
+            "goalTextC": {
+              "name": "goalTextC",
+              "isArray": false,
+              "type": "String",
+              "isRequired": false,
+              "attributes": []
+            },
+            "abilityHealthC": {
+              "name": "abilityHealthC",
+              "isArray": false,
+              "type": "Int",
+              "isRequired": false,
+              "attributes": []
+            },
+            "abilityHumanRelationsC": {
+              "name": "abilityHumanRelationsC",
+              "isArray": false,
+              "type": "Int",
+              "isRequired": false,
+              "attributes": []
+            },
+            "abilityEnvironmentC": {
+              "name": "abilityEnvironmentC",
+              "isArray": false,
+              "type": "Int",
+              "isRequired": false,
+              "attributes": []
+            },
+            "abilityLanguageC": {
+              "name": "abilityLanguageC",
+              "isArray": false,
+              "type": "Int",
+              "isRequired": false,
+              "attributes": []
+            },
+            "abilityExpressionC": {
+              "name": "abilityExpressionC",
+              "isArray": false,
+              "type": "Int",
+              "isRequired": false,
+              "attributes": []
+            },
+            "draftText": {
+              "name": "draftText",
+              "isArray": false,
+              "type": "String",
+              "isRequired": false,
+              "attributes": []
+            },
+            "aiSuggestedText": {
+              "name": "aiSuggestedText",
+              "isArray": false,
+              "type": "String",
+              "isRequired": false,
+              "attributes": []
+            },
+            "finalText": {
+              "name": "finalText",
+              "isArray": false,
+              "type": "String",
+              "isRequired": false,
+              "attributes": []
+            },
+            "status": {
+              "name": "status",
+              "isArray": false,
+              "type": {
+                "enum": "PlanStatus"
+              },
+              "isRequired": false,
+              "attributes": []
+            },
+            "monthEvents": {
+              "name": "monthEvents",
+              "isArray": true,
+              "type": {
+                "model": "MonthEvent"
+              },
+              "isRequired": false,
+              "attributes": [],
+              "isArrayNullable": true,
+              "association": {
+                "connectionType": "HAS_MANY",
+                "associatedWith": [
+                  "classMonthPlanId"
+                ]
+              }
+            },
+            "weekPlans": {
+              "name": "weekPlans",
+              "isArray": true,
+              "type": {
+                "model": "ClassWeekPlan"
+              },
+              "isRequired": false,
+              "attributes": [],
+              "isArrayNullable": true,
+              "association": {
+                "connectionType": "HAS_MANY",
+                "associatedWith": [
+                  "classMonthPlanId"
+                ]
+              }
+            },
+            "createdAt": {
+              "name": "createdAt",
+              "isArray": false,
+              "type": "AWSDateTime",
+              "isRequired": false,
+              "attributes": [],
+              "isReadOnly": true
+            },
+            "updatedAt": {
+              "name": "updatedAt",
+              "isArray": false,
+              "type": "AWSDateTime",
+              "isRequired": false,
+              "attributes": [],
+              "isReadOnly": true
+            }
+          },
+          "syncable": true,
+          "pluralName": "ClassMonthPlans",
+          "attributes": [
+            {
+              "type": "model",
+              "properties": {}
+            },
+            {
+              "type": "key",
+              "properties": {
+                "name": "classMonthPlansByTenantIdAndMonthKey",
+                "queryField": "listClassMonthPlansByTenantMonth",
+                "fields": [
+                  "tenantId",
+                  "monthKey"
+                ]
+              }
+            },
+            {
+              "type": "key",
+              "properties": {
+                "name": "classMonthPlansByClassQuarterPlanIdAndMonthKey",
+                "queryField": "listClassMonthPlansByQuarterMonth",
+                "fields": [
+                  "classQuarterPlanId",
+                  "monthKey"
+                ]
+              }
+            },
+            {
+              "type": "auth",
+              "properties": {
+                "rules": [
+                  {
+                    "allow": "private",
+                    "operations": [
+                      "create",
+                      "read",
+                      "update",
+                      "delete"
+                    ]
+                  }
+                ]
+              }
+            }
+          ],
+          "primaryKeyInfo": {
+            "isCustomPrimaryKey": false,
+            "primaryKeyFieldName": "id",
+            "sortKeyFieldNames": []
+          }
+        },
+        "MonthEvent": {
+          "name": "MonthEvent",
+          "fields": {
+            "id": {
+              "name": "id",
+              "isArray": false,
+              "type": "ID",
+              "isRequired": true,
+              "attributes": []
+            },
+            "classMonthPlanId": {
+              "name": "classMonthPlanId",
+              "isArray": false,
+              "type": "ID",
+              "isRequired": true,
+              "attributes": []
+            },
+            "classMonthPlan": {
+              "name": "classMonthPlan",
+              "isArray": false,
+              "type": {
+                "model": "ClassMonthPlan"
+              },
+              "isRequired": false,
+              "attributes": [],
+              "association": {
+                "connectionType": "BELONGS_TO",
+                "targetNames": [
+                  "classMonthPlanId"
+                ]
+              }
+            },
+            "label": {
+              "name": "label",
+              "isArray": false,
+              "type": "String",
+              "isRequired": true,
+              "attributes": []
+            },
+            "eventDate": {
+              "name": "eventDate",
+              "isArray": false,
+              "type": "AWSDate",
+              "isRequired": false,
+              "attributes": []
+            },
+            "sortOrder": {
+              "name": "sortOrder",
+              "isArray": false,
+              "type": "Int",
+              "isRequired": false,
+              "attributes": []
+            },
+            "createdAt": {
+              "name": "createdAt",
+              "isArray": false,
+              "type": "AWSDateTime",
+              "isRequired": false,
+              "attributes": [],
+              "isReadOnly": true
+            },
+            "updatedAt": {
+              "name": "updatedAt",
+              "isArray": false,
+              "type": "AWSDateTime",
+              "isRequired": false,
+              "attributes": [],
+              "isReadOnly": true
+            }
+          },
+          "syncable": true,
+          "pluralName": "MonthEvents",
+          "attributes": [
+            {
+              "type": "model",
+              "properties": {}
+            },
+            {
+              "type": "key",
+              "properties": {
+                "name": "monthEventsByClassMonthPlanIdAndSortOrder",
+                "queryField": "listMonthEventsByPlan",
+                "fields": [
+                  "classMonthPlanId",
+                  "sortOrder"
+                ]
+              }
+            },
+            {
+              "type": "auth",
+              "properties": {
+                "rules": [
+                  {
+                    "allow": "private",
+                    "operations": [
+                      "create",
+                      "read",
+                      "update",
+                      "delete"
+                    ]
+                  }
+                ]
+              }
+            }
+          ],
+          "primaryKeyInfo": {
+            "isCustomPrimaryKey": false,
+            "primaryKeyFieldName": "id",
+            "sortKeyFieldNames": []
+          }
+        },
+        "ClassWeekPlan": {
+          "name": "ClassWeekPlan",
+          "fields": {
+            "id": {
+              "name": "id",
+              "isArray": false,
+              "type": "ID",
+              "isRequired": true,
+              "attributes": []
+            },
+            "classMonthPlanId": {
+              "name": "classMonthPlanId",
+              "isArray": false,
+              "type": "ID",
+              "isRequired": true,
+              "attributes": []
+            },
+            "classMonthPlan": {
+              "name": "classMonthPlan",
+              "isArray": false,
+              "type": {
+                "model": "ClassMonthPlan"
+              },
+              "isRequired": false,
+              "attributes": [],
+              "association": {
+                "connectionType": "BELONGS_TO",
+                "targetNames": [
+                  "classMonthPlanId"
+                ]
+              }
+            },
+            "weekNo": {
+              "name": "weekNo",
+              "isArray": false,
+              "type": "Int",
+              "isRequired": true,
+              "attributes": []
+            },
+            "title": {
+              "name": "title",
+              "isArray": false,
+              "type": "String",
+              "isRequired": true,
+              "attributes": []
+            },
+            "periodStart": {
+              "name": "periodStart",
+              "isArray": false,
+              "type": "AWSDate",
+              "isRequired": false,
+              "attributes": []
+            },
+            "periodEnd": {
+              "name": "periodEnd",
+              "isArray": false,
+              "type": "AWSDate",
+              "isRequired": false,
+              "attributes": []
+            },
+            "ageBand": {
+              "name": "ageBand",
+              "isArray": false,
+              "type": "String",
+              "isRequired": true,
+              "attributes": []
+            },
+            "goalTextC": {
+              "name": "goalTextC",
+              "isArray": false,
+              "type": "String",
+              "isRequired": false,
+              "attributes": []
+            },
+            "abilityHealthD": {
+              "name": "abilityHealthD",
+              "isArray": false,
+              "type": "Int",
+              "isRequired": false,
+              "attributes": []
+            },
+            "abilityHumanRelationsD": {
+              "name": "abilityHumanRelationsD",
+              "isArray": false,
+              "type": "Int",
+              "isRequired": false,
+              "attributes": []
+            },
+            "abilityEnvironmentD": {
+              "name": "abilityEnvironmentD",
+              "isArray": false,
+              "type": "Int",
+              "isRequired": false,
+              "attributes": []
+            },
+            "abilityLanguageD": {
+              "name": "abilityLanguageD",
+              "isArray": false,
+              "type": "Int",
+              "isRequired": false,
+              "attributes": []
+            },
+            "abilityExpressionD": {
+              "name": "abilityExpressionD",
+              "isArray": false,
+              "type": "Int",
+              "isRequired": false,
+              "attributes": []
+            },
+            "status": {
+              "name": "status",
+              "isArray": false,
+              "type": {
+                "enum": "PlanStatus"
+              },
+              "isRequired": false,
+              "attributes": []
+            },
+            "assignments": {
+              "name": "assignments",
+              "isArray": true,
+              "type": {
+                "model": "ClassWeekPracticeAssignment"
+              },
+              "isRequired": false,
+              "attributes": [],
+              "isArrayNullable": true,
+              "association": {
+                "connectionType": "HAS_MANY",
+                "associatedWith": [
+                  "classWeekPlanId"
+                ]
+              }
+            },
+            "dayPlans": {
+              "name": "dayPlans",
+              "isArray": true,
+              "type": {
+                "model": "ClassDayPlan"
+              },
+              "isRequired": false,
+              "attributes": [],
+              "isArrayNullable": true,
+              "association": {
+                "connectionType": "HAS_MANY",
+                "associatedWith": [
+                  "classWeekPlanId"
+                ]
+              }
+            },
+            "createdAt": {
+              "name": "createdAt",
+              "isArray": false,
+              "type": "AWSDateTime",
+              "isRequired": false,
+              "attributes": [],
+              "isReadOnly": true
+            },
+            "updatedAt": {
+              "name": "updatedAt",
+              "isArray": false,
+              "type": "AWSDateTime",
+              "isRequired": false,
+              "attributes": [],
+              "isReadOnly": true
+            }
+          },
+          "syncable": true,
+          "pluralName": "ClassWeekPlans",
+          "attributes": [
+            {
+              "type": "model",
+              "properties": {}
+            },
+            {
+              "type": "key",
+              "properties": {
+                "name": "classWeekPlansByClassMonthPlanIdAndWeekNo",
+                "queryField": "listClassWeekPlansByMonthWeek",
+                "fields": [
+                  "classMonthPlanId",
+                  "weekNo"
+                ]
+              }
+            },
+            {
+              "type": "auth",
+              "properties": {
+                "rules": [
+                  {
+                    "allow": "private",
+                    "operations": [
+                      "create",
+                      "read",
+                      "update",
+                      "delete"
+                    ]
+                  }
+                ]
+              }
+            }
+          ],
+          "primaryKeyInfo": {
+            "isCustomPrimaryKey": false,
+            "primaryKeyFieldName": "id",
+            "sortKeyFieldNames": []
+          }
+        },
+        "ClassWeekPracticeAssignment": {
+          "name": "ClassWeekPracticeAssignment",
+          "fields": {
+            "id": {
+              "name": "id",
+              "isArray": false,
+              "type": "ID",
+              "isRequired": true,
+              "attributes": []
+            },
+            "classWeekPlanId": {
+              "name": "classWeekPlanId",
+              "isArray": false,
+              "type": "ID",
+              "isRequired": true,
+              "attributes": []
+            },
+            "classWeekPlan": {
+              "name": "classWeekPlan",
+              "isArray": false,
+              "type": {
+                "model": "ClassWeekPlan"
+              },
+              "isRequired": false,
+              "attributes": [],
+              "association": {
+                "connectionType": "BELONGS_TO",
+                "targetNames": [
+                  "classWeekPlanId"
+                ]
+              }
+            },
+            "dayNo": {
+              "name": "dayNo",
+              "isArray": false,
+              "type": "Int",
+              "isRequired": true,
+              "attributes": []
+            },
+            "targetDate": {
+              "name": "targetDate",
+              "isArray": false,
+              "type": "AWSDate",
+              "isRequired": false,
+              "attributes": []
+            },
+            "practiceCode": {
+              "name": "practiceCode",
+              "isArray": false,
+              "type": "String",
+              "isRequired": false,
+              "attributes": []
+            },
+            "eventLabel": {
+              "name": "eventLabel",
+              "isArray": false,
+              "type": "String",
+              "isRequired": false,
+              "attributes": []
+            },
+            "note": {
+              "name": "note",
+              "isArray": false,
+              "type": "String",
+              "isRequired": false,
+              "attributes": []
+            },
+            "sortOrder": {
+              "name": "sortOrder",
+              "isArray": false,
+              "type": "Int",
+              "isRequired": false,
+              "attributes": []
+            },
+            "createdAt": {
+              "name": "createdAt",
+              "isArray": false,
+              "type": "AWSDateTime",
+              "isRequired": false,
+              "attributes": [],
+              "isReadOnly": true
+            },
+            "updatedAt": {
+              "name": "updatedAt",
+              "isArray": false,
+              "type": "AWSDateTime",
+              "isRequired": false,
+              "attributes": [],
+              "isReadOnly": true
+            }
+          },
+          "syncable": true,
+          "pluralName": "ClassWeekPracticeAssignments",
+          "attributes": [
+            {
+              "type": "model",
+              "properties": {}
+            },
+            {
+              "type": "key",
+              "properties": {
+                "name": "classWeekPracticeAssignmentsByClassWeekPlanIdAndDayNo",
+                "queryField": "listClassWeekPracticeAssignmentsByWeekDay",
+                "fields": [
+                  "classWeekPlanId",
+                  "dayNo"
+                ]
+              }
+            },
+            {
+              "type": "auth",
+              "properties": {
+                "rules": [
+                  {
+                    "allow": "private",
+                    "operations": [
+                      "create",
+                      "read",
+                      "update",
+                      "delete"
+                    ]
+                  }
+                ]
+              }
+            }
+          ],
+          "primaryKeyInfo": {
+            "isCustomPrimaryKey": false,
+            "primaryKeyFieldName": "id",
+            "sortKeyFieldNames": []
+          }
+        },
+        "ScheduleMonth": {
+          "name": "ScheduleMonth",
+          "fields": {
+            "id": {
+              "name": "id",
+              "isArray": false,
+              "type": "ID",
+              "isRequired": true,
+              "attributes": []
+            },
+            "tenantId": {
+              "name": "tenantId",
+              "isArray": false,
+              "type": "String",
+              "isRequired": true,
+              "attributes": []
+            },
+            "owner": {
+              "name": "owner",
+              "isArray": false,
+              "type": "String",
+              "isRequired": true,
+              "attributes": []
+            },
+            "classroomId": {
+              "name": "classroomId",
+              "isArray": false,
+              "type": "ID",
+              "isRequired": true,
+              "attributes": []
+            },
+            "classroom": {
+              "name": "classroom",
+              "isArray": false,
+              "type": {
+                "model": "Classroom"
+              },
+              "isRequired": false,
+              "attributes": [],
+              "association": {
+                "connectionType": "BELONGS_TO",
+                "targetNames": [
+                  "classroomId"
+                ]
+              }
+            },
+            "ageTargetId": {
+              "name": "ageTargetId",
+              "isArray": false,
+              "type": "ID",
+              "isRequired": true,
+              "attributes": []
+            },
+            "ageTarget": {
+              "name": "ageTarget",
+              "isArray": false,
+              "type": {
+                "model": "SchoolAnnualAgeTarget"
+              },
+              "isRequired": false,
+              "attributes": [],
+              "association": {
+                "connectionType": "BELONGS_TO",
+                "targetNames": [
+                  "ageTargetId"
+                ]
+              }
+            },
+            "sourceClassMonthPlanId": {
+              "name": "sourceClassMonthPlanId",
+              "isArray": false,
+              "type": "ID",
+              "isRequired": false,
+              "attributes": []
+            },
+            "monthKey": {
+              "name": "monthKey",
+              "isArray": false,
+              "type": "String",
+              "isRequired": true,
+              "attributes": []
+            },
+            "title": {
+              "name": "title",
+              "isArray": false,
+              "type": "String",
+              "isRequired": false,
+              "attributes": []
+            },
+            "notes": {
+              "name": "notes",
+              "isArray": false,
+              "type": "String",
+              "isRequired": false,
+              "attributes": []
+            },
+            "status": {
+              "name": "status",
+              "isArray": false,
+              "type": {
+                "enum": "SchedulePlanStatus"
+              },
+              "isRequired": true,
+              "attributes": []
+            },
+            "issueType": {
+              "name": "issueType",
+              "isArray": false,
+              "type": {
+                "enum": "ScheduleIssueType"
+              },
+              "isRequired": false,
+              "attributes": []
+            },
+            "issueVersion": {
+              "name": "issueVersion",
+              "isArray": false,
+              "type": "Int",
+              "isRequired": false,
+              "attributes": []
+            },
+            "issuedAt": {
+              "name": "issuedAt",
+              "isArray": false,
+              "type": "AWSDateTime",
+              "isRequired": false,
+              "attributes": []
+            },
+            "closedAt": {
+              "name": "closedAt",
+              "isArray": false,
+              "type": "AWSDateTime",
+              "isRequired": false,
+              "attributes": []
+            },
+            "items": {
+              "name": "items",
+              "isArray": true,
+              "type": {
+                "model": "ScheduleMonthItem"
+              },
+              "isRequired": false,
+              "attributes": [],
+              "isArrayNullable": true,
+              "association": {
+                "connectionType": "HAS_MANY",
+                "associatedWith": [
+                  "scheduleMonthId"
+                ]
+              }
+            },
+            "weeks": {
+              "name": "weeks",
+              "isArray": true,
+              "type": {
+                "model": "ScheduleWeek"
+              },
+              "isRequired": false,
+              "attributes": [],
+              "isArrayNullable": true,
+              "association": {
+                "connectionType": "HAS_MANY",
+                "associatedWith": [
+                  "sourceScheduleMonthId"
+                ]
+              }
+            },
+            "createdAt": {
+              "name": "createdAt",
+              "isArray": false,
+              "type": "AWSDateTime",
+              "isRequired": false,
+              "attributes": [],
+              "isReadOnly": true
+            },
+            "updatedAt": {
+              "name": "updatedAt",
+              "isArray": false,
+              "type": "AWSDateTime",
+              "isRequired": false,
+              "attributes": [],
+              "isReadOnly": true
+            }
+          },
+          "syncable": true,
+          "pluralName": "ScheduleMonths",
+          "attributes": [
+            {
+              "type": "model",
+              "properties": {}
+            },
+            {
+              "type": "key",
+              "properties": {
+                "name": "scheduleMonthsByOwnerAndMonthKey",
+                "queryField": "listScheduleMonthsByOwnerMonthKey",
+                "fields": [
+                  "owner",
+                  "monthKey"
+                ]
+              }
+            },
+            {
+              "type": "key",
+              "properties": {
+                "name": "scheduleMonthsByClassroomIdAndMonthKey",
+                "queryField": "listScheduleMonthsByClassroomMonthKey",
+                "fields": [
+                  "classroomId",
+                  "monthKey"
+                ]
+              }
+            },
+            {
+              "type": "key",
+              "properties": {
+                "name": "scheduleMonthsByAgeTargetIdAndMonthKey",
+                "queryField": "listScheduleMonthsByAgeTargetMonthKey",
+                "fields": [
+                  "ageTargetId",
+                  "monthKey"
+                ]
+              }
+            },
+            {
+              "type": "key",
+              "properties": {
+                "name": "scheduleMonthsBySourceClassMonthPlanIdAndMonthKey",
+                "queryField": "listScheduleMonthsBySourceClassMonthPlan",
+                "fields": [
+                  "sourceClassMonthPlanId",
+                  "monthKey"
+                ]
+              }
+            },
+            {
+              "type": "auth",
+              "properties": {
+                "rules": [
+                  {
+                    "provider": "userPools",
+                    "ownerField": "owner",
+                    "allow": "owner",
+                    "identityClaim": "cognito:username",
+                    "operations": [
+                      "create",
+                      "update",
+                      "delete",
+                      "read"
+                    ]
+                  },
+                  {
+                    "allow": "private",
+                    "operations": [
+                      "read",
+                      "create",
+                      "update"
+                    ]
+                  }
+                ]
+              }
+            }
+          ],
+          "primaryKeyInfo": {
+            "isCustomPrimaryKey": false,
+            "primaryKeyFieldName": "id",
+            "sortKeyFieldNames": []
+          }
+        },
+        "ScheduleMonthItem": {
+          "name": "ScheduleMonthItem",
+          "fields": {
+            "id": {
+              "name": "id",
+              "isArray": false,
+              "type": "ID",
+              "isRequired": true,
+              "attributes": []
+            },
+            "tenantId": {
+              "name": "tenantId",
+              "isArray": false,
+              "type": "String",
+              "isRequired": true,
+              "attributes": []
+            },
+            "owner": {
+              "name": "owner",
+              "isArray": false,
+              "type": "String",
+              "isRequired": true,
+              "attributes": []
+            },
+            "scheduleMonthId": {
+              "name": "scheduleMonthId",
+              "isArray": false,
+              "type": "ID",
+              "isRequired": true,
+              "attributes": []
+            },
+            "scheduleMonth": {
+              "name": "scheduleMonth",
+              "isArray": false,
+              "type": {
+                "model": "ScheduleMonth"
+              },
+              "isRequired": false,
+              "attributes": [],
+              "association": {
+                "connectionType": "BELONGS_TO",
+                "targetNames": [
+                  "scheduleMonthId"
+                ]
+              }
+            },
+            "weekNoInMonth": {
+              "name": "weekNoInMonth",
+              "isArray": false,
+              "type": "Int",
+              "isRequired": true,
+              "attributes": []
+            },
+            "dayOfWeek": {
+              "name": "dayOfWeek",
+              "isArray": false,
+              "type": "Int",
+              "isRequired": true,
+              "attributes": []
+            },
+            "sourceType": {
+              "name": "sourceType",
+              "isArray": false,
+              "type": {
+                "enum": "ScheduleSourceType"
+              },
+              "isRequired": true,
+              "attributes": []
+            },
+            "title": {
+              "name": "title",
+              "isArray": false,
+              "type": "String",
+              "isRequired": true,
+              "attributes": []
+            },
+            "description": {
+              "name": "description",
+              "isArray": false,
+              "type": "String",
+              "isRequired": false,
+              "attributes": []
+            },
+            "startTime": {
+              "name": "startTime",
+              "isArray": false,
+              "type": "String",
+              "isRequired": true,
+              "attributes": []
+            },
+            "endTime": {
+              "name": "endTime",
+              "isArray": false,
+              "type": "String",
+              "isRequired": true,
+              "attributes": []
+            },
+            "sortOrder": {
+              "name": "sortOrder",
+              "isArray": false,
+              "type": "Int",
+              "isRequired": true,
+              "attributes": []
+            },
+            "practiceCode": {
+              "name": "practiceCode",
+              "isArray": false,
+              "type": "String",
+              "isRequired": false,
+              "attributes": []
+            },
+            "practiceTitleSnapshot": {
+              "name": "practiceTitleSnapshot",
+              "isArray": false,
+              "type": "String",
+              "isRequired": false,
+              "attributes": []
+            },
+            "scoreHealth": {
+              "name": "scoreHealth",
+              "isArray": false,
+              "type": "Int",
+              "isRequired": false,
+              "attributes": []
+            },
+            "scoreHumanRelations": {
+              "name": "scoreHumanRelations",
+              "isArray": false,
+              "type": "Int",
+              "isRequired": false,
+              "attributes": []
+            },
+            "scoreEnvironment": {
+              "name": "scoreEnvironment",
+              "isArray": false,
+              "type": "Int",
+              "isRequired": false,
+              "attributes": []
+            },
+            "scoreLanguage": {
+              "name": "scoreLanguage",
+              "isArray": false,
+              "type": "Int",
+              "isRequired": false,
+              "attributes": []
+            },
+            "scoreExpression": {
+              "name": "scoreExpression",
+              "isArray": false,
+              "type": "Int",
+              "isRequired": false,
+              "attributes": []
+            },
+            "weekItems": {
+              "name": "weekItems",
+              "isArray": true,
+              "type": {
+                "model": "ScheduleWeekItem"
+              },
+              "isRequired": false,
+              "attributes": [],
+              "isArrayNullable": true,
+              "association": {
+                "connectionType": "HAS_MANY",
+                "associatedWith": [
+                  "sourceMonthItemId"
+                ]
+              }
+            },
+            "createdAt": {
+              "name": "createdAt",
+              "isArray": false,
+              "type": "AWSDateTime",
+              "isRequired": false,
+              "attributes": [],
+              "isReadOnly": true
+            },
+            "updatedAt": {
+              "name": "updatedAt",
+              "isArray": false,
+              "type": "AWSDateTime",
+              "isRequired": false,
+              "attributes": [],
+              "isReadOnly": true
+            }
+          },
+          "syncable": true,
+          "pluralName": "ScheduleMonthItems",
+          "attributes": [
+            {
+              "type": "model",
+              "properties": {}
+            },
+            {
+              "type": "key",
+              "properties": {
+                "name": "scheduleMonthItemsByScheduleMonthIdAndWeekNoInMonthAndDayOfWeekAndSortOrder",
+                "queryField": "listScheduleMonthItemsByMonthWeekDaySort",
+                "fields": [
+                  "scheduleMonthId",
+                  "weekNoInMonth",
+                  "dayOfWeek",
+                  "sortOrder"
+                ]
+              }
+            },
+            {
+              "type": "key",
+              "properties": {
+                "name": "scheduleMonthItemsByPracticeCode",
+                "queryField": "listScheduleMonthItemsByPracticeCode",
+                "fields": [
+                  "practiceCode"
+                ]
+              }
+            },
+            {
+              "type": "auth",
+              "properties": {
+                "rules": [
+                  {
+                    "provider": "userPools",
+                    "ownerField": "owner",
+                    "allow": "owner",
+                    "identityClaim": "cognito:username",
+                    "operations": [
+                      "create",
+                      "update",
+                      "delete",
+                      "read"
+                    ]
+                  },
+                  {
+                    "allow": "private",
+                    "operations": [
+                      "read",
+                      "create",
+                      "update"
+                    ]
+                  }
+                ]
+              }
+            }
+          ],
+          "primaryKeyInfo": {
+            "isCustomPrimaryKey": false,
+            "primaryKeyFieldName": "id",
+            "sortKeyFieldNames": []
+          }
+        },
+        "ClassDayPlan": {
+          "name": "ClassDayPlan",
+          "fields": {
+            "id": {
+              "name": "id",
+              "isArray": false,
+              "type": "ID",
+              "isRequired": true,
+              "attributes": []
+            },
+            "classWeekPlanId": {
+              "name": "classWeekPlanId",
+              "isArray": false,
+              "type": "ID",
+              "isRequired": true,
+              "attributes": []
+            },
+            "classWeekPlan": {
+              "name": "classWeekPlan",
+              "isArray": false,
+              "type": {
+                "model": "ClassWeekPlan"
+              },
+              "isRequired": false,
+              "attributes": [],
+              "association": {
+                "connectionType": "BELONGS_TO",
+                "targetNames": [
+                  "classWeekPlanId"
+                ]
+              }
+            },
+            "targetDate": {
+              "name": "targetDate",
+              "isArray": false,
+              "type": "AWSDate",
+              "isRequired": true,
+              "attributes": []
+            },
+            "title": {
+              "name": "title",
+              "isArray": false,
+              "type": "String",
+              "isRequired": true,
+              "attributes": []
+            },
+            "periodStart": {
+              "name": "periodStart",
+              "isArray": false,
+              "type": "AWSDate",
+              "isRequired": false,
+              "attributes": []
+            },
+            "periodEnd": {
+              "name": "periodEnd",
+              "isArray": false,
+              "type": "AWSDate",
+              "isRequired": false,
+              "attributes": []
+            },
+            "ageBand": {
+              "name": "ageBand",
+              "isArray": false,
+              "type": "String",
+              "isRequired": true,
+              "attributes": []
+            },
+            "goalTextC": {
+              "name": "goalTextC",
+              "isArray": false,
+              "type": "String",
+              "isRequired": false,
+              "attributes": []
+            },
+            "abilityHealthC": {
+              "name": "abilityHealthC",
+              "isArray": false,
+              "type": "Int",
+              "isRequired": false,
+              "attributes": []
+            },
+            "abilityHumanRelationsC": {
+              "name": "abilityHumanRelationsC",
+              "isArray": false,
+              "type": "Int",
+              "isRequired": false,
+              "attributes": []
+            },
+            "abilityEnvironmentC": {
+              "name": "abilityEnvironmentC",
+              "isArray": false,
+              "type": "Int",
+              "isRequired": false,
+              "attributes": []
+            },
+            "abilityLanguageC": {
+              "name": "abilityLanguageC",
+              "isArray": false,
+              "type": "Int",
+              "isRequired": false,
+              "attributes": []
+            },
+            "abilityExpressionC": {
+              "name": "abilityExpressionC",
+              "isArray": false,
+              "type": "Int",
+              "isRequired": false,
+              "attributes": []
+            },
+            "status": {
+              "name": "status",
+              "isArray": false,
+              "type": {
+                "enum": "PlanStatus"
+              },
+              "isRequired": false,
+              "attributes": []
+            },
+            "programItems": {
+              "name": "programItems",
+              "isArray": true,
+              "type": {
+                "model": "ClassDayProgramItem"
+              },
+              "isRequired": false,
+              "attributes": [],
+              "isArrayNullable": true,
+              "association": {
+                "connectionType": "HAS_MANY",
+                "associatedWith": [
+                  "classDayPlanId"
+                ]
+              }
+            },
+            "createdAt": {
+              "name": "createdAt",
+              "isArray": false,
+              "type": "AWSDateTime",
+              "isRequired": false,
+              "attributes": [],
+              "isReadOnly": true
+            },
+            "updatedAt": {
+              "name": "updatedAt",
+              "isArray": false,
+              "type": "AWSDateTime",
+              "isRequired": false,
+              "attributes": [],
+              "isReadOnly": true
+            }
+          },
+          "syncable": true,
+          "pluralName": "ClassDayPlans",
+          "attributes": [
+            {
+              "type": "model",
+              "properties": {}
+            },
+            {
+              "type": "key",
+              "properties": {
+                "name": "classDayPlansByClassWeekPlanIdAndTargetDate",
+                "queryField": "listClassDayPlansByWeekDate",
+                "fields": [
+                  "classWeekPlanId",
+                  "targetDate"
+                ]
+              }
+            },
+            {
+              "type": "auth",
+              "properties": {
+                "rules": [
+                  {
+                    "allow": "private",
+                    "operations": [
+                      "create",
+                      "read",
+                      "update",
+                      "delete"
+                    ]
+                  }
+                ]
+              }
+            }
+          ],
+          "primaryKeyInfo": {
+            "isCustomPrimaryKey": false,
+            "primaryKeyFieldName": "id",
+            "sortKeyFieldNames": []
+          }
+        },
+        "ClassDayProgramItem": {
+          "name": "ClassDayProgramItem",
+          "fields": {
+            "id": {
+              "name": "id",
+              "isArray": false,
+              "type": "ID",
+              "isRequired": true,
+              "attributes": []
+            },
+            "classDayPlanId": {
+              "name": "classDayPlanId",
+              "isArray": false,
+              "type": "ID",
+              "isRequired": true,
+              "attributes": []
+            },
+            "classDayPlan": {
+              "name": "classDayPlan",
+              "isArray": false,
+              "type": {
+                "model": "ClassDayPlan"
+              },
+              "isRequired": false,
+              "attributes": [],
+              "association": {
+                "connectionType": "BELONGS_TO",
+                "targetNames": [
+                  "classDayPlanId"
+                ]
+              }
+            },
+            "sortOrder": {
+              "name": "sortOrder",
+              "isArray": false,
+              "type": "Int",
+              "isRequired": false,
+              "attributes": []
+            },
+            "startTime": {
+              "name": "startTime",
+              "isArray": false,
+              "type": "AWSTime",
+              "isRequired": false,
+              "attributes": []
+            },
+            "endTime": {
+              "name": "endTime",
+              "isArray": false,
+              "type": "AWSTime",
+              "isRequired": false,
+              "attributes": []
+            },
+            "programType": {
+              "name": "programType",
+              "isArray": false,
+              "type": {
+                "enum": "DayProgramType"
+              },
+              "isRequired": true,
+              "attributes": []
+            },
+            "title": {
+              "name": "title",
+              "isArray": false,
+              "type": "String",
+              "isRequired": true,
+              "attributes": []
+            },
+            "practiceCode": {
+              "name": "practiceCode",
+              "isArray": false,
+              "type": "String",
+              "isRequired": false,
+              "attributes": []
+            },
+            "note": {
+              "name": "note",
+              "isArray": false,
+              "type": "String",
+              "isRequired": false,
+              "attributes": []
+            },
+            "createdAt": {
+              "name": "createdAt",
+              "isArray": false,
+              "type": "AWSDateTime",
+              "isRequired": false,
+              "attributes": [],
+              "isReadOnly": true
+            },
+            "updatedAt": {
+              "name": "updatedAt",
+              "isArray": false,
+              "type": "AWSDateTime",
+              "isRequired": false,
+              "attributes": [],
+              "isReadOnly": true
+            }
+          },
+          "syncable": true,
+          "pluralName": "ClassDayProgramItems",
+          "attributes": [
+            {
+              "type": "model",
+              "properties": {}
+            },
+            {
+              "type": "key",
+              "properties": {
+                "name": "classDayProgramItemsByClassDayPlanIdAndSortOrder",
+                "queryField": "listClassDayProgramItemsByDaySort",
+                "fields": [
+                  "classDayPlanId",
+                  "sortOrder"
+                ]
+              }
+            },
+            {
+              "type": "auth",
+              "properties": {
+                "rules": [
+                  {
+                    "allow": "private",
+                    "operations": [
+                      "create",
+                      "read",
+                      "update",
+                      "delete"
+                    ]
+                  }
+                ]
+              }
+            }
+          ],
+          "primaryKeyInfo": {
+            "isCustomPrimaryKey": false,
+            "primaryKeyFieldName": "id",
+            "sortKeyFieldNames": []
+          }
         }
       },
-      "enums": {},
+      "enums": {
+        "PlanType": {
+          "name": "PlanType",
+          "values": [
+            "YEAR",
+            "TERM",
+            "MONTH",
+            "WEEK",
+            "DAY"
+          ]
+        },
+        "PlanStatus": {
+          "name": "PlanStatus",
+          "values": [
+            "DRAFT",
+            "REVIEWED",
+            "FINAL"
+          ]
+        },
+        "DayProgramType": {
+          "name": "DayProgramType",
+          "values": [
+            "REGULAR",
+            "PLANNED"
+          ]
+        },
+        "SchedulePlanStatus": {
+          "name": "SchedulePlanStatus",
+          "values": [
+            "DRAFT",
+            "ACTIVE",
+            "CLOSED"
+          ]
+        },
+        "ScheduleSourceType": {
+          "name": "ScheduleSourceType",
+          "values": [
+            "REGULAR",
+            "PLANNED"
+          ]
+        },
+        "ScheduleDayStatus": {
+          "name": "ScheduleDayStatus",
+          "values": [
+            "ISSUED",
+            "IN_PROGRESS",
+            "CLOSED"
+          ]
+        },
+        "ScheduleItemStatus": {
+          "name": "ScheduleItemStatus",
+          "values": [
+            "PLANNED",
+            "DONE",
+            "SKIPPED"
+          ]
+        },
+        "ScheduleIssueType": {
+          "name": "ScheduleIssueType",
+          "values": [
+            "AUTO",
+            "MANUAL",
+            "MANUAL_REISSUE"
+          ]
+        },
+        "ScheduleRecordType": {
+          "name": "ScheduleRecordType",
+          "values": [
+            "CHECK",
+            "MEMO",
+            "APPEND_NOTE",
+            "TRANSCRIPT",
+            "STRUCTURED_OBSERVATION"
+          ]
+        }
+      },
       "nonModels": {
         "SummarizeAudioResponse": {
           "name": "SummarizeAudioResponse",
@@ -1388,6 +7168,410 @@
             },
             "transcribeJobName": {
               "name": "transcribeJobName",
+              "isArray": false,
+              "type": "String",
+              "isRequired": false,
+              "attributes": []
+            }
+          }
+        },
+        "AnalyzePracticeResponse": {
+          "name": "AnalyzePracticeResponse",
+          "fields": {
+            "practiceId": {
+              "name": "practiceId",
+              "isArray": false,
+              "type": "String",
+              "isRequired": true,
+              "attributes": []
+            },
+            "practiceCode": {
+              "name": "practiceCode",
+              "isArray": false,
+              "type": "String",
+              "isRequired": true,
+              "attributes": []
+            },
+            "name": {
+              "name": "name",
+              "isArray": false,
+              "type": "String",
+              "isRequired": true,
+              "attributes": []
+            },
+            "memo": {
+              "name": "memo",
+              "isArray": false,
+              "type": "String",
+              "isRequired": true,
+              "attributes": []
+            },
+            "status": {
+              "name": "status",
+              "isArray": false,
+              "type": "String",
+              "isRequired": true,
+              "attributes": []
+            },
+            "aiModel": {
+              "name": "aiModel",
+              "isArray": false,
+              "type": "String",
+              "isRequired": false,
+              "attributes": []
+            }
+          }
+        },
+        "SuggestPracticeLinksResponse": {
+          "name": "SuggestPracticeLinksResponse",
+          "fields": {
+            "practiceId": {
+              "name": "practiceId",
+              "isArray": false,
+              "type": "String",
+              "isRequired": true,
+              "attributes": []
+            },
+            "practiceCode": {
+              "name": "practiceCode",
+              "isArray": false,
+              "type": "String",
+              "isRequired": true,
+              "attributes": []
+            },
+            "suggestionCount": {
+              "name": "suggestionCount",
+              "isArray": false,
+              "type": "Int",
+              "isRequired": true,
+              "attributes": []
+            },
+            "status": {
+              "name": "status",
+              "isArray": false,
+              "type": "String",
+              "isRequired": true,
+              "attributes": []
+            },
+            "aiModel": {
+              "name": "aiModel",
+              "isArray": false,
+              "type": "String",
+              "isRequired": false,
+              "attributes": []
+            }
+          }
+        },
+        "RegisterPracticeLinksResponse": {
+          "name": "RegisterPracticeLinksResponse",
+          "fields": {
+            "practiceCode": {
+              "name": "practiceCode",
+              "isArray": false,
+              "type": "String",
+              "isRequired": true,
+              "attributes": []
+            },
+            "registeredCount": {
+              "name": "registeredCount",
+              "isArray": false,
+              "type": "Int",
+              "isRequired": true,
+              "attributes": []
+            },
+            "status": {
+              "name": "status",
+              "isArray": false,
+              "type": "String",
+              "isRequired": true,
+              "attributes": []
+            }
+          }
+        },
+        "AnalyzeTranscriptObservationsResponse": {
+          "name": "AnalyzeTranscriptObservationsResponse",
+          "fields": {
+            "createdCount": {
+              "name": "createdCount",
+              "isArray": false,
+              "type": "Int",
+              "isRequired": true,
+              "attributes": []
+            },
+            "skipped": {
+              "name": "skipped",
+              "isArray": false,
+              "type": "Boolean",
+              "isRequired": true,
+              "attributes": []
+            },
+            "message": {
+              "name": "message",
+              "isArray": false,
+              "type": "String",
+              "isRequired": true,
+              "attributes": []
+            }
+          }
+        },
+        "IssueScheduleDayFromScheduleWeekResponse": {
+          "name": "IssueScheduleDayFromScheduleWeekResponse",
+          "fields": {
+            "scheduleWeekId": {
+              "name": "scheduleWeekId",
+              "isArray": false,
+              "type": "ID",
+              "isRequired": true,
+              "attributes": []
+            },
+            "scheduleDayId": {
+              "name": "scheduleDayId",
+              "isArray": false,
+              "type": "ID",
+              "isRequired": true,
+              "attributes": []
+            },
+            "previousScheduleDayId": {
+              "name": "previousScheduleDayId",
+              "isArray": false,
+              "type": "ID",
+              "isRequired": false,
+              "attributes": []
+            },
+            "targetDate": {
+              "name": "targetDate",
+              "isArray": false,
+              "type": "AWSDate",
+              "isRequired": true,
+              "attributes": []
+            },
+            "createdDay": {
+              "name": "createdDay",
+              "isArray": false,
+              "type": "Boolean",
+              "isRequired": true,
+              "attributes": []
+            },
+            "createdItemCount": {
+              "name": "createdItemCount",
+              "isArray": false,
+              "type": "Int",
+              "isRequired": true,
+              "attributes": []
+            },
+            "issueVersion": {
+              "name": "issueVersion",
+              "isArray": false,
+              "type": "Int",
+              "isRequired": false,
+              "attributes": []
+            },
+            "status": {
+              "name": "status",
+              "isArray": false,
+              "type": "String",
+              "isRequired": true,
+              "attributes": []
+            },
+            "message": {
+              "name": "message",
+              "isArray": false,
+              "type": "String",
+              "isRequired": false,
+              "attributes": []
+            }
+          }
+        },
+        "EnsureFiscalYearTemplateResponse": {
+          "name": "EnsureFiscalYearTemplateResponse",
+          "fields": {
+            "classroomId": {
+              "name": "classroomId",
+              "isArray": false,
+              "type": "ID",
+              "isRequired": true,
+              "attributes": []
+            },
+            "fiscalYear": {
+              "name": "fiscalYear",
+              "isArray": false,
+              "type": "Int",
+              "isRequired": true,
+              "attributes": []
+            },
+            "yearPlanId": {
+              "name": "yearPlanId",
+              "isArray": false,
+              "type": "ID",
+              "isRequired": true,
+              "attributes": []
+            },
+            "createdYear": {
+              "name": "createdYear",
+              "isArray": false,
+              "type": "Boolean",
+              "isRequired": true,
+              "attributes": []
+            },
+            "createdTermCount": {
+              "name": "createdTermCount",
+              "isArray": false,
+              "type": "Int",
+              "isRequired": true,
+              "attributes": []
+            },
+            "createdMonthCount": {
+              "name": "createdMonthCount",
+              "isArray": false,
+              "type": "Int",
+              "isRequired": true,
+              "attributes": []
+            },
+            "status": {
+              "name": "status",
+              "isArray": false,
+              "type": "String",
+              "isRequired": true,
+              "attributes": []
+            },
+            "message": {
+              "name": "message",
+              "isArray": false,
+              "type": "String",
+              "isRequired": false,
+              "attributes": []
+            }
+          }
+        },
+        "EnsureFiscalYearTemplateV2Response": {
+          "name": "EnsureFiscalYearTemplateV2Response",
+          "fields": {
+            "tenantId": {
+              "name": "tenantId",
+              "isArray": false,
+              "type": "String",
+              "isRequired": true,
+              "attributes": []
+            },
+            "fiscalYear": {
+              "name": "fiscalYear",
+              "isArray": false,
+              "type": "Int",
+              "isRequired": true,
+              "attributes": []
+            },
+            "schoolAnnualPlanId": {
+              "name": "schoolAnnualPlanId",
+              "isArray": false,
+              "type": "ID",
+              "isRequired": true,
+              "attributes": []
+            },
+            "createdSchoolAnnualPlan": {
+              "name": "createdSchoolAnnualPlan",
+              "isArray": false,
+              "type": "Boolean",
+              "isRequired": true,
+              "attributes": []
+            },
+            "createdAgeTargetCount": {
+              "name": "createdAgeTargetCount",
+              "isArray": false,
+              "type": "Int",
+              "isRequired": true,
+              "attributes": []
+            },
+            "createdClassAnnualPlanCount": {
+              "name": "createdClassAnnualPlanCount",
+              "isArray": false,
+              "type": "Int",
+              "isRequired": true,
+              "attributes": []
+            },
+            "createdQuarterPlanCount": {
+              "name": "createdQuarterPlanCount",
+              "isArray": false,
+              "type": "Int",
+              "isRequired": true,
+              "attributes": []
+            },
+            "createdMonthPlanCount": {
+              "name": "createdMonthPlanCount",
+              "isArray": false,
+              "type": "Int",
+              "isRequired": true,
+              "attributes": []
+            },
+            "status": {
+              "name": "status",
+              "isArray": false,
+              "type": "String",
+              "isRequired": true,
+              "attributes": []
+            },
+            "message": {
+              "name": "message",
+              "isArray": false,
+              "type": "String",
+              "isRequired": false,
+              "attributes": []
+            }
+          }
+        },
+        "IssueScheduleWeekFromScheduleMonthResponse": {
+          "name": "IssueScheduleWeekFromScheduleMonthResponse",
+          "fields": {
+            "scheduleMonthId": {
+              "name": "scheduleMonthId",
+              "isArray": false,
+              "type": "ID",
+              "isRequired": true,
+              "attributes": []
+            },
+            "scheduleWeekId": {
+              "name": "scheduleWeekId",
+              "isArray": false,
+              "type": "ID",
+              "isRequired": true,
+              "attributes": []
+            },
+            "weekStartDate": {
+              "name": "weekStartDate",
+              "isArray": false,
+              "type": "AWSDate",
+              "isRequired": true,
+              "attributes": []
+            },
+            "weekEndDate": {
+              "name": "weekEndDate",
+              "isArray": false,
+              "type": "AWSDate",
+              "isRequired": true,
+              "attributes": []
+            },
+            "createdWeek": {
+              "name": "createdWeek",
+              "isArray": false,
+              "type": "Boolean",
+              "isRequired": true,
+              "attributes": []
+            },
+            "createdItemCount": {
+              "name": "createdItemCount",
+              "isArray": false,
+              "type": "Int",
+              "isRequired": true,
+              "attributes": []
+            },
+            "status": {
+              "name": "status",
+              "isArray": false,
+              "type": "String",
+              "isRequired": true,
+              "attributes": []
+            },
+            "message": {
+              "name": "message",
               "isArray": false,
               "type": "String",
               "isRequired": false,
@@ -1430,21 +7614,221 @@
               "isRequired": true
             }
           }
+        },
+        "analyzePractice": {
+          "name": "analyzePractice",
+          "isArray": false,
+          "type": {
+            "nonModel": "AnalyzePracticeResponse"
+          },
+          "isRequired": false,
+          "arguments": {
+            "practiceId": {
+              "name": "practiceId",
+              "isArray": false,
+              "type": "String",
+              "isRequired": true
+            }
+          }
+        },
+        "suggestPracticeLinks": {
+          "name": "suggestPracticeLinks",
+          "isArray": false,
+          "type": {
+            "nonModel": "SuggestPracticeLinksResponse"
+          },
+          "isRequired": false,
+          "arguments": {
+            "practiceId": {
+              "name": "practiceId",
+              "isArray": false,
+              "type": "String",
+              "isRequired": true
+            }
+          }
+        },
+        "registerPracticeLinks": {
+          "name": "registerPracticeLinks",
+          "isArray": false,
+          "type": {
+            "nonModel": "RegisterPracticeLinksResponse"
+          },
+          "isRequired": false,
+          "arguments": {
+            "practiceCode": {
+              "name": "practiceCode",
+              "isArray": false,
+              "type": "String",
+              "isRequired": true
+            }
+          }
+        },
+        "issueScheduleDayFromScheduleWeek": {
+          "name": "issueScheduleDayFromScheduleWeek",
+          "isArray": false,
+          "type": {
+            "nonModel": "IssueScheduleDayFromScheduleWeekResponse"
+          },
+          "isRequired": false,
+          "arguments": {
+            "scheduleWeekId": {
+              "name": "scheduleWeekId",
+              "isArray": false,
+              "type": "ID",
+              "isRequired": true
+            },
+            "targetDate": {
+              "name": "targetDate",
+              "isArray": false,
+              "type": "AWSDate",
+              "isRequired": true
+            },
+            "issueType": {
+              "name": "issueType",
+              "isArray": false,
+              "type": {
+                "enum": "ScheduleIssueType"
+              },
+              "isRequired": false
+            }
+          }
+        },
+        "analyzeTranscriptObservations": {
+          "name": "analyzeTranscriptObservations",
+          "isArray": false,
+          "type": {
+            "nonModel": "AnalyzeTranscriptObservationsResponse"
+          },
+          "isRequired": false,
+          "arguments": {
+            "scheduleDayId": {
+              "name": "scheduleDayId",
+              "isArray": false,
+              "type": "ID",
+              "isRequired": true
+            },
+            "scheduleDayItemId": {
+              "name": "scheduleDayItemId",
+              "isArray": false,
+              "type": "ID",
+              "isRequired": true
+            },
+            "transcriptRecordId": {
+              "name": "transcriptRecordId",
+              "isArray": false,
+              "type": "ID",
+              "isRequired": true
+            }
+          }
+        },
+        "ensureFiscalYearTemplate": {
+          "name": "ensureFiscalYearTemplate",
+          "isArray": false,
+          "type": {
+            "nonModel": "EnsureFiscalYearTemplateResponse"
+          },
+          "isRequired": false,
+          "arguments": {
+            "classroomId": {
+              "name": "classroomId",
+              "isArray": false,
+              "type": "ID",
+              "isRequired": true
+            },
+            "fiscalYear": {
+              "name": "fiscalYear",
+              "isArray": false,
+              "type": "Int",
+              "isRequired": true
+            }
+          }
+        },
+        "issueScheduleWeekFromScheduleMonth": {
+          "name": "issueScheduleWeekFromScheduleMonth",
+          "isArray": false,
+          "type": {
+            "nonModel": "IssueScheduleWeekFromScheduleMonthResponse"
+          },
+          "isRequired": false,
+          "arguments": {
+            "scheduleMonthId": {
+              "name": "scheduleMonthId",
+              "isArray": false,
+              "type": "ID",
+              "isRequired": true
+            },
+            "weekStartDate": {
+              "name": "weekStartDate",
+              "isArray": false,
+              "type": "AWSDate",
+              "isRequired": true
+            },
+            "weekEndDate": {
+              "name": "weekEndDate",
+              "isArray": false,
+              "type": "AWSDate",
+              "isRequired": true
+            },
+            "weekNo": {
+              "name": "weekNo",
+              "isArray": false,
+              "type": "Int",
+              "isRequired": true
+            },
+            "issueType": {
+              "name": "issueType",
+              "isArray": false,
+              "type": {
+                "enum": "ScheduleIssueType"
+              },
+              "isRequired": false
+            }
+          }
+        },
+        "ensureFiscalYearTemplateV2": {
+          "name": "ensureFiscalYearTemplateV2",
+          "isArray": false,
+          "type": {
+            "nonModel": "EnsureFiscalYearTemplateV2Response"
+          },
+          "isRequired": false,
+          "arguments": {
+            "tenantId": {
+              "name": "tenantId",
+              "isArray": false,
+              "type": "String",
+              "isRequired": true
+            },
+            "fiscalYear": {
+              "name": "fiscalYear",
+              "isArray": false,
+              "type": "Int",
+              "isRequired": true
+            }
+          }
         }
       }
     }
   },
   "storage": {
     "aws_region": "ap-northeast-1",
-    "bucket_name": "amplify-amplifyvitereactt-hoiku360storagebucket7f2-woi3wkiuuxk9",
+    "bucket_name": "amplify-amplifyvitereactt-hoiku360storagebucket7f2-2zaheribcpjt",
     "buckets": [
       {
         "name": "hoiku360Storage",
-        "bucket_name": "amplify-amplifyvitereactt-hoiku360storagebucket7f2-woi3wkiuuxk9",
+        "bucket_name": "amplify-amplifyvitereactt-hoiku360storagebucket7f2-2zaheribcpjt",
         "aws_region": "ap-northeast-1",
         "paths": {
           "tenants/${cognito-identity.amazonaws.com:sub}/*": {
             "entityidentity": [
+              "get",
+              "list",
+              "write",
+              "delete"
+            ]
+          },
+          "practice-audio/*": {
+            "authenticated": [
               "get",
               "list",
               "write",

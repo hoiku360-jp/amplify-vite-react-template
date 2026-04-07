@@ -19,9 +19,11 @@ type DigestJson = {
 };
 
 function safeParseJson(
-  text: string | null | undefined
+  text: string | null | undefined,
 ): { ok: true; json: DigestJson } | { ok: false; error: string } {
-  if (!text || text.trim().length === 0) return { ok: false, error: "body が空です" };
+  if (!text || text.trim().length === 0) {
+    return { ok: false, error: "body が空です" };
+  }
   try {
     const json = JSON.parse(text);
     return { ok: true, json };
@@ -37,24 +39,29 @@ function ymddate(d: Date) {
   return `${y}-${m}-${day}`;
 }
 
-export default function DailyDigestPanel(props: { tenantId: string; owner: string }) {
+function digestKey(d: DigestRow | null | undefined) {
+  if (!d) return "";
+  return `${d.tenantId ?? ""}#${(d as any).ownerKey ?? ""}#${d.digestDate ?? ""}`;
+}
+
+export default function DailyDigestPanel(props: {
+  tenantId: string;
+  owner: string;
+}) {
   const { tenantId, owner } = props;
 
-  // ✅ 今は ownerKey = owner（将来 sub に変えるならここだけ変える）
   const ownerKey = owner;
-
   const client = useMemo(() => generateClient<Schema>(), []);
+
   const [loading, setLoading] = useState(false);
   const [err, setErr] = useState<string | null>(null);
-
   const [digests, setDigests] = useState<DigestRow[]>([]);
   const [selected, setSelected] = useState<DigestRow | null>(null);
-
   const [parsed, setParsed] = useState<
     { ok: true; json: DigestJson } | { ok: false; error: string } | null
   >(null);
-
   const [showRaw, setShowRaw] = useState(false);
+  const [sourceMode, setSourceMode] = useState<string>("");
 
   async function refresh() {
     setLoading(true);
@@ -62,16 +69,35 @@ export default function DailyDigestPanel(props: { tenantId: string; owner: strin
 
     try {
       let items: DigestRow[] = [];
-
-      // ✅ queryField があるなら優先（新しく作った queryField 名）
       const anyClient: any = client as any;
-      const hasQueryField =
+
+      const qfOnModel =
+        typeof anyClient.models?.DailyDigest?.listDigestsByTenantOwnerDate ===
+        "function";
+
+      const qfOnQueries =
         typeof anyClient.queries?.listDigestsByTenantOwnerDate === "function";
 
-      if (hasQueryField) {
+      if (qfOnModel) {
+        setSourceMode("queryField(models.DailyDigest)");
+        const res = await anyClient.models.DailyDigest.listDigestsByTenantOwnerDate(
+          {
+            tenantId,
+            ownerKey,
+            sortDirection: "DESC",
+            limit: 60,
+          },
+        );
+
+        if (res?.errors?.length) {
+          throw new Error(res.errors.map((e: any) => e.message).join("\n"));
+        }
+
+        items = (res?.data ?? []) as DigestRow[];
+      } else if (qfOnQueries) {
+        setSourceMode("queryField(queries)");
         const res = await anyClient.queries.listDigestsByTenantOwnerDate({
           tenantId,
-          // sortKeys が ownerKey, digestDate の順なので ownerKey は必須
           ownerKey,
           sortDirection: "DESC",
           limit: 60,
@@ -83,7 +109,7 @@ export default function DailyDigestPanel(props: { tenantId: string; owner: strin
 
         items = (res?.data ?? []) as DigestRow[];
       } else {
-        // ✅ フォールバック：モデル list で tenantId + ownerKey で絞る
+        setSourceMode("model.list fallback");
         const res = await client.models.DailyDigest.list({
           filter: {
             tenantId: { eq: tenantId },
@@ -97,37 +123,47 @@ export default function DailyDigestPanel(props: { tenantId: string; owner: strin
         }
 
         items = (res.data ?? []) as DigestRow[];
-        items.sort((a, b) => (b.digestDate ?? "").localeCompare(a.digestDate ?? ""));
+        items.sort((a, b) =>
+          (b.digestDate ?? "").localeCompare(a.digestDate ?? ""),
+        );
       }
 
       setDigests(items);
 
-      // 選択が無い場合は最新を自動選択
-      if (!selected && items.length > 0) {
-        setSelected(items[0]);
-      } else if (selected) {
-        // 既に選択中なら同キーの最新状態を再セット
-        const key = `${selected.tenantId}#${(selected as any).ownerKey ?? ""}#${selected.digestDate}`;
-        const found = items.find(
-          (x) =>
-            `${x.tenantId}#${(x as any).ownerKey ?? ""}#${x.digestDate}` === key
-        );
-        if (found) setSelected(found);
+      if (items.length === 0) {
+        setSelected(null);
+        return;
       }
+
+      const currentKey = digestKey(selected);
+      if (!currentKey) {
+        setSelected(items[0]);
+        return;
+      }
+
+      const found = items.find((x) => digestKey(x) === currentKey);
+      setSelected(found ?? items[0]);
     } catch (e: any) {
+      console.error(e);
       setErr(e?.message ?? String(e));
+      setDigests([]);
+      setSelected(null);
     } finally {
       setLoading(false);
     }
   }
 
-  // 初回ロード
   useEffect(() => {
+    if (!tenantId || !ownerKey) {
+      setErr("tenantId または ownerKey が空です");
+      setDigests([]);
+      setSelected(null);
+      return;
+    }
     refresh();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [tenantId, ownerKey]);
 
-  // 選択が変わったら body を parse
   useEffect(() => {
     if (!selected) {
       setParsed(null);
@@ -136,7 +172,6 @@ export default function DailyDigestPanel(props: { tenantId: string; owner: strin
     setParsed(safeParseJson(selected.body));
   }, [selected]);
 
-  // “今日/昨日”のクイック選択
   const today = ymddate(new Date());
   const yesterday = ymddate(new Date(Date.now() - 24 * 60 * 60 * 1000));
 
@@ -150,7 +185,14 @@ export default function DailyDigestPanel(props: { tenantId: string; owner: strin
 
   return (
     <div style={{ display: "grid", gap: 12 }}>
-      <div style={{ display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap" }}>
+      <div
+        style={{
+          display: "flex",
+          gap: 10,
+          alignItems: "center",
+          flexWrap: "wrap",
+        }}
+      >
         <div style={{ fontWeight: 700 }}>Daily Digest</div>
 
         <div style={{ color: "#666" }}>
@@ -161,6 +203,10 @@ export default function DailyDigestPanel(props: { tenantId: string; owner: strin
           owner: <code>{owner}</code>
         </div>
 
+        <div style={{ color: "#666" }}>
+          mode: <code>{sourceMode || "-"}</code>
+        </div>
+
         <button onClick={refresh} disabled={loading}>
           {loading ? "Refreshing..." : "Refresh"}
         </button>
@@ -168,8 +214,12 @@ export default function DailyDigestPanel(props: { tenantId: string; owner: strin
         <button
           onClick={() => {
             const found = digests.find((d) => d.digestDate === today);
-            if (found) setSelected(found);
-            else setErr(`今日(${today})のDigestが見つかりませんでした`);
+            if (found) {
+              setErr(null);
+              setSelected(found);
+            } else {
+              setErr(`今日(${today})のDigestが見つかりませんでした`);
+            }
           }}
           disabled={loading}
         >
@@ -179,15 +229,26 @@ export default function DailyDigestPanel(props: { tenantId: string; owner: strin
         <button
           onClick={() => {
             const found = digests.find((d) => d.digestDate === yesterday);
-            if (found) setSelected(found);
-            else setErr(`昨日(${yesterday})のDigestが見つかりませんでした`);
+            if (found) {
+              setErr(null);
+              setSelected(found);
+            } else {
+              setErr(`昨日(${yesterday})のDigestが見つかりませんでした`);
+            }
           }}
           disabled={loading}
         >
           昨日
         </button>
 
-        <label style={{ marginLeft: "auto", display: "flex", gap: 6, alignItems: "center" }}>
+        <label
+          style={{
+            marginLeft: "auto",
+            display: "flex",
+            gap: 6,
+            alignItems: "center",
+          }}
+        >
           <input
             type="checkbox"
             checked={showRaw}
@@ -219,25 +280,22 @@ export default function DailyDigestPanel(props: { tenantId: string; owner: strin
           alignItems: "start",
         }}
       >
-        {/* 左：一覧 */}
         <div style={cardStyle}>
           <div style={headerStyle}>一覧（最新順）</div>
 
           {digests.length === 0 ? (
             <div style={{ color: "#666" }}>
-              まだ DailyDigest がありません。Scheduler が動くか、手動で daily-digest を実行して作成してください。
+              まだ DailyDigest がありません。Scheduler が動くか、手動で
+              daily-digest を実行して作成してください。
             </div>
           ) : (
             <div style={{ display: "grid", gap: 6 }}>
               {digests.map((d) => {
-                const isSel =
-                  selected?.tenantId === d.tenantId &&
-                  (selected as any)?.ownerKey === (d as any)?.ownerKey &&
-                  selected?.digestDate === d.digestDate;
+                const isSel = digestKey(selected) === digestKey(d);
 
                 return (
                   <button
-                    key={`${d.tenantId}#${(d as any).ownerKey ?? ""}#${d.digestDate}`}
+                    key={digestKey(d)}
                     onClick={() => setSelected(d)}
                     style={{
                       textAlign: "left",
@@ -259,10 +317,16 @@ export default function DailyDigestPanel(props: { tenantId: string; owner: strin
           )}
         </div>
 
-        {/* 右：詳細 */}
         <div style={{ display: "grid", gap: 12 }}>
           <div style={cardStyle}>
-            <div style={{ display: "flex", alignItems: "baseline", gap: 10, flexWrap: "wrap" }}>
+            <div
+              style={{
+                display: "flex",
+                alignItems: "baseline",
+                gap: 10,
+                flexWrap: "wrap",
+              }}
+            >
               <div style={{ fontWeight: 800, fontSize: 18 }}>
                 {selected?.title ?? "（未選択）"}
               </div>
@@ -280,7 +344,6 @@ export default function DailyDigestPanel(props: { tenantId: string; owner: strin
               </div>
             ) : parsed?.ok ? (
               <div style={{ marginTop: 12, display: "grid", gap: 12 }}>
-                {/* ✅ JSONに owner/ownerKey が入っていれば表示（デバッグ用） */}
                 {(parsed.json.owner || parsed.json.ownerKey) && (
                   <div style={{ color: "#666", fontSize: 12 }}>
                     json.owner: <b>{parsed.json.owner ?? "-"}</b> / json.ownerKey:{" "}
@@ -352,7 +415,9 @@ export default function DailyDigestPanel(props: { tenantId: string; owner: strin
 
                 {showRaw && (
                   <div style={{ marginTop: 6 }}>
-                    <div style={{ fontWeight: 700, marginBottom: 6 }}>raw JSON</div>
+                    <div style={{ fontWeight: 700, marginBottom: 6 }}>
+                      raw JSON
+                    </div>
                     <pre
                       style={{
                         margin: 0,

@@ -1,0 +1,7 @@
+node_modules
+dist
+coverage
+.amplify
+.next
+build
+amplify_outputs.json

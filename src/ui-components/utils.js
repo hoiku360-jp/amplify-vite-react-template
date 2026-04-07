@@ -1,17 +1,16 @@
-
 /* eslint-disable */
 export const findChildOverrides = (overrides, elementHierarchy) => {
   if (!overrides) {
     return null;
   }
   const filteredOverrides = Object.entries(overrides).filter((m) =>
-    m[0].startsWith(elementHierarchy)
+    m[0].startsWith(elementHierarchy),
   );
   return Object.assign(
     {},
     ...Array.from(filteredOverrides, ([k, v]) => ({
       [k.replace(elementHierarchy, "")]: v,
-    }))
+    })),
   );
 };
 
@@ -29,7 +28,7 @@ export const getOverrideProps = (overrides, elementHierarchy) => {
 export const getOverridesFromVariants = (variants, props) => {
   const variantValueKeys = [
     ...new Set(
-      variants.flatMap((variant) => Object.keys(variant.variantValues))
+      variants.flatMap((variant) => Object.keys(variant.variantValues)),
     ),
   ];
   const variantValuesFromProps = Object.keys(props)
@@ -45,14 +44,14 @@ export const getOverridesFromVariants = (variants, props) => {
       Object.keys(variantValues).length ===
         Object.keys(variantValuesFromProps).length &&
       Object.entries(variantValues).every(
-        ([key, value]) => variantValuesFromProps[key] === value
+        ([key, value]) => variantValuesFromProps[key] === value,
       )
     );
   });
   return matchedVariants.reduce((overrides, variant) => {
     return { ...overrides, ...variant.overrides };
   }, {});
-}
+};
 
 export const mergeVariantsAndOverrides = (variants, overrides) => {
   if (!variants && !overrides) {
@@ -66,13 +65,13 @@ export const mergeVariantsAndOverrides = (variants, overrides) => {
   }
   const overrideKeys = new Set(Object.keys(overrides));
   const sharedKeys = Object.keys(variants).filter((variantKey) =>
-    overrideKeys.has(variantKey)
+    overrideKeys.has(variantKey),
   );
   const merged = Object.fromEntries(
     sharedKeys.map((sharedKey) => [
       sharedKey,
       { ...variants[sharedKey], ...overrides[sharedKey] },
-    ])
+    ]),
   );
   return {
     ...variants,

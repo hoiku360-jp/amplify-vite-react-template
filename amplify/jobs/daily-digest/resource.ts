@@ -3,6 +3,7 @@ import { defineFunction } from "@aws-amplify/backend";
 export const dailyDigest = defineFunction({
   name: "daily-digest",
   entry: "./handler.ts",
+  runtime: 22,
 
   // 毎日 09:05 JST（= 00:05 UTC）
   schedule: "5 0 * * ? *",

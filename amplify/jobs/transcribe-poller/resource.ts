@@ -4,6 +4,7 @@ import { defineFunction } from "@aws-amplify/backend";
 export const transcribePoller = defineFunction({
   name: "transcribe-poller",
   entry: "./handler.ts",
+  runtime: 22,
   schedule: "every 1m",
 
   // ✅ 追加：TranscriptFileUri の fetch / S3 fallback があるので

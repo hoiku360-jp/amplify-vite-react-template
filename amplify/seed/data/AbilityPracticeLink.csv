@@ -1,84 +1,21 @@
-﻿,ability/Practice,Practice,みんなでかけっこ、遊びで走る楽しさと応援,砂場でレストランごっこ、友達と役割遊び,園庭での水遊びコーナーと身支度習慣,並びっこ競争で手つなぎ・列歩きと交通安全,鬼ごっこでルールの理解、友だち同士で話し合い,園庭と散歩で交通安全の体験,ミニ・ビオトープで自然観察,種まき・苗植えで植物の成長を毎日観察,大きな紙を共有して友だちと表現・製作遊び,絵具パレット共有のフィンガーペインティング遊び,給食の汁物配膳に挑戦して当番活動,製作・手先遊びコーナーで室内じっくり遊び,話し合い活動で友だちの気持ちに気づく,音楽に合わせてみんなで歌って動く表現遊び,親子お話会で絵本・紙芝居の世界を楽しむ,園内安全ツアーで危険箇所を見つけて学ぶ,保護者メッセージカードで喜びを共有し手紙遊びへ,卒園児へ「ありがとうコーナー」壁面づくり
-子どもの姿(英),ability,code,PR-OUT-0001,PR-OUT-0002,PR-OUT-0003,PR-OUT-0004,PR-OUT-0005,PR-OUT-0006,PR-OUT-0007,PR-OUT-0008,PR-IN-0001,PR-IN-0002,PR-IN-0003,PR-IN-0004,PR-IN-0005,PR-IN-0006,PR-IN-0007,PR-IN-0008,PR-IN-0009,PR-IN-0010
-Healthy Mind and Body,主体的・充実感ある遊び,1101001,3,2,3,,2,,3,2,,2,3,3,,3,,,,2
-Healthy Mind and Body,のびのびと心身を動かす遊び,1101002,3,2,3,2,3,,,,,1,,,,3,,,,
-Healthy Mind and Body,見通しをもった計画的な遊び,1101003,,1,,,1,,,2,,1,3,3,,,,,,
-Healthy Mind and Body,健康と安全を育む遊び習慣,1101004,2,1,3,3,1,3,,1,,,2,,,2,,3,,
-,健康な心と体,1101,8,6,9,5,7,3,3,5,0,4,8,6,0,8,0,3,0,2
-,健康,11,8,6,9,5,7,3,3,5,0,4,8,6,0,8,0,3,0,2
-Sense of Independence,主体的な環境への参加,2101001,2,2,3,,3,,,2,3,,3,,2,2,,,,2
-Sense of Independence,しなければならないことの自覚,2101002,,,3,,2,3,,2,,,3,,2,,,3,,1
-Sense of Independence,自力で考え工夫する力,2101003,,2,2,2,2,,,2,2,,3,3,,,,,,2
-Sense of Independence,諦めずにやり遂げる力,2101004,2,,,,2,,,2,,,2,3,,,,,,2
-Sense of Independence,達成感の獲得,2101005,3,2,2,,2,,,2,3,,3,3,,2,,,,3
-Sense of Independence,自信をもった行動,2101006,3,2,2,,2,2,,2,2,,3,,2,2,,,,2
-,自立心,2101,10,8,12,2,13,5,0,12,10,0,17,9,6,6,0,3,0,12
-Cooperativeness,友達と思いや考えを共有,2102001,3,3,2,2,3,,2,2,3,3,3,3,3,3,,2,2,3
-Cooperativeness,友達との共通目的の形成,2102002,3,3,2,2,3,2,1,2,3,3,3,3,3,3,,2,2,3
-Cooperativeness,協働的な思考と工夫,2102003,,3,2,2,2,2,1,2,3,3,3,3,3,3,,,2,3
-Cooperativeness,協力して行動する力,2102004,2,3,2,3,3,2,1,2,3,3,3,3,3,3,,2,2,3
-Cooperativeness,友達と充実感持った達成,2102005,3,3,2,2,2,2,1,2,3,3,3,3,3,3,,,2,3
-,協同性,2102,11,15,10,11,13,8,6,10,15,15,15,15,15,15,0,6,10,15
-Emerging Morality and Norm Awareness,善悪の判断,2103001,,1,,1,2,2,,,,,,,,,,3,,
-Emerging Morality and Norm Awareness,行動の振り返り,2103002,,1,,1,2,2,,,,,2,,,,,2,,
-Emerging Morality and Norm Awareness,共感と他者視点,2103003,3,2,,2,2,,,,2,,2,,3,,,2,3,3
-Emerging Morality and Norm Awareness,規範の必要性の理解,2103004,2,2,,3,3,3,,,,,2,,3,,,3,,
-Emerging Morality and Norm Awareness,感情調整と折り合い,2103005,2,2,,2,3,,,,2,,2,,3,2,,2,,2
-Emerging Morality and Norm Awareness,ルールの創出と遵守,2103006,2,2,,3,3,3,,,1,,2,,3,2,,3,,
-,道徳性・規範意識の芽生え,2103,9,10,0,12,15,10,0,0,5,0,10,0,12,4,0,15,3,5
-Engagement with Social Life,家族を大切にする気持ち,2104001,,,,,,,,,,,,,,,3,,3,
-Engagement with Social Life,地域の人々との触れ合い,2104002,,,,,,,,,,,,,,,1,,,
-Engagement with Social Life,人との多様な関わり方への気付き,2104003,,,,,2,,,,,,,,2,,1,,2,
-Engagement with Social Life,相手の気持ちを考えた関わり,2104004,,,,2,2,,,,2,,,,3,,2,,3,
-Engagement with Social Life,役立つ喜びと地域への親しみ,2104005,,,,,,,,,,,,,,,1,,,
-,社会生活との関わり,2104,0,0,0,2,4,0,0,0,2,0,0,0,5,0,8,0,8,0
-,人間関係,21,30,33,22,27,45,23,6,22,32,15,42,24,38,25,8,24,21,32
-Engagement with Social Life,さまざまな環境への主体的関わり,3101001,,,,,1,2,,,,,,1,,,,,,
-Engagement with Social Life,必要な情報の収集と活用,3101002,,,,2,,3,,,,,,1,,,,2,,
-Engagement with Social Life,情報に基づく判断と伝達,3101003,,,,2,,3,,,,,,,,,,2,,
-Engagement with Social Life,公共施設を大切に利用する姿勢,3101004,,,,,,1,,,,,,,,,,2,,
-Engagement with Social Life,社会とのつながりの意識,3101005,,,,2,,2,,,,,,,,,,,,
-,社会生活との関わり,3101,0,0,0,6,1,11,0,0,0,0,0,2,0,0,0,6,0,0
-Emerging Thinking Skills,身近な事象への主体的な関わり,3102001,,2,2,,,2,2,3,,,,,,,,,,
-Emerging Thinking Skills,物の性質や仕組みの発見,3102002,,2,2,,,,2,3,,,,,,,,,,
-Emerging Thinking Skills,思考・予測・工夫する力,3102003,,2,2,3,2,2,2,3,3,,,,,,,,,
-Emerging Thinking Skills,多様な関わりを楽しむ,3102004,,,2,,,,2,2,2,,,,,,,,,
-Emerging Thinking Skills,友達の多様な考えへの気付き,3102005,,2,1,1,1,,2,2,2,,,,,,,,,
-Emerging Thinking Skills,自己判断や再考と新しい発想の喜び,3102006,,2,2,,,2,,2,2,,,,,,,,,
-,思考力の芽生え,3102,0,10,11,4,3,6,10,15,9,0,0,0,0,0,0,0,0,0
-Connection with Nature and Respect for Life,自然に触れて感動する体験,3103001,,,2,,,,3,3,,,,,,,,,,
-Connection with Nature and Respect for Life,自然の変化を感じ取る感性,3103002,,,2,,,,3,3,,,,,,,,,,
-Connection with Nature and Respect for Life,好奇心や探究心にもとづく表現,3103003,,,,,,,3,3,,,,,,,,,,
-Connection with Nature and Respect for Life,自然への愛情と畏敬,3103004,,,1,,,,3,3,,,,,,,,,,
-Connection with Nature and Respect for Life,生命の不思議さと尊さの認識,3103005,,,,,,,3,3,,,,,,,,,,
-Connection with Nature and Respect for Life,動植物を思いやり大切に扱う態度,3103006,,,,,,,3,3,,,,,,,,,,
-,自然との関わり・生命尊重,3103,0,0,5,0,0,0,18,18,0,0,0,0,0,0,0,0,0,0
-"Interest and Sensitivity toward Numbers, Shapes, Signs, and Letters",数量や図形に親しむ体験の積み重ね,3104001,,,1,,,,,,,,2,,,,,,,
-"Interest and Sensitivity toward Numbers, Shapes, Signs, and Letters",数量や図形を遊びや生活で活用する力,3104002,,,1,,,,,,,,2,,,,,,,
-"Interest and Sensitivity toward Numbers, Shapes, Signs, and Letters",標識の役割への気付き,3104003,,,,,,3,,,,,,,,,,3,,
-"Interest and Sensitivity toward Numbers, Shapes, Signs, and Letters",標識を手掛かりに行動する力,3104004,,,,,,3,,,,,,,,,,3,,
-"Interest and Sensitivity toward Numbers, Shapes, Signs, and Letters",数量や図形、標識への興味・感覚の形成,3104005,,,,,,,,,,,1,,,,,1,,
-,,3104,0,0,2,0,0,6,0,0,0,0,5,0,0,0,0,7,0,0
-,環境,31,0,10,18,10,4,23,28,33,9,0,5,2,0,0,0,13,0,0
-"Interest and Sensitivity toward Numbers, Shapes, Signs, and Letters",文字や記号に親しむ体験の積み重ね,4101001,,,,,,,,,,,,,,,,,,2
-"Interest and Sensitivity toward Numbers, Shapes, Signs, and Letters",文字や記号の役割理解,4101002,,,,,,,,,,,,,,,,,,2
-"Interest and Sensitivity toward Numbers, Shapes, Signs, and Letters",文字や記号を用いた表現・伝達,4101003,,,,,,,,,,,,,,,,,3,3
-"Interest and Sensitivity toward Numbers, Shapes, Signs, and Letters",文字や記号を必要に応じて活用する力,4101004,,,,,,,,,,,,,,,,,3,2
-"Interest and Sensitivity toward Numbers, Shapes, Signs, and Letters",文字や記号への興味・感覚の形成,4101005,,,,,,,,,,,,,,,,,3,
-,数量や図形、標識や文字などへの関心・感覚,4101,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,9,9
-Communication through Language,保育士と友達との心の交流,4102001,,3,,,1,,,,2,2,3,,2,3,,,3,3
-Communication through Language,絵本や物語への親しみ,4102002,,,,,,,,,,,,,,,3,,,
-Communication through Language,豊かな語彙と表現の習得,4102003,,3,,,,,,,1,2,2,,1,2,2,,2,2
-Communication through Language,経験や考えの言語表現,4102004,,3,,2,1,,,,2,2,2,2,3,2,2,,3,3
-Communication through Language,相手の話を注意深く聴く力,4102005,,3,1,3,,,,,2,2,3,2,3,2,3,,2,2
-Communication through Language,言葉による伝え合いの楽しみ,4102006,,3,2,,,,,,2,2,2,2,3,3,2,,3,3
-,言葉による伝え合い,4102,0,15,3,5,2,0,0,0,9,10,12,6,12,12,12,0,13,13
-,言葉,41,0,15,3,5,2,0,0,0,9,10,12,6,12,12,12,0,22,22
-Rich Sensibility and Expression,感動を体験して感性を働かせる,5101001,,2,2,,,,,,2,,,2,,3,2,,2,3
-Rich Sensibility and Expression,素材や表現方法への気付き,5101002,,2,2,,,,,,3,3,,2,,2,1,,2,3
-Rich Sensibility and Expression,自己で表現することの実践,5101003,,3,2,,,,,,3,3,,3,,3,,,3,3
-Rich Sensibility and Expression,協同表現の楽しみ,5101004,,3,2,,1,,,,3,3,,3,,3,1,,2,3
-Rich Sensibility and Expression,表現の喜びと達成感,5101005,,3,2,,,,,,3,3,,3,,3,,,3,3
-Rich Sensibility and Expression,表現への意欲・モチベーション,5101006,,,2,,,,,,3,3,,3,,3,,,3,3
-,豊かな感性と表現,5101,0,13,12,0,1,0,0,0,17,15,0,16,0,17,4,0,15,18
-,表現,51,0,13,12,0,1,0,0,0,17,15,0,16,0,17,4,0,15,18
+﻿,子どもの姿(英),Healthy Mind and Body,Healthy Mind and Body,Healthy Mind and Body,Healthy Mind and Body,,,Sense of Independence,Sense of Independence,Sense of Independence,Sense of Independence,Sense of Independence,Sense of Independence,,Cooperativeness,Cooperativeness,Cooperativeness,Cooperativeness,Cooperativeness,,Emerging Morality and Norm Awareness,Emerging Morality and Norm Awareness,Emerging Morality and Norm Awareness,Emerging Morality and Norm Awareness,Emerging Morality and Norm Awareness,Emerging Morality and Norm Awareness,,Engagement with Social Life,Engagement with Social Life,Engagement with Social Life,Engagement with Social Life,Engagement with Social Life,,,Engagement with Social Life,Engagement with Social Life,Engagement with Social Life,Engagement with Social Life,Engagement with Social Life,,Emerging Thinking Skills,Emerging Thinking Skills,Emerging Thinking Skills,Emerging Thinking Skills,Emerging Thinking Skills,Emerging Thinking Skills,,Connection with Nature and Respect for Life,Connection with Nature and Respect for Life,Connection with Nature and Respect for Life,Connection with Nature and Respect for Life,Connection with Nature and Respect for Life,Connection with Nature and Respect for Life,,"Interest and Sensitivity toward Numbers, Shapes, Signs, and Letters","Interest and Sensitivity toward Numbers, Shapes, Signs, and Letters","Interest and Sensitivity toward Numbers, Shapes, Signs, and Letters","Interest and Sensitivity toward Numbers, Shapes, Signs, and Letters","Interest and Sensitivity toward Numbers, Shapes, Signs, and Letters",,,"Interest and Sensitivity toward Numbers, Shapes, Signs, and Letters","Interest and Sensitivity toward Numbers, Shapes, Signs, and Letters","Interest and Sensitivity toward Numbers, Shapes, Signs, and Letters","Interest and Sensitivity toward Numbers, Shapes, Signs, and Letters","Interest and Sensitivity toward Numbers, Shapes, Signs, and Letters",,Communication through Language,Communication through Language,Communication through Language,Communication through Language,Communication through Language,Communication through Language,,,Rich Sensibility and Expression,Rich Sensibility and Expression,Rich Sensibility and Expression,Rich Sensibility and Expression,Rich Sensibility and Expression,Rich Sensibility and Expression,,
+ability/Practice,ability,主体的・充実感ある遊び,のびのびと心身を動かす遊び,見通しをもった計画的な遊び,健康と安全を育む遊び習慣,健康な心と体,健康,主体的な環境への参加,しなければならないことの自覚,自力で考え工夫する力,諦めずにやり遂げる力,達成感の獲得,自信をもった行動,自立心,友達と思いや考えを共有,友達との共通目的の形成,協働的な思考と工夫,協力して行動する力,友達と充実感持った達成,協同性,善悪の判断,行動の振り返り,共感と他者視点,規範の必要性の理解,感情調整と折り合い,ルールの創出と遵守,道徳性・規範意識の芽生え,家族を大切にする気持ち,地域の人々との触れ合い,人との多様な関わり方への気付き,相手の気持ちを考えた関わり,役立つ喜びと地域への親しみ,社会生活との関わり,人間関係,さまざまな環境への主体的関わり,必要な情報の収集と活用,情報に基づく判断と伝達,公共施設を大切に利用する姿勢,社会とのつながりの意識,社会生活との関わり,身近な事象への主体的な関わり,物の性質や仕組みの発見,思考・予測・工夫する力,多様な関わりを楽しむ,友達の多様な考えへの気付き,自己判断や再考と新しい発想の喜び,思考力の芽生え,自然に触れて感動する体験,自然の変化を感じ取る感性,好奇心や探究心にもとづく表現,自然への愛情と畏敬,生命の不思議さと尊さの認識,動植物を思いやり大切に扱う態度,自然との関わり・生命尊重,数量や図形に親しむ体験の積み重ね,数量や図形を遊びや生活で活用する力,標識の役割への気付き,標識を手掛かりに行動する力,数量や図形、標識への興味・感覚の形成,,環境,文字や記号に親しむ体験の積み重ね,文字や記号の役割理解,文字や記号を用いた表現・伝達,文字や記号を必要に応じて活用する力,文字や記号への興味・感覚の形成,数量や図形、標識や文字などへの関心・感覚,保育士と友達との心の交流,絵本や物語への親しみ,豊かな語彙と表現の習得,経験や考えの言語表現,相手の話を注意深く聴く力,言葉による伝え合いの楽しみ,言葉による伝え合い,言葉,感動を体験して感性を働かせる,素材や表現方法への気付き,自己で表現することの実践,協同表現の楽しみ,表現の喜びと達成感,表現への意欲・モチベーション,豊かな感性と表現,表現
+Practice,code,1101001,1101002,1101003,1101004,1101,11,2101001,2101002,2101003,2101004,2101005,2101006,2101,2102001,2102002,2102003,2102004,2102005,2102,2103001,2103002,2103003,2103004,2103005,2103006,2103,2104001,2104002,2104003,2104004,2104005,2104,21,3101001,3101002,3101003,3101004,3101005,3101,3102001,3102002,3102003,3102004,3102005,3102006,3102,3103001,3103002,3103003,3103004,3103005,3103006,3103,3104001,3104002,3104003,3104004,3104005,3104,31,4101001,4101002,4101003,4101004,4101005,4101,4102001,4102002,4102003,4102004,4102005,4102006,4102,41,5101001,5101002,5101003,5101004,5101005,5101006,5101,51
+みんなでかけっこ、遊びで走る楽しさと応援,PR-OUT-0001,3,3,,2,,,2,,,2,3,3,,3,3,,2,3,,,,3,2,2,2,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,
+砂場でレストランごっこ、友達と役割遊び,PR-OUT-0002,2,2,1,1,,,2,,2,,2,2,,3,3,3,3,3,,1,1,2,2,2,2,,,,,,,,,,,,,,,2,2,2,,2,2,,,,,,,,,,,,,,,,,,,,,,3,,3,3,3,3,,,2,2,3,3,3,,,
+園庭での水遊びコーナーと身支度習慣,PR-OUT-0003,3,3,,3,,,3,3,2,,2,2,,2,2,2,2,2,,,,,,,,,,,,,,,,,,,,,,2,2,2,2,1,2,,2,2,,1,,,,1,1,,,,,,,,,,,,,,,,1,2,,,2,2,2,2,2,2,,
+並びっこ競争で手つなぎ・列歩きと交通安全,PR-OUT-0004,,2,,3,,,,,2,,,,,2,2,2,3,2,,1,1,2,3,2,3,,,,,2,,,,,2,2,,2,,,,3,,1,,,,,,,,,,,,,,,,,,,,,,,,,,2,3,,,,,,,,,,,
+鬼ごっこでルールの理解、友だち同士で話し合い,PR-OUT-0005,2,3,1,1,,,3,2,2,2,2,2,,3,3,2,3,2,,2,2,2,3,3,3,,,,2,2,,,,1,,,,,,,,2,,1,,,,,,,,,,,,,,,,,,,,,,,1,,,1,,,,,,,,1,,,,
+園庭と散歩で交通安全の体験,PR-OUT-0006,,,,3,,,,3,,,,2,,,2,2,2,2,,2,2,,3,,3,,,,,,,,,2,3,3,1,2,,2,,2,,,2,,,,,,,,,,,3,3,,,,,,,,,,,,,,,,,,,,,,,,,
+ミニ・ビオトープで自然観察,PR-OUT-0007,3,,,,,,,,,,,,,2,1,1,1,1,,,,,,,,,,,,,,,,,,,,,,2,2,2,2,2,,,3,3,3,3,3,3,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,
+種まき・苗植えで植物の成長を毎日観察,PR-OUT-0008,2,,2,1,,,2,2,2,2,2,2,,2,2,2,2,2,,,,,,,,,,,,,,,,,,,,,,3,3,3,2,2,2,,3,3,3,3,3,3,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,
+大きな紙を共有して友だちと表現・製作遊び,PR-IN-0001,,,,,,,3,,2,,3,2,,3,3,3,3,3,,,,2,,2,1,,,,,2,,,,,,,,,,,,3,2,2,2,,,,,,,,,,,,,,,,,,,,,,2,,1,2,2,2,,,2,3,3,3,3,3,,
+絵具パレット共有のフィンガーペインティング遊び,PR-IN-0002,2,1,1,,,,,,,,,,,3,3,3,3,3,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,2,,2,2,2,2,,,,3,3,3,3,3,,
+給食の汁物配膳に挑戦して当番活動,PR-IN-0003,3,,3,2,,,3,3,3,2,3,3,,3,3,3,3,3,,,2,2,2,2,2,,,,,,,,,,,,,,,,,,,,,,,,,,,,,2,2,,,1,,,,,,,,,3,,2,2,3,2,,,,,,,,,,
+製作・手先遊びコーナーで室内じっくり遊び,PR-IN-0004,3,,3,,,,,,3,3,3,,,3,3,3,3,3,,,,,,,,,,,,,,,,1,1,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,2,2,2,,,2,2,3,3,3,3,,
+話し合い活動で友だちの気持ちに気づく,PR-IN-0005,,,,,,,2,2,,,,2,,3,3,3,3,3,,,,3,3,3,3,,,,2,3,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,2,,1,3,3,3,,,,,,,,,,
+音楽に合わせてみんなで歌って動く表現遊び,PR-IN-0006,3,3,,2,,,2,,,,2,2,,3,3,3,3,3,,,,,,2,2,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,3,,2,2,2,3,,,3,2,3,3,3,3,,
+親子お話会で絵本・紙芝居の世界を楽しむ,PR-IN-0007,,,,,,,,,,,,,,,,,,,,,,,,,,,3,1,1,2,1,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,3,2,2,3,2,,,2,1,,1,,,,
+園内安全ツアーで危険箇所を見つけて学ぶ,PR-IN-0008,,,,3,,,,3,,,,,,2,2,,2,,,3,2,2,3,2,3,,,,,,,,,,2,2,2,,,,,,,,,,,,,,,,,,,3,3,1,,,,,,,,,,,,,,,,,,,,,,,,
+保護者メッセージカードで喜びを共有し手紙遊びへ,PR-IN-0009,,,,,,,,,,,,,,2,2,2,2,2,,,,3,,,,,3,,2,3,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,3,3,3,,3,,2,3,2,3,,,2,2,3,2,3,3,,
+卒園児へ「ありがとうコーナー」壁面づくり,PR-IN-0010,2,,,,,,2,1,2,2,3,2,,3,3,3,3,3,,,,3,,2,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,2,2,3,2,,,3,,2,3,2,3,,,3,3,3,3,3,3,,

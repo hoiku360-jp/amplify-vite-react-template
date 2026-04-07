@@ -21,7 +21,8 @@ export default function BoardPanel(props: { owner: string }) {
     if ((data ?? []).length > 0) return (data ?? [])[0];
 
     const displayName =
-      (window.prompt("あなたの表示名（Person.displayName）") ?? "").trim() || owner;
+      (window.prompt("あなたの表示名（Person.displayName）") ?? "").trim() ||
+      owner;
     const organization = (window.prompt("所属（任意）") ?? "").trim();
 
     const res = await client.models.Person.create({
@@ -72,7 +73,9 @@ export default function BoardPanel(props: { owner: string }) {
   async function createBoard() {
     if (!person?.id) return;
 
-    const message = (window.prompt("投稿メッセージ（Board.message）") ?? "").trim();
+    const message = (
+      window.prompt("投稿メッセージ（Board.message）") ?? ""
+    ).trim();
     if (!message) return;
 
     const res = await client.models.Board.create({
@@ -100,16 +103,16 @@ export default function BoardPanel(props: { owner: string }) {
 
       <div style={{ marginBottom: 8 }}>
         <b>Person（投稿者）:</b>{" "}
-        {person ? `${person.displayName}${person.organization ? ` / ${person.organization}` : ""}` : "作成中"}
+        {person
+          ? `${person.displayName}${person.organization ? ` / ${person.organization}` : ""}`
+          : "作成中"}
       </div>
 
       <div style={{ display: "flex", gap: 12, alignItems: "center" }}>
         <button onClick={createBoard} disabled={!person?.id}>
           + new post
         </button>
-        <button onClick={refreshBoards}>
-          Refresh
-        </button>
+        <button onClick={refreshBoards}>Refresh</button>
         {loading ? <span>Loading</span> : null}
       </div>
 
@@ -119,9 +122,21 @@ export default function BoardPanel(props: { owner: string }) {
             <BoardCard
               overrides={{
                 // ★ BoardCard 側の要素名に合わせて調整が必要な場合あり
-                "Board title": { children: b.message, fontSize: "16px", lineHeight: "20px" },
-                "Board description": { children: "", fontSize: "14px", lineHeight: "18px" },
-                "Updated at": { children: "", fontSize: "12px", lineHeight: "16px" },
+                "Board title": {
+                  children: b.message,
+                  fontSize: "16px",
+                  lineHeight: "20px",
+                },
+                "Board description": {
+                  children: "",
+                  fontSize: "14px",
+                  lineHeight: "18px",
+                },
+                "Updated at": {
+                  children: "",
+                  fontSize: "12px",
+                  lineHeight: "16px",
+                },
               }}
             />
             <button onClick={() => deleteBoard(b.id)} style={{ marginTop: 8 }}>

@@ -59,7 +59,7 @@ export default function LinkSearchPanel() {
           authMode: "userPool",
           limit: PAGE_SIZE,
           nextToken: reset ? null : ap1NextToken,
-        }
+        },
       );
 
       if (resp.errors?.length) {
@@ -75,8 +75,8 @@ export default function LinkSearchPanel() {
         setAp1Items((prev) =>
           uniq(
             [...prev, ...newItems],
-            (x) => `${s((x as any).abilityCode)}|${s((x as any).practiceCode)}`
-          )
+            (x) => `${s((x as any).abilityCode)}|${s((x as any).practiceCode)}`,
+          ),
         );
       }
     } catch (e: any) {
@@ -106,7 +106,7 @@ export default function LinkSearchPanel() {
           authMode: "userPool",
           limit: PAGE_SIZE,
           nextToken: reset ? null : ap2NextToken,
-        }
+        },
       );
 
       if (resp.errors?.length) {
@@ -122,8 +122,8 @@ export default function LinkSearchPanel() {
         setAp2Items((prev) =>
           uniq(
             [...prev, ...newItems],
-            (x) => `${s((x as any).practiceCode)}|${s((x as any).abilityCode)}`
-          )
+            (x) => `${s((x as any).practiceCode)}|${s((x as any).abilityCode)}`,
+          ),
         );
       }
     } catch (e: any) {
@@ -152,10 +152,18 @@ export default function LinkSearchPanel() {
       <h2 style={{ margin: 0 }}>Link検索（AP1/AP2）</h2>
 
       <div style={{ fontSize: 12, opacity: 0.85 }}>
-        ページング：limit={PAGE_SIZE} / nextToken による「追加読み込み（Load more）」方式
+        ページング：limit={PAGE_SIZE} / nextToken による「追加読み込み（Load
+        more）」方式
       </div>
 
-      <div style={{ display: "flex", gap: 12, flexWrap: "wrap", alignItems: "center" }}>
+      <div
+        style={{
+          display: "flex",
+          gap: 12,
+          flexWrap: "wrap",
+          alignItems: "center",
+        }}
+      >
         <label style={{ display: "flex", alignItems: "center", gap: 8 }}>
           abilityCode（小分類）
           <input
@@ -168,10 +176,16 @@ export default function LinkSearchPanel() {
           />
         </label>
 
-        <button onClick={() => runAP1(true)} disabled={loading || !s(abilityCode)}>
+        <button
+          onClick={() => runAP1(true)}
+          disabled={loading || !s(abilityCode)}
+        >
           AP1 初回検索
         </button>
-        <button onClick={() => runAP1(false)} disabled={loading || !ap1NextToken}>
+        <button
+          onClick={() => runAP1(false)}
+          disabled={loading || !ap1NextToken}
+        >
           AP1 追加読み込み
         </button>
 
@@ -189,10 +203,16 @@ export default function LinkSearchPanel() {
           />
         </label>
 
-        <button onClick={() => runAP2(true)} disabled={loading || !s(practiceCode)}>
+        <button
+          onClick={() => runAP2(true)}
+          disabled={loading || !s(practiceCode)}
+        >
           AP2 初回検索
         </button>
-        <button onClick={() => runAP2(false)} disabled={loading || !ap2NextToken}>
+        <button
+          onClick={() => runAP2(false)}
+          disabled={loading || !ap2NextToken}
+        >
           AP2 追加読み込み
         </button>
 
@@ -210,16 +230,33 @@ export default function LinkSearchPanel() {
         </button>
       </div>
 
-      {error && <div style={{ color: "crimson", whiteSpace: "pre-wrap" }}>Error: {error}</div>}
+      {error && (
+        <div style={{ color: "crimson", whiteSpace: "pre-wrap" }}>
+          Error: {error}
+        </div>
+      )}
       {loading && <div>Loading...</div>}
 
       <div style={{ display: "grid", gap: 12, gridTemplateColumns: "1fr 1fr" }}>
         {/* AP1 */}
-        <div style={{ border: "1px solid #ddd", borderRadius: 8, overflow: "hidden" }}>
-          <div style={{ padding: 10, background: "#fafafa", borderBottom: "1px solid #eee" }}>
+        <div
+          style={{
+            border: "1px solid #ddd",
+            borderRadius: 8,
+            overflow: "hidden",
+          }}
+        >
+          <div
+            style={{
+              padding: 10,
+              background: "#fafafa",
+              borderBottom: "1px solid #eee",
+            }}
+          >
             AP1 結果（abilityCode → practiceCode, score）
             <div style={{ fontSize: 12, opacity: 0.8 }}>
-              件数: {ap1Items.length} / nextToken: {ap1NextToken ? "あり" : "なし"}
+              件数: {ap1Items.length} / nextToken:{" "}
+              {ap1NextToken ? "あり" : "なし"}
             </div>
           </div>
           <div style={{ padding: 10 }}>
@@ -228,8 +265,11 @@ export default function LinkSearchPanel() {
             ) : (
               <ul style={{ margin: 0, paddingLeft: 18 }}>
                 {ap1Items.map((r) => (
-                  <li key={`${s((r as any).abilityCode)}|${s((r as any).practiceCode)}`}>
-                    {String((r as any).practiceCode)} / score={String((r as any).score)}
+                  <li
+                    key={`${s((r as any).abilityCode)}|${s((r as any).practiceCode)}`}
+                  >
+                    {String((r as any).practiceCode)} / score=
+                    {String((r as any).score)}
                   </li>
                 ))}
               </ul>
@@ -238,11 +278,24 @@ export default function LinkSearchPanel() {
         </div>
 
         {/* AP2 */}
-        <div style={{ border: "1px solid #ddd", borderRadius: 8, overflow: "hidden" }}>
-          <div style={{ padding: 10, background: "#fafafa", borderBottom: "1px solid #eee" }}>
+        <div
+          style={{
+            border: "1px solid #ddd",
+            borderRadius: 8,
+            overflow: "hidden",
+          }}
+        >
+          <div
+            style={{
+              padding: 10,
+              background: "#fafafa",
+              borderBottom: "1px solid #eee",
+            }}
+          >
             AP2 結果（practiceCode → abilityCode, score）
             <div style={{ fontSize: 12, opacity: 0.8 }}>
-              件数: {ap2Items.length} / nextToken: {ap2NextToken ? "あり" : "なし"}
+              件数: {ap2Items.length} / nextToken:{" "}
+              {ap2NextToken ? "あり" : "なし"}
             </div>
           </div>
           <div style={{ padding: 10 }}>
@@ -251,8 +304,11 @@ export default function LinkSearchPanel() {
             ) : (
               <ul style={{ margin: 0, paddingLeft: 18 }}>
                 {ap2Items.map((r) => (
-                  <li key={`${s((r as any).practiceCode)}|${s((r as any).abilityCode)}`}>
-                    {String((r as any).abilityCode)} / score={String((r as any).score)}
+                  <li
+                    key={`${s((r as any).practiceCode)}|${s((r as any).abilityCode)}`}
+                  >
+                    {String((r as any).abilityCode)} / score=
+                    {String((r as any).score)}
                   </li>
                 ))}
               </ul>
@@ -262,7 +318,8 @@ export default function LinkSearchPanel() {
       </div>
 
       <div style={{ fontSize: 12, opacity: 0.8 }}>
-        ※ nextToken が「なし」になったら、それ以上のページはありません（=最後まで読み切り）。
+        ※ nextToken
+        が「なし」になったら、それ以上のページはありません（=最後まで読み切り）。
       </div>
     </div>
   );

@@ -13,17 +13,17 @@ export default function TodoListItem(props) {
   const variants = [];
   const overrides = mergeVariantsAndOverrides(
     getOverridesFromVariants(variants, props),
-    overridesProp || {}
+    overridesProp || {},
   );
 
   // ✅ overrides で children を差し替え可能にする（children を分離して JSX の中身に入れる）
   const { children: todoChildren, ...todoTextProps } = getOverrideProps(
     overrides,
-    "Todo content"
+    "Todo content",
   );
   const { children: dueChildren, ...dueTextProps } = getOverrideProps(
     overrides,
-    "Due"
+    "Due",
   );
 
   return (

@@ -39,7 +39,9 @@ export default function AudioJobsPanel(props: Props) {
   const [error, setError] = useState<string>("");
 
   // ページング
-  const [currentToken, setCurrentToken] = useState<string | undefined>(undefined);
+  const [currentToken, setCurrentToken] = useState<string | undefined>(
+    undefined,
+  );
   const [nextToken, setNextToken] = useState<string | undefined>(undefined);
   const [prevStack, setPrevStack] = useState<string[]>([]);
 
@@ -49,7 +51,11 @@ export default function AudioJobsPanel(props: Props) {
 
     try {
       // ✅ queryField は client.models.AudioJob.<queryField>() に生える（ただし型生成の都合で any）
-      const { data, errors, nextToken: nt } = await (client.models.AudioJob as any).listJobsByTenantDate({
+      const {
+        data,
+        errors,
+        nextToken: nt,
+      } = await (client.models.AudioJob as any).listJobsByTenantDate({
         tenantId,
         sortDirection: "DESC",
         limit: PAGE_SIZE,
@@ -57,7 +63,8 @@ export default function AudioJobsPanel(props: Props) {
         filter: { owner: { eq: owner } },
       });
 
-      if (errors?.length) throw new Error(errors.map((e: any) => e.message).join("\n"));
+      if (errors?.length)
+        throw new Error(errors.map((e: any) => e.message).join("\n"));
 
       setItems((data ?? []) as Array<Schema["AudioJob"]["type"]>);
       setNextToken(nt ?? undefined);
@@ -91,89 +98,93 @@ export default function AudioJobsPanel(props: Props) {
   }
 
   async function runTranscribe(job: Schema["AudioJob"]["type"]) {
-  if (!job?.id || !job.audioPath) return;
+    if (!job?.id || !job.audioPath) return;
 
-  setRunning(job.id);
-  setError("");
+    setRunning(job.id);
+    setError("");
 
-  try {
-    const urlRes = await getUrl({
-      path: job.audioPath,
-      options: { expiresIn: 60 * 60 },
-    });
-    const audioUrl = urlRes.url.toString();
+    try {
+      const urlRes = await getUrl({
+        path: job.audioPath,
+        options: { expiresIn: 60 * 60 },
+      });
+      const audioUrl = urlRes.url.toString();
 
-    const bucket = getStorageBucketName();
-    if (!bucket) throw new Error("storage bucket name not found in amplify_outputs.json");
+      const bucket = getStorageBucketName();
+      if (!bucket)
+        throw new Error(
+          "storage bucket name not found in amplify_outputs.json",
+        );
 
-    const key = String(job.audioPath).replace(/^\/+/, "");
-    const audioS3Uri = `s3://${bucket}/${key}`;
+      const key = String(job.audioPath).replace(/^\/+/, "");
+      const audioS3Uri = `s3://${bucket}/${key}`;
 
-    // ✅ ここが重要：戻り値の形が data ラップされている場合がある
-    const res = await (client.mutations as any).summarizeAudio({
-      jobId: job.id,
-      audioPath: job.audioPath,
-      audioUrl,
-      audioS3Uri,
-    });
+      // ✅ ここが重要：戻り値の形が data ラップされている場合がある
+      const res = await (client.mutations as any).summarizeAudio({
+        jobId: job.id,
+        audioPath: job.audioPath,
+        audioUrl,
+        audioS3Uri,
+      });
 
-    // 可能性①：res.data に本体
-    const resp = res?.data ?? res;
-    const errs = res?.errors ?? resp?.errors;
+      // 可能性①：res.data に本体
+      const resp = res?.data ?? res;
+      const errs = res?.errors ?? resp?.errors;
 
-    if (Array.isArray(errs) && errs.length) {
-      throw new Error(errs.map((e: any) => e.message ?? String(e)).join("\n"));
-    }
+      if (Array.isArray(errs) && errs.length) {
+        throw new Error(
+          errs.map((e: any) => e.message ?? String(e)).join("\n"),
+        );
+      }
 
-    const jobName = resp?.transcribeJobName as string | undefined;
-    const st = resp?.status as string | undefined;
+      const jobName = resp?.transcribeJobName as string | undefined;
+      const st = resp?.status as string | undefined;
 
-    // デバッグ用（必要なら一時的に）
-    console.log("summarizeAudio response(raw):", res);
-    console.log("summarizeAudio response(parsed):", resp);
+      // デバッグ用（必要なら一時的に）
+      console.log("summarizeAudio response(raw):", res);
+      console.log("summarizeAudio response(parsed):", resp);
 
-    if (st === "FAILED") {
+      if (st === "FAILED") {
+        await client.models.AudioJob.update({
+          id: job.id,
+          status: "FAILED",
+          transcribeStatus: "FAILED",
+          errorMessage: resp?.summaryText ?? "StartTranscriptionJob failed",
+          completedAt: new Date().toISOString(),
+        });
+        throw new Error(resp?.summaryText ?? "StartTranscriptionJob failed");
+      }
+
+      if (!jobName) {
+        await client.models.AudioJob.update({
+          id: job.id,
+          status: "FAILED",
+          transcribeStatus: "FAILED",
+          errorMessage:
+            "No transcribeJobName returned from summarizeAudio (check handler logs; response may be wrapped in {data}).",
+          completedAt: new Date().toISOString(),
+        });
+        throw new Error("No transcribeJobName returned from summarizeAudio");
+      }
+
       await client.models.AudioJob.update({
         id: job.id,
-        status: "FAILED",
-        transcribeStatus: "FAILED",
-        errorMessage: resp?.summaryText ?? "StartTranscriptionJob failed",
-        completedAt: new Date().toISOString(),
+        status: "RUNNING",
+        transcribeJobName: jobName,
+        transcribeStatus: "IN_PROGRESS",
+        errorMessage: null,
+        completedAt: null,
       });
-      throw new Error(resp?.summaryText ?? "StartTranscriptionJob failed");
+
+      await refresh();
+      alert("Transcribe started.");
+    } catch (e: any) {
+      console.error(e);
+      setError(e?.message ?? String(e));
+    } finally {
+      setRunning("");
     }
-
-    if (!jobName) {
-      await client.models.AudioJob.update({
-        id: job.id,
-        status: "FAILED",
-        transcribeStatus: "FAILED",
-        errorMessage:
-          "No transcribeJobName returned from summarizeAudio (check handler logs; response may be wrapped in {data}).",
-        completedAt: new Date().toISOString(),
-      });
-      throw new Error("No transcribeJobName returned from summarizeAudio");
-    }
-
-    await client.models.AudioJob.update({
-      id: job.id,
-      status: "RUNNING",
-      transcribeJobName: jobName,
-      transcribeStatus: "IN_PROGRESS",
-      errorMessage: null,
-      completedAt: null,
-    });
-
-    await refresh();
-    alert("Transcribe started.");
-  } catch (e: any) {
-    console.error(e);
-    setError(e?.message ?? String(e));
-  } finally {
-    setRunning("");
   }
-}
-
 
   useEffect(() => {
     setPrevStack([]);
@@ -205,11 +216,14 @@ export default function AudioJobsPanel(props: Props) {
           Next
         </button>
 
-        {loading && <span style={{ fontSize: 12, opacity: 0.7 }}>loading...</span>}
+        {loading && (
+          <span style={{ fontSize: 12, opacity: 0.7 }}>loading...</span>
+        )}
       </div>
 
       <div style={{ fontSize: 12, opacity: 0.8 }}>
-        tenantId: <code>{tenantId}</code> / owner: <code>{owner}</code> / pageSize: <code>{PAGE_SIZE}</code>
+        tenantId: <code>{tenantId}</code> / owner: <code>{owner}</code> /
+        pageSize: <code>{PAGE_SIZE}</code>
       </div>
 
       {error && (
@@ -220,7 +234,9 @@ export default function AudioJobsPanel(props: Props) {
       )}
 
       {items.length === 0 ? (
-        <div style={{ fontSize: 12, opacity: 0.7 }}>（このページにはジョブがありません）</div>
+        <div style={{ fontSize: 12, opacity: 0.7 }}>
+          （このページにはジョブがありません）
+        </div>
       ) : (
         <div style={{ display: "grid", gap: 8 }}>
           {items.map((j) => (
@@ -241,7 +257,10 @@ export default function AudioJobsPanel(props: Props) {
                 </div>
 
                 <div style={{ marginLeft: "auto" }}>
-                  <button onClick={() => runTranscribe(j)} disabled={loading || running === j.id}>
+                  <button
+                    onClick={() => runTranscribe(j)}
+                    disabled={loading || running === j.id}
+                  >
                     {running === j.id ? "Running..." : "Run Transcribe"}
                   </button>
                 </div>
@@ -268,21 +287,27 @@ export default function AudioJobsPanel(props: Props) {
               {j.transcriptText && (
                 <div style={{ fontSize: 12 }}>
                   transcript:
-                  <pre style={{ margin: 0, whiteSpace: "pre-wrap" }}>{j.transcriptText}</pre>
+                  <pre style={{ margin: 0, whiteSpace: "pre-wrap" }}>
+                    {j.transcriptText}
+                  </pre>
                 </div>
               )}
 
               {j.summaryText && (
                 <div style={{ fontSize: 12 }}>
                   summary:
-                  <pre style={{ margin: 0, whiteSpace: "pre-wrap" }}>{j.summaryText}</pre>
+                  <pre style={{ margin: 0, whiteSpace: "pre-wrap" }}>
+                    {j.summaryText}
+                  </pre>
                 </div>
               )}
 
               {j.errorMessage && (
                 <div style={{ fontSize: 12, color: "crimson" }}>
                   error:
-                  <pre style={{ margin: 0, whiteSpace: "pre-wrap" }}>{j.errorMessage}</pre>
+                  <pre style={{ margin: 0, whiteSpace: "pre-wrap" }}>
+                    {j.errorMessage}
+                  </pre>
                 </div>
               )}
             </div>

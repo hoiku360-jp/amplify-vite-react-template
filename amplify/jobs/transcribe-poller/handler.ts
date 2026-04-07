@@ -1,4 +1,7 @@
-import { TranscribeClient, GetTranscriptionJobCommand } from "@aws-sdk/client-transcribe";
+import {
+  TranscribeClient,
+  GetTranscriptionJobCommand,
+} from "@aws-sdk/client-transcribe";
 import { S3Client, GetObjectCommand } from "@aws-sdk/client-s3";
 
 import type { Schema } from "../../data/resource";
@@ -10,7 +13,9 @@ import { env } from "$amplify/env/transcribe-poller";
 function isNotFound(err: any) {
   const name = err?.name;
   const msg = String(err?.message ?? "");
-  return name === "ResourceNotFoundException" || msg.includes("couldn't be found");
+  return (
+    name === "ResourceNotFoundException" || msg.includes("couldn't be found")
+  );
 }
 
 function safeString(v: unknown): string {
@@ -35,14 +40,20 @@ async function readStreamToString(body: any): Promise<string> {
   });
 }
 
-async function fetchJsonWithRetry(url: string, retries = 3, timeoutMs = 12_000): Promise<any> {
+async function fetchJsonWithRetry(
+  url: string,
+  retries = 3,
+  timeoutMs = 12_000,
+): Promise<any> {
   let lastErr: any;
   for (let i = 0; i < retries; i++) {
     const ac = new AbortController();
     const t = setTimeout(() => ac.abort(), timeoutMs);
     try {
       const res = await fetch(url, { signal: ac.signal });
-      if (!res.ok) throw new Error(`fetch failed: ${res.status} ${res.statusText}`);
+      if (!res.ok) {
+        throw new Error(`fetch failed: ${res.status} ${res.statusText}`);
+      }
       return await res.json();
     } catch (e: any) {
       lastErr = e;
@@ -79,9 +90,8 @@ function parseS3FromUri(uri: string): { bucket?: string; key?: string } {
 
 async function getTranscriptText(
   region: string,
-  transcriptFileUri: string
+  transcriptFileUri: string,
 ): Promise<{ transcriptText: string; source: "fetch" | "s3" }> {
-  // 1) まずは TranscriptFileUri を fetch（IAM不要のことが多い）
   try {
     const json = await fetchJsonWithRetry(transcriptFileUri, 3, 15_000);
     const t = safeString(json?.results?.transcripts?.[0]?.transcript ?? "");
@@ -92,9 +102,10 @@ async function getTranscriptText(
     });
   }
 
-  // 2) フォールバック：S3 GetObject（権限が必要）
   const { bucket, key } = parseS3FromUri(transcriptFileUri);
-  if (!bucket || !key) throw new Error("could not parse bucket/key from TranscriptFileUri");
+  if (!bucket || !key) {
+    throw new Error("could not parse bucket/key from TranscriptFileUri");
+  }
 
   const s3 = new S3Client({ region });
   const obj = await s3.send(new GetObjectCommand({ Bucket: bucket, Key: key }));
@@ -104,7 +115,11 @@ async function getTranscriptText(
   return { transcriptText: t, source: "s3" };
 }
 
-async function withTimeout<T>(p: Promise<T>, ms: number, label: string): Promise<T> {
+async function withTimeout<T>(
+  p: Promise<T>,
+  ms: number,
+  label: string,
+): Promise<T> {
   let t: any;
   const timeout = new Promise<never>((_, rej) => {
     t = setTimeout(() => rej(new Error(`timeout after ${ms}ms: ${label}`)), ms);
@@ -116,8 +131,9 @@ async function withTimeout<T>(p: Promise<T>, ms: number, label: string): Promise
   }
 }
 
-// ✅ jobName末尾の "-<epochMs>" を拾う（あなたの命名 hoiku360-<jobId>-<ms> 想定）
-function extractEpochMsFromJobName(jobName: string | undefined | null): number | undefined {
+function extractEpochMsFromJobName(
+  jobName: string | undefined | null,
+): number | undefined {
   if (!jobName) return undefined;
   const m = jobName.match(/-(\d{10,})$/);
   if (!m) return undefined;
@@ -129,17 +145,81 @@ function isoNow() {
   return new Date().toISOString();
 }
 
+/**
+ * legacy audioPath:
+ * practice-audio/{tenantId}/{owner}/{practice_code}/{fileName}
+ */
+function extractPracticeInfoFromAudioPath(
+  audioPath: string | undefined | null,
+): { tenantId?: string; practiceCode?: string } {
+  if (!audioPath) return {};
+  const parts = audioPath.split("/").filter(Boolean);
+
+  if (parts.length < 5) return {};
+  if (parts[0] !== "practice-audio") return {};
+
+  return {
+    tenantId: parts[1],
+    practiceCode: parts[3],
+  };
+}
+
+function resolveJobType(job: any): string {
+  const explicit = safeString(job?.jobType).trim().toUpperCase();
+  if (explicit) return explicit;
+
+  const legacyPractice = extractPracticeInfoFromAudioPath(job?.audioPath);
+  if (legacyPractice.tenantId && legacyPractice.practiceCode) {
+    return "PRACTICE";
+  }
+
+  return "";
+}
+
+async function findPracticeByTenantAndPracticeCode(
+  dataClient: ReturnType<typeof generateClient<Schema>>,
+  tenantId: string,
+  practiceCode: string,
+) {
+  const result = await dataClient.models.PracticeCode.list({
+    filter: {
+      tenantId: { eq: tenantId },
+    },
+    limit: 1000,
+  });
+
+  if (result.errors?.length) {
+    throw new Error(
+      `PracticeCode lookup failed: ${result.errors
+        .map((e: { message: string }) => e.message)
+        .join("\n")}`,
+    );
+  }
+
+  const items = result.data ?? [];
+
+  console.info("PracticeCode lookup by tenantId", {
+    tenantId,
+    count: items.length,
+    targetPracticeCode: practiceCode,
+  });
+
+  return items.find((x) => x.practice_code === practiceCode) ?? null;
+}
+
 export const handler = async () => {
   const region = process.env.AWS_REGION || "ap-northeast-1";
   const transcribe = new TranscribeClient({ region, maxAttempts: 2 });
 
-  const { resourceConfig, libraryOptions } = await getAmplifyDataClientConfig(env as any);
+  const { resourceConfig, libraryOptions } = await getAmplifyDataClientConfig(
+    env as any,
+  );
   Amplify.configure(resourceConfig, libraryOptions);
   const dataClient = generateClient<Schema>();
 
-  const TIMEOUT_MS = 60 * 60 * 1000; // ✅ 60分タイムアウト
-  const NOTFOUND_GRACE_MS = 10 * 60 * 1000; // ✅ NotFound許容（開始直後用）
-  const MAX_PER_RUN = 5; // ✅ 1回で処理する上限（タイムアウト回避）
+  const TIMEOUT_MS = 60 * 60 * 1000;
+  const NOTFOUND_GRACE_MS = 10 * 60 * 1000;
+  const MAX_PER_RUN = 5;
 
   const now = Date.now();
 
@@ -148,6 +228,7 @@ export const handler = async () => {
   let processed = 0;
   let updated = 0;
   let cleaned = 0;
+  let practiceUpdated = 0;
 
   try {
     const { data: jobs, errors } = await dataClient.models.AudioJob.list({
@@ -163,11 +244,7 @@ export const handler = async () => {
     const list = jobs ?? [];
     console.info("list RUNNING jobs", { count: list.length, errors: 0 });
 
-    // =========================================================
-    // ✅ 0) 清掃フェーズ（Transcribe APIを叩く前に片付ける）
-    // =========================================================
     for (const j of list) {
-      // jobNameが無い RUNNING は “永久に処理できない” ので即落とす
       if (!j.transcribeJobName) {
         await dataClient.models.AudioJob.update({
           id: j.id,
@@ -180,109 +257,85 @@ export const handler = async () => {
       }
     }
 
-    // 清掃で落とした分を除いた候補（jobNameありのみ）
     const candidates = list.filter((j) => !!j.transcribeJobName);
 
-    // =========================================================
-    // ✅ 1) タイムアウト清掃（IN_PROGRESSが60分超なら落とす）
-    // - 目安時刻は jobName末尾のepochMs、無ければ recordedAt を使う
-    // =========================================================
     for (const j of candidates) {
+      if (processed >= MAX_PER_RUN) break;
+      processed++;
+
+      const jobId = j.id;
+      const jobName = j.transcribeJobName ?? "";
+      const resolvedJobType = resolveJobType(j);
+
       const startedMs =
         extractEpochMsFromJobName(j.transcribeJobName) ||
         (j.recordedAt ? Date.parse(j.recordedAt) : undefined);
 
       if (!startedMs) continue;
 
-      // transcribeStatusが未設定でも、RUNNINGで長いなら危険なので対象にする
       if (now - startedMs > TIMEOUT_MS) {
         await dataClient.models.AudioJob.update({
           id: j.id,
           status: "FAILED",
           transcribeStatus: "FAILED",
-          errorMessage: `CLEANUP: Transcribe IN_PROGRESS timeout (>60m). started=${new Date(
-            startedMs
-          ).toISOString()}`,
+          errorMessage: `CLEANUP: Transcribe IN_PROGRESS timeout (>60m). jobName=${jobName}`,
           completedAt: isoNow(),
         });
         cleaned++;
+        continue;
       }
-    }
-
-    // ここまでの清掃が進むだけでも「詰まり」は解消されていきます
-    // 次は “まだRUNNINGのものだけ” を処理
-    const { data: jobs2, errors: errors2 } = await dataClient.models.AudioJob.list({
-      filter: { status: { eq: "RUNNING" } },
-      limit: 50,
-    });
-
-    if (errors2?.length) {
-      console.error("re-list AudioJob errors", errors2);
-      return;
-    }
-
-    const list2 = jobs2 ?? [];
-    const targets = list2
-      .filter((j) => !!j.transcribeJobName)
-      .slice(0, MAX_PER_RUN);
-
-    // =========================================================
-    // ✅ 2) 通常フェーズ（GetTranscriptionJob → COMPLETED/FAILED反映、COMPLETEDなら文字も取得）
-    // =========================================================
-    for (const j of targets) {
-      processed++;
-
-      const jobId = j.id;
-      const jobName = j.transcribeJobName!;
-      console.info("check job", { jobId, jobName });
 
       try {
-        const resp = await withTimeout(
-          transcribe.send(new GetTranscriptionJobCommand({ TranscriptionJobName: jobName })),
-          8_000,
-          `GetTranscriptionJob ${jobName}`
+        const resp = await transcribe.send(
+          new GetTranscriptionJobCommand({
+            TranscriptionJobName: jobName,
+          }),
         );
 
-        const tj = resp.TranscriptionJob;
-        const st = tj?.TranscriptionJobStatus; // IN_PROGRESS / COMPLETED / FAILED
+        const status = safeString(
+          resp.TranscriptionJob?.TranscriptionJobStatus ?? "",
+        );
+        const transcriptFileUri = safeString(
+          resp.TranscriptionJob?.Transcript?.TranscriptFileUri ?? "",
+        );
 
-        console.info("job status", { jobId, jobName, st });
-
-        if (!st || st === "IN_PROGRESS") {
-          // 念のため transcribeStatus は更新しておく（UIに見える）
+        if (status === "IN_PROGRESS" || status === "QUEUED") {
           await dataClient.models.AudioJob.update({
             id: jobId,
-            transcribeStatus: "IN_PROGRESS",
+            transcribeStatus: status,
+            errorMessage: null,
           });
           updated++;
           continue;
         }
 
-        if (st === "FAILED") {
-          const reason = tj?.FailureReason || "Transcribe job failed (no FailureReason)";
+        if (status === "FAILED") {
           await dataClient.models.AudioJob.update({
             id: jobId,
             status: "FAILED",
             transcribeStatus: "FAILED",
-            errorMessage: reason,
+            errorMessage:
+              safeString(resp.TranscriptionJob?.FailureReason) ||
+              "Transcribe job failed",
             completedAt: isoNow(),
           });
           updated++;
-          console.error("transcribe failed", { jobId, jobName, reason });
           continue;
         }
 
-        if (st === "COMPLETED") {
-          const transcriptFileUri = tj?.Transcript?.TranscriptFileUri;
-
+        if (status === "COMPLETED") {
           if (!transcriptFileUri) {
             await dataClient.models.AudioJob.update({
               id: jobId,
               transcribeStatus: "COMPLETED",
-              errorMessage: "COMPLETED but TranscriptFileUri is missing (will retry).",
+              errorMessage:
+                "COMPLETED but TranscriptFileUri is missing (will retry).",
             });
             updated++;
-            console.warn("COMPLETED but missing TranscriptFileUri", { jobId, jobName });
+            console.warn("COMPLETED but missing TranscriptFileUri", {
+              jobId,
+              jobName,
+            });
             continue;
           }
 
@@ -290,7 +343,7 @@ export const handler = async () => {
             const { transcriptText, source } = await withTimeout(
               getTranscriptText(region, transcriptFileUri),
               15_000,
-              `getTranscriptText ${jobName}`
+              `getTranscriptText ${jobName}`,
             );
 
             const finalTranscript = truncate(transcriptText || "");
@@ -303,13 +356,95 @@ export const handler = async () => {
               errorMessage: null,
               completedAt: isoNow(),
             });
-
             updated++;
+
+            if (resolvedJobType === "PRACTICE") {
+              const { tenantId, practiceCode } =
+                extractPracticeInfoFromAudioPath(j.audioPath);
+
+              if (!tenantId || !practiceCode) {
+                console.warn("practice info not found from audioPath", {
+                  jobId,
+                  jobName,
+                  audioPath: j.audioPath,
+                });
+              } else {
+                const practice = await findPracticeByTenantAndPracticeCode(
+                  dataClient,
+                  tenantId,
+                  practiceCode,
+                );
+
+                if (!practice) {
+                  console.warn("PracticeCode not found", {
+                    jobId,
+                    jobName,
+                    tenantId,
+                    practiceCode,
+                  });
+                } else {
+                  const updatePracticeResult =
+                    await dataClient.models.PracticeCode.update({
+                      id: practice.id,
+
+                      practice_code: practice.practice_code,
+                      tenantId: practice.tenantId ?? undefined,
+                      owner: practice.owner ?? undefined,
+                      ownerType: practice.ownerType ?? undefined,
+                      practiceCategory: practice.practiceCategory ?? undefined,
+                      visibility: practice.visibility ?? undefined,
+                      publishScope: (practice as any).publishScope ?? undefined,
+
+                      name: practice.name ?? "",
+                      memo: practice.memo ?? "",
+                      source_type: practice.source_type ?? "practiceRegister",
+                      version: Number((practice as any).version ?? 1),
+
+                      status: "REVIEW",
+                      transcriptText: finalTranscript || "",
+                      transcribeJobName: jobName,
+                      transcribeStatus: "COMPLETED",
+                      errorMessage: "",
+                      updatedBy: "transcribe-poller",
+                    });
+
+                  if (updatePracticeResult.errors?.length) {
+                    console.error("PracticeCode update errors", {
+                      jobId,
+                      jobName,
+                      tenantId,
+                      practiceCode,
+                      practiceId: practice.id,
+                      errors: updatePracticeResult.errors,
+                    });
+                  } else {
+                    practiceUpdated++;
+                    console.info("PracticeCode updated from AudioJob", {
+                      jobId,
+                      jobName,
+                      tenantId,
+                      practiceCode,
+                      chars: finalTranscript.length,
+                      source,
+                    });
+                  }
+                }
+              }
+            } else {
+              console.info("skip PracticeCode update for non-PRACTICE AudioJob", {
+                jobId,
+                jobName,
+                jobType: resolvedJobType || "(empty)",
+                chars: finalTranscript.length,
+              });
+            }
+
             console.info("transcript saved", {
               jobId,
               jobName,
               source,
               chars: finalTranscript.length,
+              jobType: resolvedJobType || "(empty)",
             });
           } catch (e: any) {
             const msg = e?.message ?? String(e);
@@ -323,7 +458,6 @@ export const handler = async () => {
           }
         }
       } catch (e: any) {
-        // NotFound が長引く場合は清掃（開始直後だけ許容）
         if (isNotFound(e)) {
           const startedMs =
             extractEpochMsFromJobName(jobName) ||
@@ -358,6 +492,11 @@ export const handler = async () => {
       }
     }
   } finally {
-    console.info("transcribe-poller done", { processed, updated, cleaned });
+    console.info("transcribe-poller done", {
+      processed,
+      updated,
+      cleaned,
+      practiceUpdated,
+    });
   }
 };
