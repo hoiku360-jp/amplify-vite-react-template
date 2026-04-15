@@ -79,8 +79,137 @@ type StructuredObservationPayload = {
   tags: string[];
 };
 
+type ModelError = {
+  message?: string | null;
+};
+
+type ListOptions = Record<string, unknown>;
+type MutationInput = Record<string, unknown>;
+
+type ListResponse<TRow> = {
+  data?: TRow[] | null;
+  nextToken?: string | null;
+  errors?: ModelError[] | null;
+};
+
+type MutationResponse<TRow> = {
+  data?: TRow | null;
+  errors?: ModelError[] | null;
+};
+
+type ListableModel<TRow> = {
+  list(options?: ListOptions): Promise<ListResponse<TRow>>;
+};
+
+type CreatableModel<TRow> = {
+  create(input: MutationInput): Promise<MutationResponse<TRow>>;
+};
+
+type UpdatableModel<TRow> = {
+  update(input: MutationInput): Promise<MutationResponse<TRow>>;
+};
+
+type ScheduleDayRow = Schema["ScheduleDay"]["type"];
+type ScheduleDayItemRow = Schema["ScheduleDayItem"]["type"];
+type ScheduleRecordRow = Schema["ScheduleRecord"]["type"];
+type AudioJobRow = Schema["AudioJob"]["type"];
+
+type ScheduleDaySyncResult = {
+  createdObservationCount?: number;
+  createdAbilityLinkCount?: number;
+  deletedObservationCount?: number;
+  deletedAbilityLinkCount?: number;
+  status?: string;
+  message?: string;
+};
+
+type AnalyzeTranscriptResult = {
+  createdCount?: number;
+  count?: number;
+  status?: string;
+  message?: string;
+};
+
+type SummarizeAudioResult = {
+  transcribeJobName?: string;
+  status?: string;
+  summaryText?: string;
+  errors?: ModelError[] | null;
+};
+
+type SyncScheduleDayArgs = {
+  scheduleDayId: string;
+};
+
+type AnalyzeTranscriptArgs = {
+  scheduleDayId: string;
+  scheduleDayItemId: string;
+  transcriptRecordId: string;
+};
+
+type SummarizeAudioArgs = {
+  jobId: string;
+  audioPath: string;
+  audioUrl: string;
+  audioS3Uri: string;
+};
+
+type OperationEnvelope<TData> = {
+  data?: TData | null;
+  errors?: ModelError[] | null;
+};
+
+type OperationRunner<TArgs, TData> = (
+  args: TArgs | { input: TArgs },
+) => Promise<OperationEnvelope<TData> | TData>;
+
+type ScheduleDayPanelClient = {
+  models: {
+    ScheduleDay: ListableModel<ScheduleDayRow> & UpdatableModel<ScheduleDayRow>;
+    ScheduleDayItem: ListableModel<ScheduleDayItemRow>;
+    ScheduleRecord: ListableModel<ScheduleRecordRow> &
+      CreatableModel<ScheduleRecordRow>;
+    AudioJob: ListableModel<AudioJobRow> &
+      CreatableModel<AudioJobRow> &
+      UpdatableModel<AudioJobRow>;
+  };
+  queries?: {
+    syncScheduleDayObservations?: OperationRunner<
+      SyncScheduleDayArgs,
+      ScheduleDaySyncResult
+    >;
+    analyzeTranscriptObservations?: OperationRunner<
+      AnalyzeTranscriptArgs,
+      AnalyzeTranscriptResult
+    >;
+  };
+  mutations?: {
+    syncScheduleDayObservations?: OperationRunner<
+      SyncScheduleDayArgs,
+      ScheduleDaySyncResult
+    >;
+    analyzeTranscriptObservations?: OperationRunner<
+      AnalyzeTranscriptArgs,
+      AnalyzeTranscriptResult
+    >;
+    summarizeAudio?: OperationRunner<SummarizeAudioArgs, SummarizeAudioResult>;
+  };
+};
+
+type AmplifyOutputsLike = {
+  storage?: {
+    bucket_name?: string;
+    bucketName?: string;
+    bucket?: string;
+    aws_bucket_name?: string;
+    aws_bucket?: string;
+  };
+  bucket_name?: string;
+  bucketName?: string;
+};
+
 function safeParseObservationSummary(
-  value?: string | null
+  value?: string | null,
 ): ObservationSummary | null {
   if (!value) return null;
   try {
@@ -93,7 +222,7 @@ function safeParseObservationSummary(
 }
 
 function safeParseAttendancePayload(
-  value?: string | null
+  value?: string | null,
 ): AttendancePayload | null {
   if (!value) return null;
   try {
@@ -106,7 +235,7 @@ function safeParseAttendancePayload(
 }
 
 function safeParsePlannedTranscriptPayload(
-  value?: string | null
+  value?: string | null,
 ): PlannedTranscriptPayload | null {
   if (!value) return null;
   try {
@@ -119,7 +248,7 @@ function safeParsePlannedTranscriptPayload(
 }
 
 function safeParseStructuredObservationPayload(
-  value?: string | null
+  value?: string | null,
 ): StructuredObservationPayload | null {
   if (!value) return null;
   try {
@@ -131,24 +260,56 @@ function safeParseStructuredObservationPayload(
   }
 }
 
-async function listAll(modelApi: any, options?: Record<string, unknown>) {
-  const results: any[] = [];
+async function listAll<TRow>(
+  modelApi: ListableModel<TRow>,
+  options?: ListOptions,
+): Promise<TRow[]> {
+  const results: TRow[] = [];
   let nextToken: string | null | undefined = undefined;
 
   do {
-    const res: any = await modelApi.list({
+    const res = await modelApi.list({
       ...(options ?? {}),
       nextToken,
     });
 
-    if (Array.isArray(res?.data) && res.data.length > 0) {
+    if (Array.isArray(res.data) && res.data.length > 0) {
       results.push(...res.data);
     }
 
-    nextToken = res?.nextToken;
+    nextToken = res.nextToken ?? null;
   } while (nextToken);
 
   return results;
+}
+
+function formatModelErrors(
+  errors?: ModelError[] | null,
+  fallback = "Unknown error",
+) {
+  const messages = (errors ?? [])
+    .map((e) => String(e.message ?? "").trim())
+    .filter(Boolean);
+
+  return messages.length > 0 ? messages.join(", ") : fallback;
+}
+
+function getOperationErrors<TData>(
+  res: OperationEnvelope<TData> | TData,
+): ModelError[] | null {
+  if (!res || typeof res !== "object") return null;
+  if (!("errors" in res)) return null;
+  return (res as OperationEnvelope<TData>).errors ?? null;
+}
+
+function getOperationData<TData>(res: OperationEnvelope<TData> | TData): TData {
+  if (!res || typeof res !== "object") {
+    return res as TData;
+  }
+  if (!("data" in res)) {
+    return res as TData;
+  }
+  return ((res as OperationEnvelope<TData>).data ?? res) as TData;
 }
 
 function formatRecordType(type?: string | null) {
@@ -175,13 +336,6 @@ function formatDateTime(value?: string | null) {
   return d.toLocaleString("ja-JP");
 }
 
-function nowHHmm() {
-  const d = new Date();
-  const hh = String(d.getHours()).padStart(2, "0");
-  const mm = String(d.getMinutes()).padStart(2, "0");
-  return `${hh}:${mm}`;
-}
-
 function createEmptyAttendanceRow(): AttendanceDraft {
   return {
     checked: false,
@@ -201,13 +355,13 @@ function createEmptyTranscriptDraft(): TranscriptDraft {
   };
 }
 
-function isMorningCheckItem(item: Schema["ScheduleDayItem"]["type"]) {
+function isMorningCheckItem(item: ScheduleDayItemRow) {
   return item.title === "朝礼";
 }
 
 function buildInitialAttendanceDrafts(
-  items: Array<Schema["ScheduleDayItem"]["type"]>,
-  records: Array<Schema["ScheduleRecord"]["type"]>
+  items: ScheduleDayItemRow[],
+  records: ScheduleRecordRow[],
 ): Record<string, Record<string, AttendanceDraft>> {
   const drafts: Record<string, Record<string, AttendanceDraft>> = {};
 
@@ -220,9 +374,11 @@ function buildInitialAttendanceDrafts(
     }
 
     const itemCheckRecords = records
-      .filter((r) => r.scheduleDayItemId === item.id && r.recordType === "CHECK")
+      .filter(
+        (r) => r.scheduleDayItemId === item.id && r.recordType === "CHECK",
+      )
       .sort((a, b) =>
-        String(a.recordedAt ?? "").localeCompare(String(b.recordedAt ?? ""))
+        String(a.recordedAt ?? "").localeCompare(String(b.recordedAt ?? "")),
       );
 
     for (const record of itemCheckRecords) {
@@ -231,7 +387,7 @@ function buildInitialAttendanceDrafts(
       if (!(payload.childName in drafts[item.id])) continue;
 
       drafts[item.id][payload.childName] = {
-        checked: !!payload.checked,
+        checked: Boolean(payload.checked),
         checkedAt: payload.checkedAt ?? "",
         note: payload.note ?? "",
       };
@@ -249,7 +405,7 @@ function buildAttendanceBody(childName: string, draft: AttendanceDraft) {
 
 function buildAttendancePayload(
   childName: string,
-  draft: AttendanceDraft
+  draft: AttendanceDraft,
 ): AttendancePayload {
   return {
     kind: "morningAttendance",
@@ -264,7 +420,7 @@ function buildAttendancePayload(
 function buildTranscriptPayload(
   practiceCode: string | null | undefined,
   childNames: string[],
-  transcriptText: string
+  transcriptText: string,
 ): PlannedTranscriptPayload {
   return {
     kind: "plannedTranscript",
@@ -288,17 +444,17 @@ function parseChildNamesText(input: string): string[] {
 
 function getLatestAttendanceByChild(
   itemId: string,
-  records: Array<Schema["ScheduleRecord"]["type"]>
+  records: ScheduleRecordRow[],
 ) {
   const latestMap = new Map<
     string,
-    { record: Schema["ScheduleRecord"]["type"]; payload: AttendancePayload }
+    { record: ScheduleRecordRow; payload: AttendancePayload }
   >();
 
   const itemCheckRecords = records
     .filter((r) => r.scheduleDayItemId === itemId && r.recordType === "CHECK")
     .sort((a, b) =>
-      String(a.recordedAt ?? "").localeCompare(String(b.recordedAt ?? ""))
+      String(a.recordedAt ?? "").localeCompare(String(b.recordedAt ?? "")),
     );
 
   for (const record of itemCheckRecords) {
@@ -318,7 +474,7 @@ function getLatestAttendanceByChild(
 }
 
 function getStorageBucketName(): string | undefined {
-  const o: any = outputs as any;
+  const o = outputs as unknown as AmplifyOutputsLike;
   return (
     o?.storage?.bucket_name ||
     o?.storage?.bucketName ||
@@ -336,7 +492,10 @@ function sleep(ms: number) {
 
 export default function ScheduleDayPanel(props: { owner: string }) {
   const { owner } = props;
-  const client = useMemo(() => generateClient<Schema>(), []);
+  const client = useMemo(
+    () => generateClient<Schema>() as unknown as ScheduleDayPanelClient,
+    [],
+  );
 
   const [targetDate, setTargetDate] = useState(() => todayYYYYMMDD());
   const [loading, setLoading] = useState(false);
@@ -358,11 +517,11 @@ export default function ScheduleDayPanel(props: { owner: string }) {
 
   const [day, setDay] = useState<Schema["ScheduleDay"]["type"] | null>(null);
   const [items, setItems] = useState<Array<Schema["ScheduleDayItem"]["type"]>>(
-    []
+    [],
   );
-  const [records, setRecords] = useState<Array<Schema["ScheduleRecord"]["type"]>>(
-    []
-  );
+  const [records, setRecords] = useState<
+    Array<Schema["ScheduleRecord"]["type"]>
+  >([]);
   const [memoDrafts, setMemoDrafts] = useState<Record<string, string>>({});
   const [attendanceDrafts, setAttendanceDrafts] = useState<
     Record<string, Record<string, AttendanceDraft>>
@@ -370,6 +529,189 @@ export default function ScheduleDayPanel(props: { owner: string }) {
   const [transcriptDrafts, setTranscriptDrafts] = useState<
     Record<string, TranscriptDraft>
   >({});
+
+  function sortRecordsByRecordedAt(
+    rows: ScheduleRecordRow[],
+  ): ScheduleRecordRow[] {
+    return [...rows].sort((a, b) =>
+      String(a.recordedAt ?? "").localeCompare(String(b.recordedAt ?? "")),
+    );
+  }
+
+  function updateMemoDraft(itemId: string, value: string) {
+    setMemoDrafts((prev) => ({
+      ...prev,
+      [itemId]: value,
+    }));
+  }
+
+  function updateTranscriptDraft(
+    itemId: string,
+    patch: Partial<TranscriptDraft>,
+  ) {
+    setTranscriptDrafts((prev) => ({
+      ...prev,
+      [itemId]: {
+        ...(prev[itemId] ?? createEmptyTranscriptDraft()),
+        ...patch,
+      },
+    }));
+  }
+
+  function updateAttendanceChecked(
+    itemId: string,
+    childName: string,
+    checked: boolean,
+  ) {
+    setAttendanceDrafts((prev) => {
+      const itemDrafts = prev[itemId] ?? {};
+      const current = itemDrafts[childName] ?? createEmptyAttendanceRow();
+
+      return {
+        ...prev,
+        [itemId]: {
+          ...itemDrafts,
+          [childName]: {
+            ...current,
+            checked,
+            checkedAt: checked
+              ? current.checkedAt || new Date().toISOString().slice(11, 16)
+              : "",
+          },
+        },
+      };
+    });
+  }
+
+  function updateAttendanceCheckedAt(
+    itemId: string,
+    childName: string,
+    checkedAt: string,
+  ) {
+    setAttendanceDrafts((prev) => {
+      const itemDrafts = prev[itemId] ?? {};
+      const current = itemDrafts[childName] ?? createEmptyAttendanceRow();
+
+      return {
+        ...prev,
+        [itemId]: {
+          ...itemDrafts,
+          [childName]: {
+            ...current,
+            checkedAt,
+          },
+        },
+      };
+    });
+  }
+
+  function updateAttendanceNote(
+    itemId: string,
+    childName: string,
+    note: string,
+  ) {
+    setAttendanceDrafts((prev) => {
+      const itemDrafts = prev[itemId] ?? {};
+      const current = itemDrafts[childName] ?? createEmptyAttendanceRow();
+
+      return {
+        ...prev,
+        [itemId]: {
+          ...itemDrafts,
+          [childName]: {
+            ...current,
+            note,
+          },
+        },
+      };
+    });
+  }
+
+  function getRecordsForItem(itemId: string): ScheduleRecordRow[] {
+    return records.filter((record) => record.scheduleDayItemId === itemId);
+  }
+
+  function getTranscriptRecordsForItem(itemId: string): ScheduleRecordRow[] {
+    return getRecordsForItem(itemId).filter(
+      (record) => record.recordType === "TRANSCRIPT",
+    );
+  }
+
+  function getStructuredObservationRecordsForItem(
+    itemId: string,
+  ): ScheduleRecordRow[] {
+    return getRecordsForItem(itemId).filter(
+      (record) => record.recordType === "STRUCTURED_OBSERVATION",
+    );
+  }
+
+  function getNonTranscriptRecordsForItem(itemId: string): ScheduleRecordRow[] {
+    return getRecordsForItem(itemId).filter(
+      (record) =>
+        record.recordType === "MEMO" || record.recordType === "APPEND_NOTE",
+    );
+  }
+
+  async function buildMessageWithCheckSync(
+    scheduleDayId: string,
+    baseMessage: string,
+  ): Promise<string> {
+    const runner =
+      client.queries?.syncScheduleDayObservations ??
+      client.mutations?.syncScheduleDayObservations;
+
+    if (!runner) {
+      return baseMessage;
+    }
+
+    try {
+      let res: OperationEnvelope<ScheduleDaySyncResult> | ScheduleDaySyncResult;
+
+      try {
+        res = await runner({ scheduleDayId });
+      } catch {
+        res = await runner({ input: { scheduleDayId } });
+      }
+
+      const errors = getOperationErrors(res);
+      if (errors?.length) {
+        return `${baseMessage} ただし同期で警告: ${formatModelErrors(
+          errors,
+          "sync failed",
+        )}`;
+      }
+
+      const data = getOperationData(res);
+      const createdObservationCount = Number(
+        data?.createdObservationCount ?? 0,
+      );
+      const createdAbilityLinkCount = Number(
+        data?.createdAbilityLinkCount ?? 0,
+      );
+      const deletedObservationCount = Number(
+        data?.deletedObservationCount ?? 0,
+      );
+      const deletedAbilityLinkCount = Number(
+        data?.deletedAbilityLinkCount ?? 0,
+      );
+
+      const changed =
+        createdObservationCount ||
+        createdAbilityLinkCount ||
+        deletedObservationCount ||
+        deletedAbilityLinkCount;
+
+      if (!changed) {
+        return baseMessage;
+      }
+
+      return `${baseMessage} 観察同期: +Obs ${createdObservationCount}, +Link ${createdAbilityLinkCount}, -Obs ${deletedObservationCount}, -Link ${deletedAbilityLinkCount}`;
+    } catch (e) {
+      return `${baseMessage} ただし同期で警告: ${
+        e instanceof Error ? e.message : String(e)
+      }`;
+    }
+  }
 
   async function loadScheduleDay() {
     setLoading(true);
@@ -386,18 +728,17 @@ export default function ScheduleDayPanel(props: { owner: string }) {
         filter: {
           owner: { eq: owner },
           targetDate: { eq: targetDate },
-        } as any,
+        } as ListOptions,
       });
 
       const foundDay =
-        [...(dayRes.data ?? [])]
-          .sort((a, b) => {
-            const versionDiff = (b.issueVersion ?? 0) - (a.issueVersion ?? 0);
-            if (versionDiff !== 0) return versionDiff;
-            return String(b.issuedAt ?? "").localeCompare(
-              String(a.issuedAt ?? "")
-            );
-          })[0] ?? null;
+        [...(dayRes.data ?? [])].sort((a, b) => {
+          const versionDiff = (b.issueVersion ?? 0) - (a.issueVersion ?? 0);
+          if (versionDiff !== 0) return versionDiff;
+          return String(b.issuedAt ?? "").localeCompare(
+            String(a.issuedAt ?? ""),
+          );
+        })[0] ?? null;
 
       if (!foundDay) {
         setMessage(`対象日 ${targetDate} の日案はありません。`);
@@ -411,7 +752,7 @@ export default function ScheduleDayPanel(props: { owner: string }) {
           id: foundDay.id,
           status: "IN_PROGRESS",
           openedAt: new Date().toISOString(),
-        } as any);
+        } as MutationInput);
 
         if (updateRes.data) {
           normalizedDay = updateRes.data;
@@ -423,11 +764,11 @@ export default function ScheduleDayPanel(props: { owner: string }) {
       const itemsRes = await client.models.ScheduleDayItem.list({
         filter: {
           scheduleDayId: { eq: normalizedDay.id },
-        } as any,
+        } as ListOptions,
       });
 
-      const sortedItems = (itemsRes.data ?? []).sort(
-        (a, b) => (a.sortOrder ?? 0) - (b.sortOrder ?? 0)
+      const sortedItems = [...(itemsRes.data ?? [])].sort(
+        (a, b) => (a.sortOrder ?? 0) - (b.sortOrder ?? 0),
       );
 
       setItems(sortedItems);
@@ -435,15 +776,17 @@ export default function ScheduleDayPanel(props: { owner: string }) {
       const recordRows = await listAll(client.models.ScheduleRecord, {
         filter: {
           scheduleDayId: { eq: normalizedDay.id },
-        } as any,
+        } as ListOptions,
       });
 
       recordRows.sort((a, b) =>
-        String(a.recordedAt ?? "").localeCompare(String(b.recordedAt ?? ""))
+        String(a.recordedAt ?? "").localeCompare(String(b.recordedAt ?? "")),
       );
       setRecords(recordRows);
 
-      setAttendanceDrafts(buildInitialAttendanceDrafts(sortedItems, recordRows));
+      setAttendanceDrafts(
+        buildInitialAttendanceDrafts(sortedItems, recordRows),
+      );
 
       const initialTranscriptDrafts: Record<string, TranscriptDraft> = {};
       for (const item of sortedItems) {
@@ -462,132 +805,7 @@ export default function ScheduleDayPanel(props: { owner: string }) {
     }
   }
 
-  function getRecordsForItem(scheduleDayItemId: string) {
-    return records.filter((r) => r.scheduleDayItemId === scheduleDayItemId);
-  }
-
-  function getTranscriptRecordsForItem(scheduleDayItemId: string) {
-    return records
-      .filter(
-        (r) =>
-          r.scheduleDayItemId === scheduleDayItemId &&
-          r.recordType === "TRANSCRIPT"
-      )
-      .sort((a, b) =>
-        String(a.recordedAt ?? "").localeCompare(String(b.recordedAt ?? ""))
-      );
-  }
-
-  function getStructuredObservationRecordsForItem(
-    scheduleDayItemId: string
-  ) {
-    return records
-      .filter(
-        (r) =>
-          r.scheduleDayItemId === scheduleDayItemId &&
-          r.recordType === "STRUCTURED_OBSERVATION"
-      )
-      .sort((a, b) =>
-        String(a.recordedAt ?? "").localeCompare(String(b.recordedAt ?? ""))
-      );
-  }
-
-  function getNonTranscriptRecordsForItem(scheduleDayItemId: string) {
-    return records
-      .filter(
-        (r) =>
-          r.scheduleDayItemId === scheduleDayItemId &&
-          r.recordType !== "TRANSCRIPT" &&
-          r.recordType !== "CHECK" &&
-          r.recordType !== "STRUCTURED_OBSERVATION"
-      )
-      .sort((a, b) =>
-        String(a.recordedAt ?? "").localeCompare(String(b.recordedAt ?? ""))
-      );
-  }
-
-  function updateMemoDraft(itemId: string, value: string) {
-    setMemoDrafts((prev) => ({
-      ...prev,
-      [itemId]: value,
-    }));
-  }
-
-  function updateTranscriptDraft(
-    itemId: string,
-    patch: Partial<TranscriptDraft>
-  ) {
-    setTranscriptDrafts((prev) => ({
-      ...prev,
-      [itemId]: {
-        ...(prev[itemId] ?? createEmptyTranscriptDraft()),
-        ...patch,
-      },
-    }));
-  }
-
-  function updateAttendanceChecked(
-    itemId: string,
-    childName: string,
-    checked: boolean
-  ) {
-    setAttendanceDrafts((prev) => {
-      const current = prev[itemId]?.[childName] ?? createEmptyAttendanceRow();
-      return {
-        ...prev,
-        [itemId]: {
-          ...(prev[itemId] ?? {}),
-          [childName]: {
-            ...current,
-            checked,
-            checkedAt: checked ? current.checkedAt || nowHHmm() : "",
-          },
-        },
-      };
-    });
-  }
-
-  function updateAttendanceCheckedAt(
-    itemId: string,
-    childName: string,
-    checkedAt: string
-  ) {
-    setAttendanceDrafts((prev) => {
-      const current = prev[itemId]?.[childName] ?? createEmptyAttendanceRow();
-      return {
-        ...prev,
-        [itemId]: {
-          ...(prev[itemId] ?? {}),
-          [childName]: {
-            ...current,
-            checkedAt,
-          },
-        },
-      };
-    });
-  }
-
-  function updateAttendanceNote(
-    itemId: string,
-    childName: string,
-    note: string
-  ) {
-    setAttendanceDrafts((prev) => {
-      const current = prev[itemId]?.[childName] ?? createEmptyAttendanceRow();
-      return {
-        ...prev,
-        [itemId]: {
-          ...(prev[itemId] ?? {}),
-          [childName]: {
-            ...current,
-            note,
-          },
-        },
-      };
-    });
-  }
-
-  async function saveMemo(item: Schema["ScheduleDayItem"]["type"]) {
+  async function saveMemo(item: ScheduleDayItemRow) {
     if (!day) return;
 
     const body = (memoDrafts[item.id] ?? "").trim();
@@ -613,29 +831,30 @@ export default function ScheduleDayPanel(props: { owner: string }) {
         appendOnly: day.status === "CLOSED",
         createdBySub: owner,
         recordedAt: new Date().toISOString(),
-      } as any);
+      } as MutationInput);
 
       if (!createRes.data) {
         throw new Error(
-          createRes.errors?.map((e) => e.message).join(", ") ||
-            "ScheduleRecord の保存に失敗しました。"
+          formatModelErrors(
+            createRes.errors,
+            "ScheduleRecord の保存に失敗しました。",
+          ),
         );
       }
 
-      setRecords((prev) =>
-        [...prev, createRes.data!].sort((a, b) =>
-          String(a.recordedAt ?? "").localeCompare(String(b.recordedAt ?? ""))
-        )
-      );
+      const createdRecord = createRes.data;
+      setRecords((prev) => sortRecordsByRecordedAt([...prev, createdRecord]));
 
       setMemoDrafts((prev) => ({
         ...prev,
         [item.id]: "",
       }));
 
-      setMessage(
-        day.status === "CLOSED" ? "追記を保存しました。" : "メモを保存しました。"
-      );
+      const baseMessage =
+        day.status === "CLOSED"
+          ? "追記を保存しました。"
+          : "メモを保存しました。";
+      setMessage(await buildMessageWithCheckSync(day.id, baseMessage));
     } catch (e) {
       console.error(e);
       setMessage(`保存エラー: ${e instanceof Error ? e.message : String(e)}`);
@@ -644,7 +863,7 @@ export default function ScheduleDayPanel(props: { owner: string }) {
     }
   }
 
-  async function saveAttendance(item: Schema["ScheduleDayItem"]["type"]) {
+  async function saveAttendance(item: ScheduleDayItemRow) {
     if (!day) return;
     if (day.status === "CLOSED") {
       setMessage("締め後は朝礼チェックを更新できません。");
@@ -661,7 +880,7 @@ export default function ScheduleDayPanel(props: { owner: string }) {
     setMessage("");
 
     try {
-      const createdRecords: Array<Schema["ScheduleRecord"]["type"]> = [];
+      const createdRecords: ScheduleRecordRow[] = [];
 
       for (const childName of MORNING_CHECK_CHILDREN) {
         const draft = draftMap[childName] ?? createEmptyAttendanceRow();
@@ -679,12 +898,14 @@ export default function ScheduleDayPanel(props: { owner: string }) {
           appendOnly: false,
           createdBySub: owner,
           recordedAt: new Date().toISOString(),
-        } as any);
+        } as MutationInput);
 
         if (!createRes.data) {
           throw new Error(
-            createRes.errors?.map((e) => e.message).join(", ") ||
-              `朝礼チェック保存失敗: ${childName}`
+            formatModelErrors(
+              createRes.errors,
+              `朝礼チェック保存失敗: ${childName}`,
+            ),
           );
         }
 
@@ -692,18 +913,16 @@ export default function ScheduleDayPanel(props: { owner: string }) {
       }
 
       setRecords((prev) =>
-        [...prev, ...createdRecords].sort((a, b) =>
-          String(a.recordedAt ?? "").localeCompare(String(b.recordedAt ?? ""))
-        )
+        sortRecordsByRecordedAt([...prev, ...createdRecords]),
       );
 
-      setMessage("朝礼チェックを保存しました。");
+      setMessage(
+        await buildMessageWithCheckSync(day.id, "朝礼チェックを保存しました。"),
+      );
     } catch (e) {
       console.error(e);
       setMessage(
-        `朝礼チェック保存エラー: ${
-          e instanceof Error ? e.message : String(e)
-        }`
+        `朝礼チェック保存エラー: ${e instanceof Error ? e.message : String(e)}`,
       );
     } finally {
       setSavingAttendanceItemId(null);
@@ -711,16 +930,16 @@ export default function ScheduleDayPanel(props: { owner: string }) {
   }
 
   async function waitForTranscriptJob(jobId: string) {
-    for (let i = 0; i < 60; i++) {
+    for (let i = 0; i < 60; i += 1) {
       await sleep(5000);
 
       const jobRes = await client.models.AudioJob.list({
         filter: {
           id: { eq: jobId },
-        } as any,
+        } as ListOptions,
       });
 
-      const job = (jobRes.data ?? [])[0] as any;
+      const job = (jobRes.data ?? [])[0];
 
       if (!job) continue;
 
@@ -734,13 +953,11 @@ export default function ScheduleDayPanel(props: { owner: string }) {
     }
 
     throw new Error(
-      "文字起こし結果の待機がタイムアウトしました。AudioJob の状態を確認してください。"
+      "文字起こし結果の待機がタイムアウトしました。AudioJob の状態を確認してください。",
     );
   }
 
-  async function transcribeTranscriptAudio(
-    item: Schema["ScheduleDayItem"]["type"]
-  ) {
+  async function transcribeTranscriptAudio(item: ScheduleDayItemRow) {
     if (!day) return;
     if (day.status === "CLOSED") {
       setMessage("締め後は文字起こしを開始できません。");
@@ -795,22 +1012,18 @@ export default function ScheduleDayPanel(props: { owner: string }) {
         summaryText: null,
         errorMessage: null,
         completedAt: null,
-      } as any);
+      } as MutationInput);
 
       if (!createJobRes.data) {
         throw new Error(
-          createJobRes.errors?.map((e) => e.message).join(", ") ||
-            "AudioJob の作成に失敗しました。"
+          formatModelErrors(
+            createJobRes.errors,
+            "AudioJob の作成に失敗しました。",
+          ),
         );
       }
 
-      const jobId =
-        (createJobRes.data as any)?.id ??
-        (Array.isArray(createJobRes.data)
-          ? (createJobRes.data as any[])[0]?.id
-          : "") ??
-        "";
-
+      const jobId = String(createJobRes.data.id ?? "");
       if (!jobId) {
         throw new Error("AudioJob id を取得できませんでした。");
       }
@@ -822,30 +1035,38 @@ export default function ScheduleDayPanel(props: { owner: string }) {
 
       const bucket = getStorageBucketName();
       if (!bucket) {
-        throw new Error("amplify_outputs.json から bucket 名を取得できません。");
+        throw new Error(
+          "amplify_outputs.json から bucket 名を取得できません。",
+        );
+      }
+
+      const summarizeRunner = client.mutations?.summarizeAudio;
+      if (!summarizeRunner) {
+        throw new Error(
+          "summarizeAudio が client.mutations に見つかりません。resource.ts の custom operation 名を確認してください。",
+        );
       }
 
       const key = String(uploadResult.path).replace(/^\/+/, "");
       const audioS3Uri = `s3://${bucket}/${key}`;
 
-      const res = await (client.mutations as any).summarizeAudio({
+      const res = await summarizeRunner({
         jobId,
         audioPath: uploadResult.path,
         audioUrl: audioS3Uri,
         audioS3Uri,
       });
 
-      const resp = res?.data ?? res;
-      const errs = res?.errors ?? resp?.errors;
-
-      if (Array.isArray(errs) && errs.length) {
+      const errs = getOperationErrors(res);
+      if (Array.isArray(errs) && errs.length > 0) {
         throw new Error(
-          errs.map((e: any) => e.message ?? String(e)).join("\n")
+          formatModelErrors(errs, "summarizeAudio に失敗しました。"),
         );
       }
 
-      const jobName = resp?.transcribeJobName as string | undefined;
-      const st = resp?.status as string | undefined;
+      const resp = getOperationData(res);
+      const jobName = resp?.transcribeJobName;
+      const st = resp?.status;
 
       if (st === "FAILED") {
         await client.models.AudioJob.update({
@@ -854,7 +1075,7 @@ export default function ScheduleDayPanel(props: { owner: string }) {
           transcribeStatus: "FAILED",
           errorMessage: resp?.summaryText ?? "StartTranscriptionJob failed",
           completedAt: new Date().toISOString(),
-        } as any);
+        } as MutationInput);
         throw new Error(resp?.summaryText ?? "StartTranscriptionJob failed");
       }
 
@@ -865,7 +1086,7 @@ export default function ScheduleDayPanel(props: { owner: string }) {
           transcribeStatus: "FAILED",
           errorMessage: "No transcribeJobName returned from summarizeAudio.",
           completedAt: new Date().toISOString(),
-        } as any);
+        } as MutationInput);
         throw new Error("No transcribeJobName returned from summarizeAudio");
       }
 
@@ -876,7 +1097,7 @@ export default function ScheduleDayPanel(props: { owner: string }) {
         transcribeStatus: "IN_PROGRESS",
         errorMessage: null,
         completedAt: null,
-      } as any);
+      } as MutationInput);
 
       updateTranscriptDraft(item.id, {
         audioStatusText: "文字起こし中です。しばらくお待ちください...",
@@ -912,7 +1133,7 @@ export default function ScheduleDayPanel(props: { owner: string }) {
     }
   }
 
-  async function saveTranscript(item: Schema["ScheduleDayItem"]["type"]) {
+  async function saveTranscript(item: ScheduleDayItemRow) {
     if (!day) return;
     if (day.status === "CLOSED") {
       setMessage("締め後は transcript を保存できません。");
@@ -935,7 +1156,7 @@ export default function ScheduleDayPanel(props: { owner: string }) {
       const payload = buildTranscriptPayload(
         item.practiceCode,
         childNames,
-        transcriptText
+        transcriptText,
       );
 
       const createRes = await client.models.ScheduleRecord.create({
@@ -949,40 +1170,42 @@ export default function ScheduleDayPanel(props: { owner: string }) {
         appendOnly: false,
         createdBySub: owner,
         recordedAt: new Date().toISOString(),
-      } as any);
+      } as MutationInput);
 
       if (!createRes.data) {
         throw new Error(
-          createRes.errors?.map((e) => e.message).join(", ") ||
-            "TRANSCRIPT の保存に失敗しました。"
+          formatModelErrors(
+            createRes.errors,
+            "TRANSCRIPT の保存に失敗しました。",
+          ),
         );
       }
 
-      setRecords((prev) =>
-        [...prev, createRes.data!].sort((a, b) =>
-          String(a.recordedAt ?? "").localeCompare(String(b.recordedAt ?? ""))
-        )
-      );
+      const createdRecord = createRes.data;
+      setRecords((prev) => sortRecordsByRecordedAt([...prev, createdRecord]));
 
       setTranscriptDrafts((prev) => ({
         ...prev,
         [item.id]: createEmptyTranscriptDraft(),
       }));
 
-      setMessage("音声メモ（text）を保存しました。");
+      setMessage(
+        await buildMessageWithCheckSync(
+          day.id,
+          "音声メモ（text）を保存しました。",
+        ),
+      );
     } catch (e) {
       console.error(e);
       setMessage(
-        `TRANSCRIPT 保存エラー: ${
-          e instanceof Error ? e.message : String(e)
-        }`
+        `TRANSCRIPT 保存エラー: ${e instanceof Error ? e.message : String(e)}`,
       );
     } finally {
       setSavingTranscriptItemId(null);
     }
   }
 
-  async function analyzeTranscript(item: Schema["ScheduleDayItem"]["type"]) {
+  async function analyzeTranscript(item: ScheduleDayItemRow) {
     if (!day) return;
 
     const transcriptRecords = getTranscriptRecordsForItem(item.id);
@@ -998,16 +1221,18 @@ export default function ScheduleDayPanel(props: { owner: string }) {
 
     try {
       const runner =
-        (client as any).queries?.analyzeTranscriptObservations ??
-        (client as any).mutations?.analyzeTranscriptObservations;
+        client.queries?.analyzeTranscriptObservations ??
+        client.mutations?.analyzeTranscriptObservations;
 
       if (!runner) {
         throw new Error(
-          "analyzeTranscriptObservations が client に見つかりません。resource.ts の custom operation 名を確認してください。"
+          "analyzeTranscriptObservations が client に見つかりません。resource.ts の custom operation 名を確認してください。",
         );
       }
 
-      let res: any;
+      let res:
+        | OperationEnvelope<AnalyzeTranscriptResult>
+        | AnalyzeTranscriptResult;
       try {
         res = await runner({
           scheduleDayId: day.id,
@@ -1024,29 +1249,31 @@ export default function ScheduleDayPanel(props: { owner: string }) {
         });
       }
 
-      if (res?.errors?.length) {
-        throw new Error(res.errors.map((e: any) => e.message).join(", "));
+      const errors = getOperationErrors(res);
+      if (errors?.length) {
+        throw new Error(formatModelErrors(errors, "AI解析に失敗しました。"));
       }
 
       const recordRows = await listAll(client.models.ScheduleRecord, {
         filter: {
           scheduleDayId: { eq: day.id },
-        } as any,
+        } as ListOptions,
       });
 
       recordRows.sort((a, b) =>
-        String(a.recordedAt ?? "").localeCompare(String(b.recordedAt ?? ""))
+        String(a.recordedAt ?? "").localeCompare(String(b.recordedAt ?? "")),
       );
       setRecords(recordRows);
 
-      const data = res?.data ?? res;
+      const data = getOperationData(res);
       const createdCount = Number(data?.createdCount ?? data?.count ?? 0);
 
-      setMessage(
+      const baseMessage =
         createdCount > 0
           ? `AI解析を実行しました。 createdCount=${createdCount}`
-          : "AI解析を実行しました。"
-      );
+          : "AI解析を実行しました。";
+
+      setMessage(await buildMessageWithCheckSync(day.id, baseMessage));
     } catch (e) {
       console.error(e);
       setMessage(`AI解析エラー: ${e instanceof Error ? e.message : String(e)}`);
@@ -1075,12 +1302,11 @@ export default function ScheduleDayPanel(props: { owner: string }) {
         status: "CLOSED",
         closedAt: new Date().toISOString(),
         closedBySub: owner,
-      } as any);
+      } as MutationInput);
 
       if (!updateRes.data) {
         throw new Error(
-          updateRes.errors?.map((e) => e.message).join(", ") ||
-            "日案の締め処理に失敗しました。"
+          formatModelErrors(updateRes.errors, "日案の締め処理に失敗しました。"),
         );
       }
 
@@ -1089,7 +1315,7 @@ export default function ScheduleDayPanel(props: { owner: string }) {
     } catch (e) {
       console.error(e);
       setMessage(
-        `締め処理エラー: ${e instanceof Error ? e.message : String(e)}`
+        `締め処理エラー: ${e instanceof Error ? e.message : String(e)}`,
       );
     } finally {
       setClosing(false);
@@ -1110,12 +1336,14 @@ export default function ScheduleDayPanel(props: { owner: string }) {
       const updateRes = await client.models.ScheduleDay.update({
         id: day.id,
         status: "IN_PROGRESS",
-      } as any);
+      } as MutationInput);
 
       if (!updateRes.data) {
         throw new Error(
-          updateRes.errors?.map((e) => e.message).join(", ") ||
-            "日案の再オープンに失敗しました。"
+          formatModelErrors(
+            updateRes.errors,
+            "日案の再オープンに失敗しました。",
+          ),
         );
       }
 
@@ -1124,7 +1352,7 @@ export default function ScheduleDayPanel(props: { owner: string }) {
     } catch (e) {
       console.error(e);
       setMessage(
-        `再オープンエラー: ${e instanceof Error ? e.message : String(e)}`
+        `再オープンエラー: ${e instanceof Error ? e.message : String(e)}`,
       );
     } finally {
       setReopening(false);
@@ -1168,7 +1396,9 @@ export default function ScheduleDayPanel(props: { owner: string }) {
           {day ? (
             <button
               onClick={closeScheduleDay}
-              disabled={closing || day.status === "CLOSED" || day.owner !== owner}
+              disabled={
+                closing || day.status === "CLOSED" || day.owner !== owner
+              }
             >
               {closing ? "締め中..." : "日案を締める"}
             </button>
@@ -1287,10 +1517,12 @@ export default function ScheduleDayPanel(props: { owner: string }) {
           <div style={{ display: "grid", gap: 12 }}>
             {items.map((item) => {
               const observation = safeParseObservationSummary(
-                item.observationSummaryJson
+                item.observationSummaryJson,
               );
               const itemRecords = getRecordsForItem(item.id);
-              const itemTranscriptRecords = getTranscriptRecordsForItem(item.id);
+              const itemTranscriptRecords = getTranscriptRecordsForItem(
+                item.id,
+              );
               const itemStructuredObservationRecords =
                 getStructuredObservationRecordsForItem(item.id);
               const itemMemoRecords = getNonTranscriptRecordsForItem(item.id);
@@ -1298,7 +1530,7 @@ export default function ScheduleDayPanel(props: { owner: string }) {
                 transcriptDrafts[item.id] ?? createEmptyTranscriptDraft();
               const latestAttendanceRows = getLatestAttendanceByChild(
                 item.id,
-                records
+                records,
               );
 
               return (
@@ -1484,7 +1716,7 @@ export default function ScheduleDayPanel(props: { owner: string }) {
                                         updateAttendanceChecked(
                                           item.id,
                                           childName,
-                                          e.target.checked
+                                          e.target.checked,
                                         )
                                       }
                                     />
@@ -1500,13 +1732,14 @@ export default function ScheduleDayPanel(props: { owner: string }) {
                                       type="time"
                                       value={draft.checkedAt}
                                       disabled={
-                                        day?.status === "CLOSED" || !draft.checked
+                                        day?.status === "CLOSED" ||
+                                        !draft.checked
                                       }
                                       onChange={(e) =>
                                         updateAttendanceCheckedAt(
                                           item.id,
                                           childName,
-                                          e.target.value
+                                          e.target.value,
                                         )
                                       }
                                     />
@@ -1526,7 +1759,7 @@ export default function ScheduleDayPanel(props: { owner: string }) {
                                         updateAttendanceNote(
                                           item.id,
                                           childName,
-                                          e.target.value
+                                          e.target.value,
                                         )
                                       }
                                       placeholder="欠席理由など"
@@ -1656,7 +1889,11 @@ export default function ScheduleDayPanel(props: { owner: string }) {
 
                           {transcriptDraft.audioFileName ? (
                             <div
-                              style={{ marginTop: 6, fontSize: 12, color: "#555" }}
+                              style={{
+                                marginTop: 6,
+                                fontSize: 12,
+                                color: "#555",
+                              }}
                             >
                               選択中: {transcriptDraft.audioFileName}
                             </div>
@@ -1664,15 +1901,24 @@ export default function ScheduleDayPanel(props: { owner: string }) {
 
                           {transcriptDraft.audioJobId ? (
                             <div
-                              style={{ marginTop: 4, fontSize: 12, color: "#555" }}
+                              style={{
+                                marginTop: 4,
+                                fontSize: 12,
+                                color: "#555",
+                              }}
                             >
-                              AudioJob: <code>{transcriptDraft.audioJobId}</code>
+                              AudioJob:{" "}
+                              <code>{transcriptDraft.audioJobId}</code>
                             </div>
                           ) : null}
 
                           {transcriptDraft.audioStatusText ? (
                             <div
-                              style={{ marginTop: 4, fontSize: 12, color: "#555" }}
+                              style={{
+                                marginTop: 4,
+                                fontSize: 12,
+                                color: "#555",
+                              }}
                             >
                               {transcriptDraft.audioStatusText}
                             </div>
@@ -1754,7 +2000,8 @@ export default function ScheduleDayPanel(props: { owner: string }) {
 
                       {day?.status === "CLOSED" ? (
                         <div style={{ marginTop: 8, color: "#666" }}>
-                          締め後は transcript の保存はできません。AI解析は保存済み音声メモに対して実行できます。
+                          締め後は transcript
+                          の保存はできません。AI解析は保存済み音声メモに対して実行できます。
                         </div>
                       ) : null}
 
@@ -1765,37 +2012,42 @@ export default function ScheduleDayPanel(props: { owner: string }) {
                           </div>
 
                           <div style={{ display: "grid", gap: 8 }}>
-                            {itemTranscriptRecords.map((record) => {
-                              const payload = safeParsePlannedTranscriptPayload(
-                                record.payloadJson
-                              );
+                            {itemTranscriptRecords.map(
+                              (record: ScheduleRecordRow) => {
+                                const payload =
+                                  safeParsePlannedTranscriptPayload(
+                                    record.payloadJson,
+                                  );
 
-                              return (
-                                <div
-                                  key={record.id}
-                                  style={{
-                                    padding: 8,
-                                    borderRadius: 6,
-                                    background: "#ffffff",
-                                    border: "1px solid #e5e7eb",
-                                  }}
-                                >
-                                  <div style={{ fontSize: 12, color: "#555" }}>
-                                    {formatRecordType(record.recordType)} /{" "}
-                                    {formatDateTime(record.recordedAt)}
-                                  </div>
+                                return (
+                                  <div
+                                    key={record.id}
+                                    style={{
+                                      padding: 8,
+                                      borderRadius: 6,
+                                      background: "#ffffff",
+                                      border: "1px solid #e5e7eb",
+                                    }}
+                                  >
+                                    <div
+                                      style={{ fontSize: 12, color: "#555" }}
+                                    >
+                                      {formatRecordType(record.recordType)} /{" "}
+                                      {formatDateTime(record.recordedAt)}
+                                    </div>
 
-                                  <div style={{ marginTop: 6 }}>
-                                    <b>子どもタグ:</b>{" "}
-                                    {payload?.childNames?.join(", ") || "-"}
-                                  </div>
+                                    <div style={{ marginTop: 6 }}>
+                                      <b>子どもタグ:</b>{" "}
+                                      {payload?.childNames?.join(", ") || "-"}
+                                    </div>
 
-                                  <div style={{ marginTop: 6 }}>
-                                    <b>本文:</b> {record.body || "(本文なし)"}
+                                    <div style={{ marginTop: 6 }}>
+                                      <b>本文:</b> {record.body || "(本文なし)"}
+                                    </div>
                                   </div>
-                                </div>
-                              );
-                            })}
+                                );
+                              },
+                            )}
                           </div>
                         </div>
                       ) : null}
@@ -1815,56 +2067,61 @@ export default function ScheduleDayPanel(props: { owner: string }) {
                           </div>
 
                           <div style={{ display: "grid", gap: 8 }}>
-                            {itemStructuredObservationRecords.map((record) => {
-                              const payload =
-                                safeParseStructuredObservationPayload(
-                                  record.payloadJson
+                            {itemStructuredObservationRecords.map(
+                              (record: ScheduleRecordRow) => {
+                                const payload =
+                                  safeParseStructuredObservationPayload(
+                                    record.payloadJson,
+                                  );
+
+                                if (!payload) return null;
+
+                                return (
+                                  <div
+                                    key={record.id}
+                                    style={{
+                                      padding: 8,
+                                      borderRadius: 6,
+                                      background: "#f8fbff",
+                                      border: "1px solid #dbeafe",
+                                    }}
+                                  >
+                                    <div
+                                      style={{ fontSize: 12, color: "#555" }}
+                                    >
+                                      {formatRecordType(record.recordType)} /{" "}
+                                      {formatDateTime(record.recordedAt)}
+                                    </div>
+
+                                    <div style={{ marginTop: 6 }}>
+                                      <b>子ども:</b> {payload.childName || "-"}
+                                    </div>
+
+                                    <div style={{ marginTop: 6 }}>
+                                      <b>Ability:</b>{" "}
+                                      {payload.abilityName || "-"}
+                                      {payload.abilityCode
+                                        ? ` (${payload.abilityCode})`
+                                        : ""}
+                                    </div>
+
+                                    <div style={{ marginTop: 6 }}>
+                                      <b>observedText:</b>{" "}
+                                      {payload.observedText ||
+                                        record.body ||
+                                        "(本文なし)"}
+                                    </div>
+
+                                    <div style={{ marginTop: 6 }}>
+                                      <b>confidence:</b>{" "}
+                                      {typeof payload.confidence === "number"
+                                        ? payload.confidence
+                                        : "-"}
+                                    </div>
+                                  </div>
                                 );
-
-                              if (!payload) return null;
-
-                              return (
-                                <div
-                                  key={record.id}
-                                  style={{
-                                    padding: 8,
-                                    borderRadius: 6,
-                                    background: "#f8fbff",
-                                    border: "1px solid #dbeafe",
-                                  }}
-                                >
-                                  <div style={{ fontSize: 12, color: "#555" }}>
-                                    {formatRecordType(record.recordType)} /{" "}
-                                    {formatDateTime(record.recordedAt)}
-                                  </div>
-
-                                  <div style={{ marginTop: 6 }}>
-                                    <b>子ども:</b> {payload.childName || "-"}
-                                  </div>
-
-                                  <div style={{ marginTop: 6 }}>
-                                    <b>Ability:</b> {payload.abilityName || "-"}
-                                    {payload.abilityCode
-                                      ? ` (${payload.abilityCode})`
-                                      : ""}
-                                  </div>
-
-                                  <div style={{ marginTop: 6 }}>
-                                    <b>observedText:</b>{" "}
-                                    {payload.observedText ||
-                                      record.body ||
-                                      "(本文なし)"}
-                                  </div>
-
-                                  <div style={{ marginTop: 6 }}>
-                                    <b>confidence:</b>{" "}
-                                    {typeof payload.confidence === "number"
-                                      ? payload.confidence
-                                      : "-"}
-                                  </div>
-                                </div>
-                              );
-                            })}
+                              },
+                            )}
                           </div>
                         </div>
                       ) : null}
@@ -1923,7 +2180,7 @@ export default function ScheduleDayPanel(props: { owner: string }) {
                         </div>
 
                         <div style={{ display: "grid", gap: 8 }}>
-                          {itemMemoRecords.map((record) => (
+                          {itemMemoRecords.map((record: ScheduleRecordRow) => (
                             <div
                               key={record.id}
                               style={{

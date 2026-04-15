@@ -9,6 +9,27 @@ import {
 } from "@aws-sdk/client-bedrock-runtime";
 
 type JsonObject = Record<string, unknown>;
+type DataClientEnv = Parameters<typeof getAmplifyDataClientConfig>[0];
+
+type PracticeSuggestArgs = {
+  practiceId: string;
+};
+
+type PracticeCodeRow = Schema["PracticeCode"]["type"] & {
+  practiceCategory?: string | null;
+  practice_code?: string | null;
+  tenantId?: string | null;
+  visibility?: string | null;
+  publishScope?: string | null;
+  version?: number | null;
+};
+
+type AbilityCodeRow = Schema["AbilityCode"]["type"] & {
+  parent_code?: string | null;
+  status?: string | null;
+  level?: number | null;
+  is_leaf?: boolean | null;
+};
 
 function s(v: unknown): string {
   return typeof v === "string" ? v.trim() : String(v ?? "").trim();
@@ -35,10 +56,8 @@ function truncateText(text: string, max = 12000): string {
   return text.slice(0, max) + "\n…(truncated)…";
 }
 
-function buildAbilityLabelMap(
-  codes: Array<Schema["AbilityCode"]["type"]>,
-): Record<string, string> {
-  const byCode = new Map<string, Schema["AbilityCode"]["type"]>();
+function buildAbilityLabelMap(codes: AbilityCodeRow[]): Record<string, string> {
+  const byCode = new Map<string, AbilityCodeRow>();
   for (const c of codes) {
     byCode.set(String(c.code), c);
   }
@@ -48,11 +67,11 @@ function buildAbilityLabelMap(
   for (const c of codes) {
     const code = String(c.code);
     const names: string[] = [];
-    let cur: Schema["AbilityCode"]["type"] | undefined = c;
+    let cur: AbilityCodeRow | undefined = c;
 
     while (cur) {
       names.unshift(s(cur.name));
-      const parentCode = s((cur as any).parent_code);
+      const parentCode = s(cur.parent_code);
       if (!parentCode) break;
       cur = byCode.get(parentCode);
     }
@@ -155,9 +174,7 @@ async function invokeBedrockJson(
     content?: Array<{ type?: string; text?: string }>;
   };
 
-  const rawText = s(
-    json?.content?.find((x) => x?.type === "text")?.text ?? "",
-  );
+  const rawText = s(json.content?.find((x) => x?.type === "text")?.text ?? "");
 
   const parsed = safeJsonParse(rawText);
   if (!parsed) {
@@ -177,165 +194,183 @@ async function invokeBedrockJson(
         reason: s(item.reason),
       };
     })
-    .filter(
-      (x) =>
-        x.abilityCode &&
-        [1, 2, 3].includes(x.score) &&
-        x.reason,
-    )
+    .filter((x) => x.abilityCode && [1, 2, 3].includes(x.score) && x.reason)
     .slice(0, 5);
 
   return { suggestions, rawText };
 }
 
-export const handler: Schema["suggestPracticeLinks"]["functionHandler"] = async (
-  event,
-) => {
-  const practiceId = event.arguments.practiceId;
-  const modelId =
-    process.env.BEDROCK_MODEL_ID ||
-    "anthropic.claude-3-5-sonnet-20240620-v1:0";
+function buildPracticeUpdateBase(practice: PracticeCodeRow) {
+  return {
+    id: practice.id,
+    practice_code: practice.practice_code,
+    tenantId: practice.tenantId ?? undefined,
+    owner: practice.owner ?? undefined,
+    ownerType: practice.ownerType ?? undefined,
+    practiceCategory: practice.practiceCategory ?? undefined,
+    visibility: practice.visibility ?? undefined,
+    publishScope: practice.publishScope ?? undefined,
+    name: practice.name ?? "",
+    memo: practice.memo ?? "",
+    source_type: practice.source_type ?? "practiceRegister",
+    version: Number(practice.version ?? 1),
+  };
+}
 
-  const { resourceConfig, libraryOptions } = await getAmplifyDataClientConfig(
-    env as any,
-  );
-  Amplify.configure(resourceConfig, libraryOptions);
-  const dataClient = generateClient<Schema>();
+export const handler: Schema["suggestPracticeLinks"]["functionHandler"] =
+  async (event) => {
+    const args = event.arguments as PracticeSuggestArgs;
+    const practiceId = args.practiceId;
+    const modelId =
+      process.env.BEDROCK_MODEL_ID ||
+      "anthropic.claude-3-5-sonnet-20240620-v1:0";
 
-  const getPractice = await dataClient.models.PracticeCode.get({ id: practiceId });
-
-  if (getPractice.errors?.length) {
-    throw new Error(
-      `PracticeCode get failed: ${getPractice.errors.map((e) => e.message).join("\n")}`,
+    const { resourceConfig, libraryOptions } = await getAmplifyDataClientConfig(
+      env as DataClientEnv,
     );
-  }
+    Amplify.configure(resourceConfig, libraryOptions);
+    const dataClient = generateClient<Schema>();
 
-  const practice = getPractice.data;
-  if (!practice) {
-    throw new Error(`PracticeCode not found: ${practiceId}`);
-  }
-
-  const practiceName = s(practice.name);
-  const practiceMemo = truncateText(s(practice.memo));
-  const practiceCategory = s((practice as any).practiceCategory);
-  const practiceCode = s((practice as any).practice_code);
-  const tenantId = s((practice as any).tenantId);
-
-  if (!practiceName || !practiceMemo) {
-    throw new Error("name または memo が空のため Ability 候補生成できません。");
-  }
-
-  const abilityResult = await dataClient.models.AbilityCode.list({
-    limit: 10000,
-  });
-
-  if (abilityResult.errors?.length) {
-    throw new Error(
-      `AbilityCode list failed: ${abilityResult.errors.map((e) => e.message).join("\n")}`,
-    );
-  }
-
-  const abilityCodes = (abilityResult.data ?? []).filter((x) => {
-    const status = s((x as any).status || "active").toLowerCase();
-    return status === "active";
-  });
-
-  const labelMap = buildAbilityLabelMap(abilityCodes);
-
-  const abilityInput = abilityCodes.map((x) => ({
-    code: s(x.code),
-    label: labelMap[String(x.code)] ?? s(x.name),
-    level: Number((x as any).level ?? 0),
-    is_leaf: Boolean((x as any).is_leaf),
-  }));
-
-  const prompt = buildPrompt({
-    practiceName,
-    practiceMemo,
-    practiceCategory,
-    abilities: abilityInput,
-  });
-
-  const ai = await invokeBedrockJson(modelId, prompt);
-
-  // 既存候補を削除せず、そのまま追加すると重複しやすいので、
-  // practiceCode 単位で既存候補を落としてから作り直す
-  const oldSuggestions = await dataClient.models.PracticeLinkSuggestion.list({
-    filter: {
-      practiceCode: { eq: practiceCode },
-    },
-    limit: 1000,
-  });
-
-  if (oldSuggestions.errors?.length) {
-    throw new Error(
-      `PracticeLinkSuggestion list failed: ${oldSuggestions.errors
-        .map((e) => e.message)
-        .join("\n")}`,
-    );
-  }
-
-  for (const oldRow of oldSuggestions.data ?? []) {
-    await dataClient.models.PracticeLinkSuggestion.delete({
-      id: oldRow.id,
-    });
-  }
-
-  let createdCount = 0;
-
-  for (let i = 0; i < ai.suggestions.length; i++) {
-    const sug = ai.suggestions[i];
-
-    const createResult = await dataClient.models.PracticeLinkSuggestion.create({
-      tenantId,
-      practiceCode,
-      abilityCode: sug.abilityCode,
-      score: sug.score,
-      reason: sug.reason,
-      status: "suggested",
-      sortOrder: i + 1,
-      createdBy: "suggest-practice-links",
-      updatedBy: "suggest-practice-links",
+    const getPractice = await dataClient.models.PracticeCode.get({
+      id: practiceId,
     });
 
-    if (createResult.errors?.length) {
+    if (getPractice.errors?.length) {
       throw new Error(
-        `PracticeLinkSuggestion create failed: ${createResult.errors
+        `PracticeCode get failed: ${getPractice.errors.map((e) => e.message).join("\n")}`,
+      );
+    }
+
+    const practice = (getPractice.data as PracticeCodeRow | null) ?? null;
+    if (!practice) {
+      throw new Error(`PracticeCode not found: ${practiceId}`);
+    }
+
+    const practiceName = s(practice.name);
+    const practiceMemo = truncateText(s(practice.memo));
+    const practiceCategory = s(practice.practiceCategory);
+    const practiceCode = s(practice.practice_code);
+    const tenantId = s(practice.tenantId);
+
+    if (!practiceName || !practiceMemo) {
+      throw new Error(
+        "name または memo が空のため Ability 候補生成できません。",
+      );
+    }
+
+    const abilityResult = await dataClient.models.AbilityCode.list({
+      limit: 10000,
+    });
+
+    if (abilityResult.errors?.length) {
+      throw new Error(
+        `AbilityCode list failed: ${abilityResult.errors.map((e) => e.message).join("\n")}`,
+      );
+    }
+
+    const abilityCodes = (
+      (abilityResult.data ?? []) as AbilityCodeRow[]
+    ).filter((x) => {
+      const status = s(x.status || "active").toLowerCase();
+      return status === "active";
+    });
+
+    const labelMap = buildAbilityLabelMap(abilityCodes);
+
+    const abilityInput = abilityCodes.map((x) => ({
+      code: s(x.code),
+      label: labelMap[String(x.code)] ?? s(x.name),
+      level: Number(x.level ?? 0),
+      is_leaf: Boolean(x.is_leaf),
+    }));
+
+    const prompt = buildPrompt({
+      practiceName,
+      practiceMemo,
+      practiceCategory,
+      abilities: abilityInput,
+    });
+
+    const ai = await invokeBedrockJson(modelId, prompt);
+
+    const oldSuggestions = await dataClient.models.PracticeLinkSuggestion.list({
+      filter: {
+        practiceCode: { eq: practiceCode },
+      },
+      limit: 1000,
+    });
+
+    if (oldSuggestions.errors?.length) {
+      throw new Error(
+        `PracticeLinkSuggestion list failed: ${oldSuggestions.errors
           .map((e) => e.message)
           .join("\n")}`,
       );
     }
 
-    createdCount++;
-  }
+    for (const oldRow of oldSuggestions.data ?? []) {
+      const deleted = await dataClient.models.PracticeLinkSuggestion.delete({
+        id: oldRow.id,
+      });
 
-  // Practice 側にも AI 情報を軽く残す
-  await dataClient.models.PracticeCode.update({
-    id: practice.id,
+      if (deleted.errors?.length) {
+        throw new Error(
+          `PracticeLinkSuggestion delete failed: ${deleted.errors
+            .map((e) => e.message)
+            .join("\n")}`,
+        );
+      }
+    }
 
-    practice_code: practice.practice_code,
-    tenantId: practice.tenantId ?? undefined,
-    owner: practice.owner ?? undefined,
-    ownerType: practice.ownerType ?? undefined,
-    practiceCategory: (practice as any).practiceCategory ?? undefined,
-    visibility: (practice as any).visibility ?? undefined,
-    publishScope: (practice as any).publishScope ?? undefined,
+    let createdCount = 0;
 
-    name: practice.name ?? "",
-    memo: practice.memo ?? "",
-    source_type: practice.source_type ?? "practiceRegister",
-    version: Number((practice as any).version ?? 1),
+    for (let i = 0; i < ai.suggestions.length; i += 1) {
+      const sug = ai.suggestions[i];
 
-    aiModel: modelId,
-    aiRawJson: ai.rawText,
-    updatedBy: "suggest-practice-links",
-  });
+      const createResult =
+        await dataClient.models.PracticeLinkSuggestion.create({
+          tenantId,
+          practiceCode,
+          abilityCode: sug.abilityCode,
+          score: sug.score,
+          reason: sug.reason,
+          status: "suggested",
+          sortOrder: i + 1,
+          createdBy: "suggest-practice-links",
+          updatedBy: "suggest-practice-links",
+        });
 
-  return {
-    practiceId: practice.id,
-    practiceCode,
-    suggestionCount: createdCount,
-    status: "SUGGESTED",
-    aiModel: modelId,
+      if (createResult.errors?.length) {
+        throw new Error(
+          `PracticeLinkSuggestion create failed: ${createResult.errors
+            .map((e) => e.message)
+            .join("\n")}`,
+        );
+      }
+
+      createdCount += 1;
+    }
+
+    const practiceUpdate = await dataClient.models.PracticeCode.update({
+      ...buildPracticeUpdateBase(practice),
+      aiModel: modelId,
+      aiRawJson: ai.rawText,
+      updatedBy: "suggest-practice-links",
+    });
+
+    if (practiceUpdate.errors?.length) {
+      throw new Error(
+        `PracticeCode update failed: ${practiceUpdate.errors
+          .map((e) => e.message)
+          .join("\n")}`,
+      );
+    }
+
+    return {
+      practiceId: practice.id,
+      practiceCode,
+      suggestionCount: createdCount,
+      status: "SUGGESTED",
+      aiModel: modelId,
+    };
   };
-};

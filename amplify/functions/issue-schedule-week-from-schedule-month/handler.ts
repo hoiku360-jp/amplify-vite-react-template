@@ -1,4 +1,3 @@
-
 import { Amplify } from "aws-amplify";
 import { generateClient } from "aws-amplify/data";
 import { getAmplifyDataClientConfig } from "@aws-amplify/backend/function/runtime";
@@ -20,21 +19,51 @@ type HandlerArgs = {
   issueType?: "AUTO" | "MANUAL";
 };
 
-async function listAll(listFn: any, args: Record<string, unknown>) {
-  const rows: any[] = [];
+type ModelError = {
+  message?: string | null;
+};
+
+type ListOptions = Record<string, unknown>;
+
+type ListResponse<TRow> = {
+  data?: TRow[] | null;
+  nextToken?: string | null;
+  errors?: ModelError[] | null;
+};
+
+type ScheduleMonthItemRow = Schema["ScheduleMonthItem"]["type"];
+type ScheduleMonthRow = Schema["ScheduleMonth"]["type"];
+type ScheduleWeekRow = Schema["ScheduleWeek"]["type"];
+
+function formatErrors(
+  errors?: ModelError[] | null,
+  fallback = "Unknown error",
+) {
+  const messages = (errors ?? [])
+    .map((e) => String(e.message ?? "").trim())
+    .filter(Boolean);
+
+  return messages.length > 0 ? messages.join(", ") : fallback;
+}
+
+async function listAll<TRow>(
+  listFn: (args?: ListOptions) => Promise<ListResponse<TRow>>,
+  args: ListOptions,
+): Promise<TRow[]> {
+  const rows: TRow[] = [];
   let nextToken: string | null | undefined = undefined;
 
   do {
-    const res: any = await listFn({
+    const res = await listFn({
       ...args,
       nextToken,
     });
 
-    if (Array.isArray(res?.data) && res.data.length > 0) {
+    if (Array.isArray(res.data) && res.data.length > 0) {
       rows.push(...res.data);
     }
 
-    nextToken = res?.nextToken;
+    nextToken = res.nextToken ?? null;
   } while (nextToken);
 
   return rows;
@@ -51,7 +80,7 @@ export const handler: Schema["issueScheduleWeekFromScheduleMonth"]["functionHand
       },
     });
 
-    const month = monthRes.data?.[0];
+    const month = monthRes.data?.[0] as ScheduleMonthRow | undefined;
     if (!month) {
       throw new Error(`ScheduleMonth not found: ${args.scheduleMonthId}`);
     }
@@ -64,7 +93,9 @@ export const handler: Schema["issueScheduleWeekFromScheduleMonth"]["functionHand
       },
     });
 
-    const existingWeek = existingWeekRes.data?.[0];
+    const existingWeek = existingWeekRes.data?.[0] as
+      | ScheduleWeekRow
+      | undefined;
     if (existingWeek) {
       return {
         scheduleMonthId: month.id,
@@ -85,11 +116,13 @@ export const handler: Schema["issueScheduleWeekFromScheduleMonth"]["functionHand
       },
     });
 
-    const sortedMonthItems = [...monthItems].sort((a: any, b: any) => {
-      const d = (a?.dayOfWeek ?? 0) - (b?.dayOfWeek ?? 0);
-      if (d !== 0) return d;
-      return (a?.sortOrder ?? 0) - (b?.sortOrder ?? 0);
-    });
+    const sortedMonthItems = [...monthItems].sort(
+      (a: ScheduleMonthItemRow, b: ScheduleMonthItemRow) => {
+        const d = (a.dayOfWeek ?? 0) - (b.dayOfWeek ?? 0);
+        if (d !== 0) return d;
+        return (a.sortOrder ?? 0) - (b.sortOrder ?? 0);
+      },
+    );
 
     const weekCreateRes = await client.models.ScheduleWeek.create({
       tenantId: month.tenantId,
@@ -115,8 +148,7 @@ export const handler: Schema["issueScheduleWeekFromScheduleMonth"]["functionHand
     const week = weekCreateRes.data;
     if (!week) {
       throw new Error(
-        weekCreateRes.errors?.map((e: any) => e.message).join(", ") ||
-          "ScheduleWeek create failed"
+        formatErrors(weekCreateRes.errors, "ScheduleWeek create failed"),
       );
     }
 
@@ -158,8 +190,10 @@ export const handler: Schema["issueScheduleWeekFromScheduleMonth"]["functionHand
 
       if (!weekItemRes.data) {
         throw new Error(
-          weekItemRes.errors?.map((e: any) => e.message).join(", ") ||
-            `ScheduleWeekItem create failed: ${item.title}`
+          formatErrors(
+            weekItemRes.errors,
+            `ScheduleWeekItem create failed: ${item.title}`,
+          ),
         );
       }
 

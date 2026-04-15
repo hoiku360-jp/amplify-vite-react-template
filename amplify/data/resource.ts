@@ -64,6 +64,17 @@ export const analyzeTranscriptObservationsFn = defineFunction({
   runtime: 22,
 });
 
+export const syncScheduleDayObservationsFn = defineFunction({
+  name: "sync-schedule-day-observations",
+  entry: "../functions/sync-schedule-day-observations/handler.ts",
+  timeoutSeconds: 60,
+  memoryMB: 512,
+  environment: {
+    SYNC_LABEL: "schedule-day-observations",
+  },
+  runtime: 22,
+});
+
 export const issueScheduleDayFromScheduleWeekFn = defineFunction({
   name: "issue-schedule-day-from-schedule-week",
   entry: "../functions/issue-schedule-day-from-schedule-week/handler.ts",
@@ -255,6 +266,25 @@ const schema = a
       .authorization((allow) => [allow.authenticated()])
       .handler(a.handler.function(analyzeTranscriptObservationsFn)),
 
+    SyncScheduleDayObservationsResponse: a.customType({
+      scheduleDayId: a.id().required(),
+      createdObservationCount: a.integer().required(),
+      createdAbilityLinkCount: a.integer().required(),
+      deletedObservationCount: a.integer().required(),
+      deletedAbilityLinkCount: a.integer().required(),
+      status: a.string().required(),
+      message: a.string(),
+    }),
+
+    syncScheduleDayObservations: a
+      .mutation()
+      .arguments({
+        scheduleDayId: a.id().required(),
+      })
+      .returns(a.ref("SyncScheduleDayObservationsResponse"))
+      .authorization((allow) => [allow.authenticated()])
+      .handler(a.handler.function(syncScheduleDayObservationsFn)),
+
     DailyDigest: a
       .model({
         tenantId: a.string().required(),
@@ -284,9 +314,7 @@ const schema = a
         note: a.string(),
       })
       .identifier(["tenantId"])
-      .authorization((allow) => [
-        allow.authenticated().to(["create", "read"]),
-      ]),
+      .authorization((allow) => [allow.authenticated().to(["create", "read"])]),
 
     UserProfile: a
       .model({
@@ -701,6 +729,10 @@ const schema = a
       "STRUCTURED_OBSERVATION",
     ]),
 
+    ObservationScopeType: a.enum(["CLASSROOM", "CHILD"]),
+
+    ReportType: a.enum(["CLASS_WEEKLY", "CHILD_WEEKLY", "ABILITY_DASHBOARD"]),
+
     AbilityObservationHint: a
       .model({
         abilityCode: a.string().required(),
@@ -713,7 +745,9 @@ const schema = a
       })
       .secondaryIndexes((index) => [
         index("abilityCode").queryField("listAbilityObservationHintsByAbility"),
-        index("startingAge").queryField("listAbilityObservationHintsByStartingAge"),
+        index("startingAge").queryField(
+          "listAbilityObservationHintsByStartingAge",
+        ),
       ])
       .authorization((allow) => [
         allow.authenticated().to(["create", "read", "update", "delete"]),
@@ -731,7 +765,10 @@ const schema = a
         ageTarget: a.belongsTo("SchoolAnnualAgeTarget", "ageTargetId"),
 
         sourceScheduleMonthId: a.id(),
-        sourceScheduleMonth: a.belongsTo("ScheduleMonth", "sourceScheduleMonthId"),
+        sourceScheduleMonth: a.belongsTo(
+          "ScheduleMonth",
+          "sourceScheduleMonthId",
+        ),
 
         sourceClassMonthPlanId: a.id(),
         sourceClassWeekPlanId: a.id(),
@@ -816,12 +853,13 @@ const schema = a
         index("scheduleWeekId")
           .sortKeys(["dayOfWeek", "sortOrder"])
           .queryField("listScheduleWeekItemsByWeekDaySort"),
-        index("practiceCode")
-          .queryField("listScheduleWeekItemsByPracticeCode"),
-        index("sourceMonthItemId")
-          .queryField("listScheduleWeekItemsBySourceMonthItem"),
-        index("sourceClassWeekPracticeAssignmentId")
-          .queryField("listScheduleWeekItemsBySourceAssignment"),
+        index("practiceCode").queryField("listScheduleWeekItemsByPracticeCode"),
+        index("sourceMonthItemId").queryField(
+          "listScheduleWeekItemsBySourceMonthItem",
+        ),
+        index("sourceClassWeekPracticeAssignmentId").queryField(
+          "listScheduleWeekItemsBySourceAssignment",
+        ),
       ])
       .authorization((allow) => [
         allow.ownerDefinedIn("owner"),
@@ -918,8 +956,7 @@ const schema = a
         index("scheduleDayId")
           .sortKeys(["sortOrder"])
           .queryField("listScheduleDayItemsByDaySort"),
-        index("practiceCode")
-          .queryField("listScheduleDayItemsByPracticeCode"),
+        index("practiceCode").queryField("listScheduleDayItemsByPracticeCode"),
       ])
       .authorization((allow) => [
         allow.ownerDefinedIn("owner"),
@@ -956,7 +993,158 @@ const schema = a
         allow.ownerDefinedIn("owner"),
         allow.authenticated().to(["read", "create"]),
       ]),
-    
+
+    ObservationRecord: a
+      .model({
+        tenantId: a.string().required(),
+        owner: a.string().required(),
+
+        classroomId: a.id().required(),
+
+        ageTargetId: a.id(),
+
+        scheduleWeekId: a.id(),
+
+        scheduleDayId: a.id().required(),
+
+        scheduleDayItemId: a.id(),
+
+        sourceScheduleRecordId: a.id(),
+        scopeType: a.ref("ObservationScopeType").required(),
+
+        childKey: a.string(),
+        childName: a.string(),
+
+        targetDate: a.date().required(),
+        recordedAt: a.datetime().required(),
+
+        sourceKind: a.ref("ScheduleRecordType").required(),
+
+        practiceCode: a.string(),
+        practiceTitleSnapshot: a.string(),
+
+        title: a.string(),
+        body: a.string(),
+        tags: a.string().array(),
+
+        status: a.string().required(), // ACTIVE / ARCHIVED
+        createdBySub: a.string(),
+
+        abilityLinks: a.hasMany(
+          "ObservationAbilityLink",
+          "observationRecordId",
+        ),
+      })
+      .secondaryIndexes((index) => [
+        index("classroomId")
+          .sortKeys(["targetDate", "recordedAt"])
+          .queryField("listObservationRecordsByClassroomDate"),
+        index("childKey")
+          .sortKeys(["targetDate", "recordedAt"])
+          .queryField("listObservationRecordsByChildDate"),
+        index("scheduleDayId")
+          .sortKeys(["recordedAt"])
+          .queryField("listObservationRecordsByScheduleDayRecordedAt"),
+        index("scheduleDayItemId")
+          .sortKeys(["recordedAt"])
+          .queryField("listObservationRecordsByScheduleDayItemRecordedAt"),
+        index("sourceScheduleRecordId").queryField(
+          "listObservationRecordsBySourceScheduleRecord",
+        ),
+        index("practiceCode")
+          .sortKeys(["targetDate", "recordedAt"])
+          .queryField("listObservationRecordsByPracticeDate"),
+      ])
+      .authorization((allow) => [
+        allow.ownerDefinedIn("owner"),
+        allow.authenticated().to(["read", "create", "update", "delete"]),
+      ]),
+
+    ObservationAbilityLink: a
+      .model({
+        tenantId: a.string().required(),
+        owner: a.string().required(),
+
+        observationRecordId: a.id().required(),
+        observationRecord: a.belongsTo(
+          "ObservationRecord",
+          "observationRecordId",
+        ),
+
+        classroomId: a.id().required(),
+
+        childKey: a.string(),
+        childName: a.string(),
+
+        targetDate: a.date().required(),
+        recordedAt: a.datetime().required(),
+
+        practiceCode: a.string(),
+
+        abilityCode: a.string().required(),
+        abilityName: a.string().required(),
+        domain: a.string(),
+        category: a.string(),
+
+        confidencePct: a.integer(),
+        evidenceText: a.string(),
+
+        status: a.string().required(), // ACTIVE / ARCHIVED
+      })
+      .secondaryIndexes((index) => [
+        index("observationRecordId")
+          .sortKeys(["abilityCode"])
+          .queryField("listObservationAbilityLinksByObservation"),
+        index("classroomId")
+          .sortKeys(["targetDate", "abilityCode"])
+          .queryField("listObservationAbilityLinksByClassroomDate"),
+        index("childKey")
+          .sortKeys(["targetDate", "abilityCode"])
+          .queryField("listObservationAbilityLinksByChildDate"),
+        index("abilityCode")
+          .sortKeys(["targetDate", "classroomId"])
+          .queryField("listObservationAbilityLinksByAbilityDate"),
+      ])
+      .authorization((allow) => [
+        allow.ownerDefinedIn("owner"),
+        allow.authenticated().to(["read", "create", "update", "delete"]),
+      ]),
+
+    ReportArtifact: a
+      .model({
+        tenantId: a.string().required(),
+        owner: a.string().required(),
+
+        reportType: a.ref("ReportType").required(),
+
+        classroomId: a.id(),
+
+        childKey: a.string(),
+        childName: a.string(),
+
+        periodKey: a.string().required(), // 例: 2026-W15
+        periodStart: a.date().required(),
+        periodEnd: a.date().required(),
+
+        title: a.string(),
+        status: a.string().required(), // READY / ERROR
+        payloadJson: a.string().required(),
+        markdownText: a.string(),
+        generatedAt: a.datetime().required(),
+      })
+      .secondaryIndexes((index) => [
+        index("classroomId")
+          .sortKeys(["reportType", "periodStart"])
+          .queryField("listReportArtifactsByClassroom"),
+        index("childKey")
+          .sortKeys(["reportType", "periodStart"])
+          .queryField("listReportArtifactsByChild"),
+      ])
+      .authorization((allow) => [
+        allow.ownerDefinedIn("owner"),
+        allow.authenticated().to(["read", "create", "update", "delete"]),
+      ]),
+
     // =========================
     // PLAN v2（保育所トップ構造）
     // これからこちらへ UI / handler を移行する
@@ -1006,7 +1194,10 @@ const schema = a
         status: a.ref("PlanStatus"),
         sortOrder: a.integer(),
 
-        classAnnualPlans: a.hasMany("ClassAnnualPlan", "schoolAnnualAgeTargetId"),
+        classAnnualPlans: a.hasMany(
+          "ClassAnnualPlan",
+          "schoolAnnualAgeTargetId",
+        ),
 
         // SCHEDULE v1
         scheduleMonths: a.hasMany("ScheduleMonth", "ageTargetId"),
@@ -1036,7 +1227,7 @@ const schema = a
         schoolAnnualAgeTargetId: a.id().required(),
         schoolAnnualAgeTarget: a.belongsTo(
           "SchoolAnnualAgeTarget",
-          "schoolAnnualAgeTargetId"
+          "schoolAnnualAgeTargetId",
         ),
 
         fiscalYear: a.integer().required(),
@@ -1213,7 +1404,10 @@ const schema = a
 
         status: a.ref("PlanStatus"),
 
-        assignments: a.hasMany("ClassWeekPracticeAssignment", "classWeekPlanId"),
+        assignments: a.hasMany(
+          "ClassWeekPracticeAssignment",
+          "classWeekPlanId",
+        ),
         dayPlans: a.hasMany("ClassDayPlan", "classWeekPlanId"),
       })
       .secondaryIndexes((index) => [
@@ -1308,7 +1502,7 @@ const schema = a
         title: a.string().required(),
         description: a.string(),
         startTime: a.string().required(), // HH:mm
-        endTime: a.string().required(),   // HH:mm
+        endTime: a.string().required(), // HH:mm
         sortOrder: a.integer().required(),
 
         practiceCode: a.string(),
@@ -1326,8 +1520,9 @@ const schema = a
         index("scheduleMonthId")
           .sortKeys(["weekNoInMonth", "dayOfWeek", "sortOrder"])
           .queryField("listScheduleMonthItemsByMonthWeekDaySort"),
-        index("practiceCode")
-          .queryField("listScheduleMonthItemsByPracticeCode"),
+        index("practiceCode").queryField(
+          "listScheduleMonthItemsByPracticeCode",
+        ),
       ])
       .authorization((allow) => [
         allow.ownerDefinedIn("owner"),
@@ -1387,7 +1582,7 @@ const schema = a
       .authorization((allow) => [
         allow.authenticated().to(["create", "read", "update", "delete"]),
       ]),
-        EnsureFiscalYearTemplateV2Response: a.customType({
+    EnsureFiscalYearTemplateV2Response: a.customType({
       tenantId: a.string().required(),
       fiscalYear: a.integer().required(),
       schoolAnnualPlanId: a.id().required(),
@@ -1447,6 +1642,7 @@ const schema = a
     allow.resource(analyzeTranscriptObservationsFn),
     allow.resource(issueScheduleDayFromScheduleWeekFn),
     allow.resource(issueScheduleWeekFromScheduleMonthFn),
+    allow.resource(syncScheduleDayObservationsFn),
   ]);
 
 export type Schema = ClientSchema<typeof schema>;

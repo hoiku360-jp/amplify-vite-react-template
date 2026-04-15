@@ -1,33 +1,69 @@
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { generateClient } from "aws-amplify/data";
 import type { Schema } from "../../../amplify/data/resource";
 
 import TodoListItem from "../../ui-components/TodoListItem";
 
-export default function TodosPanel(props: { owner: string }) {
+type Props = {
+  owner: string;
+};
+
+type TodoRow = Schema["Todo"]["type"];
+
+type ModelError = {
+  message?: string | null;
+};
+
+type ListResponse<TRow> = {
+  data?: TRow[] | null;
+  errors?: ModelError[] | null;
+};
+
+type MutationResponse<TRow> = {
+  data?: TRow | null;
+  errors?: ModelError[] | null;
+};
+
+type TodoModelApi = {
+  list(args?: Record<string, unknown>): Promise<ListResponse<TodoRow>>;
+  create(input: Record<string, unknown>): Promise<MutationResponse<TodoRow>>;
+  delete(input: { id: string }): Promise<MutationResponse<TodoRow>>;
+};
+
+type TodosPanelClient = {
+  models: {
+    Todo: TodoModelApi;
+  };
+};
+
+export default function TodosPanel(props: Props) {
   const { owner } = props;
 
-  const client = useMemo(() => generateClient<Schema>(), []);
-  const [todos, setTodos] = useState<Array<Schema["Todo"]["type"]>>([]);
+  const client = useMemo(
+    () => generateClient<Schema>() as unknown as TodosPanelClient,
+    [],
+  );
+  const [todos, setTodos] = useState<TodoRow[]>([]);
   const [loading, setLoading] = useState(false);
 
-  async function refreshTodos() {
+  const refreshTodos = useCallback(async () => {
     setLoading(true);
     try {
       const { data, errors } = await client.models.Todo.list({
         filter: { owner: { eq: owner } },
       });
-      if (errors?.length) console.error("Todo.list errors:", errors);
+      if (errors?.length) {
+        console.error("Todo.list errors:", errors);
+      }
       setTodos(data ?? []);
     } finally {
       setLoading(false);
     }
-  }
+  }, [client, owner]);
 
   useEffect(() => {
-    refreshTodos();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [owner]);
+    void refreshTodos();
+  }, [refreshTodos]);
 
   async function createTodo() {
     const content = window.prompt("Todo content") ?? "";
@@ -37,13 +73,13 @@ export default function TodosPanel(props: { owner: string }) {
       content: content.trim(),
       owner,
     });
-    const created = (res as any)?.data;
+    const created = res.data;
 
-    // ✅ 即時反映（配列の展開が必要）
-    if (created?.id) setTodos((prev) => [created, ...prev]);
+    if (created?.id) {
+      setTodos((prev) => [created, ...prev]);
+    }
 
-    // 念のため再取得（反映遅延対策）
-    await new Promise((r) => setTimeout(r, 300));
+    await new Promise((resolve) => setTimeout(resolve, 300));
     await refreshTodos();
   }
 
@@ -59,7 +95,7 @@ export default function TodosPanel(props: { owner: string }) {
 
       <div style={{ display: "flex", gap: 12, alignItems: "center" }}>
         <button onClick={createTodo}>+ new</button>
-        <button onClick={refreshTodos}>Refresh</button>
+        <button onClick={() => void refreshTodos()}>Refresh</button>
         {loading ? <span>Loading</span> : null}
       </div>
 
@@ -77,7 +113,7 @@ export default function TodosPanel(props: { owner: string }) {
               }}
             />
             <button
-              onClick={() => deleteTodo(todo.id)}
+              onClick={() => void deleteTodo(todo.id)}
               style={{ marginTop: 8 }}
             >
               delete

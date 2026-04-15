@@ -4473,6 +4473,747 @@
             "sortKeyFieldNames": []
           }
         },
+        "ObservationRecord": {
+          "name": "ObservationRecord",
+          "fields": {
+            "id": {
+              "name": "id",
+              "isArray": false,
+              "type": "ID",
+              "isRequired": true,
+              "attributes": []
+            },
+            "tenantId": {
+              "name": "tenantId",
+              "isArray": false,
+              "type": "String",
+              "isRequired": true,
+              "attributes": []
+            },
+            "owner": {
+              "name": "owner",
+              "isArray": false,
+              "type": "String",
+              "isRequired": true,
+              "attributes": []
+            },
+            "classroomId": {
+              "name": "classroomId",
+              "isArray": false,
+              "type": "ID",
+              "isRequired": true,
+              "attributes": []
+            },
+            "ageTargetId": {
+              "name": "ageTargetId",
+              "isArray": false,
+              "type": "ID",
+              "isRequired": false,
+              "attributes": []
+            },
+            "scheduleWeekId": {
+              "name": "scheduleWeekId",
+              "isArray": false,
+              "type": "ID",
+              "isRequired": false,
+              "attributes": []
+            },
+            "scheduleDayId": {
+              "name": "scheduleDayId",
+              "isArray": false,
+              "type": "ID",
+              "isRequired": true,
+              "attributes": []
+            },
+            "scheduleDayItemId": {
+              "name": "scheduleDayItemId",
+              "isArray": false,
+              "type": "ID",
+              "isRequired": false,
+              "attributes": []
+            },
+            "sourceScheduleRecordId": {
+              "name": "sourceScheduleRecordId",
+              "isArray": false,
+              "type": "ID",
+              "isRequired": false,
+              "attributes": []
+            },
+            "scopeType": {
+              "name": "scopeType",
+              "isArray": false,
+              "type": {
+                "enum": "ObservationScopeType"
+              },
+              "isRequired": true,
+              "attributes": []
+            },
+            "childKey": {
+              "name": "childKey",
+              "isArray": false,
+              "type": "String",
+              "isRequired": false,
+              "attributes": []
+            },
+            "childName": {
+              "name": "childName",
+              "isArray": false,
+              "type": "String",
+              "isRequired": false,
+              "attributes": []
+            },
+            "targetDate": {
+              "name": "targetDate",
+              "isArray": false,
+              "type": "AWSDate",
+              "isRequired": true,
+              "attributes": []
+            },
+            "recordedAt": {
+              "name": "recordedAt",
+              "isArray": false,
+              "type": "AWSDateTime",
+              "isRequired": true,
+              "attributes": []
+            },
+            "sourceKind": {
+              "name": "sourceKind",
+              "isArray": false,
+              "type": {
+                "enum": "ScheduleRecordType"
+              },
+              "isRequired": true,
+              "attributes": []
+            },
+            "practiceCode": {
+              "name": "practiceCode",
+              "isArray": false,
+              "type": "String",
+              "isRequired": false,
+              "attributes": []
+            },
+            "practiceTitleSnapshot": {
+              "name": "practiceTitleSnapshot",
+              "isArray": false,
+              "type": "String",
+              "isRequired": false,
+              "attributes": []
+            },
+            "title": {
+              "name": "title",
+              "isArray": false,
+              "type": "String",
+              "isRequired": false,
+              "attributes": []
+            },
+            "body": {
+              "name": "body",
+              "isArray": false,
+              "type": "String",
+              "isRequired": false,
+              "attributes": []
+            },
+            "tags": {
+              "name": "tags",
+              "isArray": true,
+              "type": "String",
+              "isRequired": false,
+              "attributes": [],
+              "isArrayNullable": true
+            },
+            "status": {
+              "name": "status",
+              "isArray": false,
+              "type": "String",
+              "isRequired": true,
+              "attributes": []
+            },
+            "createdBySub": {
+              "name": "createdBySub",
+              "isArray": false,
+              "type": "String",
+              "isRequired": false,
+              "attributes": []
+            },
+            "abilityLinks": {
+              "name": "abilityLinks",
+              "isArray": true,
+              "type": {
+                "model": "ObservationAbilityLink"
+              },
+              "isRequired": false,
+              "attributes": [],
+              "isArrayNullable": true,
+              "association": {
+                "connectionType": "HAS_MANY",
+                "associatedWith": [
+                  "observationRecordId"
+                ]
+              }
+            },
+            "createdAt": {
+              "name": "createdAt",
+              "isArray": false,
+              "type": "AWSDateTime",
+              "isRequired": false,
+              "attributes": [],
+              "isReadOnly": true
+            },
+            "updatedAt": {
+              "name": "updatedAt",
+              "isArray": false,
+              "type": "AWSDateTime",
+              "isRequired": false,
+              "attributes": [],
+              "isReadOnly": true
+            }
+          },
+          "syncable": true,
+          "pluralName": "ObservationRecords",
+          "attributes": [
+            {
+              "type": "model",
+              "properties": {}
+            },
+            {
+              "type": "key",
+              "properties": {
+                "name": "observationRecordsByClassroomIdAndTargetDateAndRecordedAt",
+                "queryField": "listObservationRecordsByClassroomDate",
+                "fields": [
+                  "classroomId",
+                  "targetDate",
+                  "recordedAt"
+                ]
+              }
+            },
+            {
+              "type": "key",
+              "properties": {
+                "name": "observationRecordsByScheduleDayIdAndRecordedAt",
+                "queryField": "listObservationRecordsByScheduleDayRecordedAt",
+                "fields": [
+                  "scheduleDayId",
+                  "recordedAt"
+                ]
+              }
+            },
+            {
+              "type": "key",
+              "properties": {
+                "name": "observationRecordsByScheduleDayItemIdAndRecordedAt",
+                "queryField": "listObservationRecordsByScheduleDayItemRecordedAt",
+                "fields": [
+                  "scheduleDayItemId",
+                  "recordedAt"
+                ]
+              }
+            },
+            {
+              "type": "key",
+              "properties": {
+                "name": "observationRecordsBySourceScheduleRecordId",
+                "queryField": "listObservationRecordsBySourceScheduleRecord",
+                "fields": [
+                  "sourceScheduleRecordId"
+                ]
+              }
+            },
+            {
+              "type": "key",
+              "properties": {
+                "name": "observationRecordsByChildKeyAndTargetDateAndRecordedAt",
+                "queryField": "listObservationRecordsByChildDate",
+                "fields": [
+                  "childKey",
+                  "targetDate",
+                  "recordedAt"
+                ]
+              }
+            },
+            {
+              "type": "key",
+              "properties": {
+                "name": "observationRecordsByPracticeCodeAndTargetDateAndRecordedAt",
+                "queryField": "listObservationRecordsByPracticeDate",
+                "fields": [
+                  "practiceCode",
+                  "targetDate",
+                  "recordedAt"
+                ]
+              }
+            },
+            {
+              "type": "auth",
+              "properties": {
+                "rules": [
+                  {
+                    "provider": "userPools",
+                    "ownerField": "owner",
+                    "allow": "owner",
+                    "identityClaim": "cognito:username",
+                    "operations": [
+                      "create",
+                      "update",
+                      "delete",
+                      "read"
+                    ]
+                  },
+                  {
+                    "allow": "private",
+                    "operations": [
+                      "read",
+                      "create",
+                      "update",
+                      "delete"
+                    ]
+                  }
+                ]
+              }
+            }
+          ],
+          "primaryKeyInfo": {
+            "isCustomPrimaryKey": false,
+            "primaryKeyFieldName": "id",
+            "sortKeyFieldNames": []
+          }
+        },
+        "ObservationAbilityLink": {
+          "name": "ObservationAbilityLink",
+          "fields": {
+            "id": {
+              "name": "id",
+              "isArray": false,
+              "type": "ID",
+              "isRequired": true,
+              "attributes": []
+            },
+            "tenantId": {
+              "name": "tenantId",
+              "isArray": false,
+              "type": "String",
+              "isRequired": true,
+              "attributes": []
+            },
+            "owner": {
+              "name": "owner",
+              "isArray": false,
+              "type": "String",
+              "isRequired": true,
+              "attributes": []
+            },
+            "observationRecordId": {
+              "name": "observationRecordId",
+              "isArray": false,
+              "type": "ID",
+              "isRequired": true,
+              "attributes": []
+            },
+            "observationRecord": {
+              "name": "observationRecord",
+              "isArray": false,
+              "type": {
+                "model": "ObservationRecord"
+              },
+              "isRequired": false,
+              "attributes": [],
+              "association": {
+                "connectionType": "BELONGS_TO",
+                "targetNames": [
+                  "observationRecordId"
+                ]
+              }
+            },
+            "classroomId": {
+              "name": "classroomId",
+              "isArray": false,
+              "type": "ID",
+              "isRequired": true,
+              "attributes": []
+            },
+            "childKey": {
+              "name": "childKey",
+              "isArray": false,
+              "type": "String",
+              "isRequired": false,
+              "attributes": []
+            },
+            "childName": {
+              "name": "childName",
+              "isArray": false,
+              "type": "String",
+              "isRequired": false,
+              "attributes": []
+            },
+            "targetDate": {
+              "name": "targetDate",
+              "isArray": false,
+              "type": "AWSDate",
+              "isRequired": true,
+              "attributes": []
+            },
+            "recordedAt": {
+              "name": "recordedAt",
+              "isArray": false,
+              "type": "AWSDateTime",
+              "isRequired": true,
+              "attributes": []
+            },
+            "practiceCode": {
+              "name": "practiceCode",
+              "isArray": false,
+              "type": "String",
+              "isRequired": false,
+              "attributes": []
+            },
+            "abilityCode": {
+              "name": "abilityCode",
+              "isArray": false,
+              "type": "String",
+              "isRequired": true,
+              "attributes": []
+            },
+            "abilityName": {
+              "name": "abilityName",
+              "isArray": false,
+              "type": "String",
+              "isRequired": true,
+              "attributes": []
+            },
+            "domain": {
+              "name": "domain",
+              "isArray": false,
+              "type": "String",
+              "isRequired": false,
+              "attributes": []
+            },
+            "category": {
+              "name": "category",
+              "isArray": false,
+              "type": "String",
+              "isRequired": false,
+              "attributes": []
+            },
+            "confidencePct": {
+              "name": "confidencePct",
+              "isArray": false,
+              "type": "Int",
+              "isRequired": false,
+              "attributes": []
+            },
+            "evidenceText": {
+              "name": "evidenceText",
+              "isArray": false,
+              "type": "String",
+              "isRequired": false,
+              "attributes": []
+            },
+            "status": {
+              "name": "status",
+              "isArray": false,
+              "type": "String",
+              "isRequired": true,
+              "attributes": []
+            },
+            "createdAt": {
+              "name": "createdAt",
+              "isArray": false,
+              "type": "AWSDateTime",
+              "isRequired": false,
+              "attributes": [],
+              "isReadOnly": true
+            },
+            "updatedAt": {
+              "name": "updatedAt",
+              "isArray": false,
+              "type": "AWSDateTime",
+              "isRequired": false,
+              "attributes": [],
+              "isReadOnly": true
+            }
+          },
+          "syncable": true,
+          "pluralName": "ObservationAbilityLinks",
+          "attributes": [
+            {
+              "type": "model",
+              "properties": {}
+            },
+            {
+              "type": "key",
+              "properties": {
+                "name": "observationAbilityLinksByObservationRecordIdAndAbilityCode",
+                "queryField": "listObservationAbilityLinksByObservation",
+                "fields": [
+                  "observationRecordId",
+                  "abilityCode"
+                ]
+              }
+            },
+            {
+              "type": "key",
+              "properties": {
+                "name": "observationAbilityLinksByClassroomIdAndTargetDateAndAbilityCode",
+                "queryField": "listObservationAbilityLinksByClassroomDate",
+                "fields": [
+                  "classroomId",
+                  "targetDate",
+                  "abilityCode"
+                ]
+              }
+            },
+            {
+              "type": "key",
+              "properties": {
+                "name": "observationAbilityLinksByChildKeyAndTargetDateAndAbilityCode",
+                "queryField": "listObservationAbilityLinksByChildDate",
+                "fields": [
+                  "childKey",
+                  "targetDate",
+                  "abilityCode"
+                ]
+              }
+            },
+            {
+              "type": "key",
+              "properties": {
+                "name": "observationAbilityLinksByAbilityCodeAndTargetDateAndClassroomId",
+                "queryField": "listObservationAbilityLinksByAbilityDate",
+                "fields": [
+                  "abilityCode",
+                  "targetDate",
+                  "classroomId"
+                ]
+              }
+            },
+            {
+              "type": "auth",
+              "properties": {
+                "rules": [
+                  {
+                    "provider": "userPools",
+                    "ownerField": "owner",
+                    "allow": "owner",
+                    "identityClaim": "cognito:username",
+                    "operations": [
+                      "create",
+                      "update",
+                      "delete",
+                      "read"
+                    ]
+                  },
+                  {
+                    "allow": "private",
+                    "operations": [
+                      "read",
+                      "create",
+                      "update",
+                      "delete"
+                    ]
+                  }
+                ]
+              }
+            }
+          ],
+          "primaryKeyInfo": {
+            "isCustomPrimaryKey": false,
+            "primaryKeyFieldName": "id",
+            "sortKeyFieldNames": []
+          }
+        },
+        "ReportArtifact": {
+          "name": "ReportArtifact",
+          "fields": {
+            "id": {
+              "name": "id",
+              "isArray": false,
+              "type": "ID",
+              "isRequired": true,
+              "attributes": []
+            },
+            "tenantId": {
+              "name": "tenantId",
+              "isArray": false,
+              "type": "String",
+              "isRequired": true,
+              "attributes": []
+            },
+            "owner": {
+              "name": "owner",
+              "isArray": false,
+              "type": "String",
+              "isRequired": true,
+              "attributes": []
+            },
+            "reportType": {
+              "name": "reportType",
+              "isArray": false,
+              "type": {
+                "enum": "ReportType"
+              },
+              "isRequired": true,
+              "attributes": []
+            },
+            "classroomId": {
+              "name": "classroomId",
+              "isArray": false,
+              "type": "ID",
+              "isRequired": false,
+              "attributes": []
+            },
+            "childKey": {
+              "name": "childKey",
+              "isArray": false,
+              "type": "String",
+              "isRequired": false,
+              "attributes": []
+            },
+            "childName": {
+              "name": "childName",
+              "isArray": false,
+              "type": "String",
+              "isRequired": false,
+              "attributes": []
+            },
+            "periodKey": {
+              "name": "periodKey",
+              "isArray": false,
+              "type": "String",
+              "isRequired": true,
+              "attributes": []
+            },
+            "periodStart": {
+              "name": "periodStart",
+              "isArray": false,
+              "type": "AWSDate",
+              "isRequired": true,
+              "attributes": []
+            },
+            "periodEnd": {
+              "name": "periodEnd",
+              "isArray": false,
+              "type": "AWSDate",
+              "isRequired": true,
+              "attributes": []
+            },
+            "title": {
+              "name": "title",
+              "isArray": false,
+              "type": "String",
+              "isRequired": false,
+              "attributes": []
+            },
+            "status": {
+              "name": "status",
+              "isArray": false,
+              "type": "String",
+              "isRequired": true,
+              "attributes": []
+            },
+            "payloadJson": {
+              "name": "payloadJson",
+              "isArray": false,
+              "type": "String",
+              "isRequired": true,
+              "attributes": []
+            },
+            "markdownText": {
+              "name": "markdownText",
+              "isArray": false,
+              "type": "String",
+              "isRequired": false,
+              "attributes": []
+            },
+            "generatedAt": {
+              "name": "generatedAt",
+              "isArray": false,
+              "type": "AWSDateTime",
+              "isRequired": true,
+              "attributes": []
+            },
+            "createdAt": {
+              "name": "createdAt",
+              "isArray": false,
+              "type": "AWSDateTime",
+              "isRequired": false,
+              "attributes": [],
+              "isReadOnly": true
+            },
+            "updatedAt": {
+              "name": "updatedAt",
+              "isArray": false,
+              "type": "AWSDateTime",
+              "isRequired": false,
+              "attributes": [],
+              "isReadOnly": true
+            }
+          },
+          "syncable": true,
+          "pluralName": "ReportArtifacts",
+          "attributes": [
+            {
+              "type": "model",
+              "properties": {}
+            },
+            {
+              "type": "key",
+              "properties": {
+                "name": "reportArtifactsByClassroomIdAndReportTypeAndPeriodStart",
+                "queryField": "listReportArtifactsByClassroom",
+                "fields": [
+                  "classroomId",
+                  "reportType",
+                  "periodStart"
+                ]
+              }
+            },
+            {
+              "type": "key",
+              "properties": {
+                "name": "reportArtifactsByChildKeyAndReportTypeAndPeriodStart",
+                "queryField": "listReportArtifactsByChild",
+                "fields": [
+                  "childKey",
+                  "reportType",
+                  "periodStart"
+                ]
+              }
+            },
+            {
+              "type": "auth",
+              "properties": {
+                "rules": [
+                  {
+                    "provider": "userPools",
+                    "ownerField": "owner",
+                    "allow": "owner",
+                    "identityClaim": "cognito:username",
+                    "operations": [
+                      "create",
+                      "update",
+                      "delete",
+                      "read"
+                    ]
+                  },
+                  {
+                    "allow": "private",
+                    "operations": [
+                      "read",
+                      "create",
+                      "update",
+                      "delete"
+                    ]
+                  }
+                ]
+              }
+            }
+          ],
+          "primaryKeyInfo": {
+            "isCustomPrimaryKey": false,
+            "primaryKeyFieldName": "id",
+            "sortKeyFieldNames": []
+          }
+        },
         "SchoolAnnualPlan": {
           "name": "SchoolAnnualPlan",
           "fields": {
@@ -7132,6 +7873,21 @@
             "TRANSCRIPT",
             "STRUCTURED_OBSERVATION"
           ]
+        },
+        "ObservationScopeType": {
+          "name": "ObservationScopeType",
+          "values": [
+            "CLASSROOM",
+            "CHILD"
+          ]
+        },
+        "ReportType": {
+          "name": "ReportType",
+          "values": [
+            "CLASS_WEEKLY",
+            "CHILD_WEEKLY",
+            "ABILITY_DASHBOARD"
+          ]
         }
       },
       "nonModels": {
@@ -7364,6 +8120,60 @@
               "isArray": false,
               "type": "Int",
               "isRequired": false,
+              "attributes": []
+            },
+            "status": {
+              "name": "status",
+              "isArray": false,
+              "type": "String",
+              "isRequired": true,
+              "attributes": []
+            },
+            "message": {
+              "name": "message",
+              "isArray": false,
+              "type": "String",
+              "isRequired": false,
+              "attributes": []
+            }
+          }
+        },
+        "SyncScheduleDayObservationsResponse": {
+          "name": "SyncScheduleDayObservationsResponse",
+          "fields": {
+            "scheduleDayId": {
+              "name": "scheduleDayId",
+              "isArray": false,
+              "type": "ID",
+              "isRequired": true,
+              "attributes": []
+            },
+            "createdObservationCount": {
+              "name": "createdObservationCount",
+              "isArray": false,
+              "type": "Int",
+              "isRequired": true,
+              "attributes": []
+            },
+            "createdAbilityLinkCount": {
+              "name": "createdAbilityLinkCount",
+              "isArray": false,
+              "type": "Int",
+              "isRequired": true,
+              "attributes": []
+            },
+            "deletedObservationCount": {
+              "name": "deletedObservationCount",
+              "isArray": false,
+              "type": "Int",
+              "isRequired": true,
+              "attributes": []
+            },
+            "deletedAbilityLinkCount": {
+              "name": "deletedAbilityLinkCount",
+              "isArray": false,
+              "type": "Int",
+              "isRequired": true,
               "attributes": []
             },
             "status": {
@@ -7715,6 +8525,22 @@
             },
             "transcriptRecordId": {
               "name": "transcriptRecordId",
+              "isArray": false,
+              "type": "ID",
+              "isRequired": true
+            }
+          }
+        },
+        "syncScheduleDayObservations": {
+          "name": "syncScheduleDayObservations",
+          "isArray": false,
+          "type": {
+            "nonModel": "SyncScheduleDayObservationsResponse"
+          },
+          "isRequired": false,
+          "arguments": {
+            "scheduleDayId": {
+              "name": "scheduleDayId",
               "isArray": false,
               "type": "ID",
               "isRequired": true

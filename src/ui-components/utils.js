@@ -1,4 +1,3 @@
-/* eslint-disable */
 export const findChildOverrides = (overrides, elementHierarchy) => {
   if (!overrides) {
     return null;

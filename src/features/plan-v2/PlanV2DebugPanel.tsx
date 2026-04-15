@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { generateClient } from "aws-amplify/data";
 import type { Schema } from "../../../amplify/data/resource";
 
@@ -12,12 +12,46 @@ type ClassAnnualPlanRecord = Schema["ClassAnnualPlan"]["type"];
 type ClassQuarterPlanRecord = Schema["ClassQuarterPlan"]["type"];
 type ClassMonthPlanRecord = Schema["ClassMonthPlan"]["type"];
 
+type ModelResultLike =
+  | {
+      errors?: ReadonlyArray<{ message?: string | null }> | null;
+    }
+  | null
+  | undefined;
+
 function s(v: unknown): string {
   return String(v ?? "").trim();
 }
 
 function byText(a?: string | null, b?: string | null) {
   return (a ?? "").localeCompare(b ?? "");
+}
+
+function getModelErrorMessage(result: ModelResultLike): string {
+  return (result?.errors ?? [])
+    .map((e) => e?.message ?? "")
+    .filter((x) => x.length > 0)
+    .join("\n");
+}
+
+function throwIfModelErrors(result: ModelResultLike) {
+  const msg = getModelErrorMessage(result);
+  if (msg) throw new Error(msg);
+}
+
+function getUnknownErrorMessage(error: unknown, fallback: string): string {
+  if (error instanceof Error && error.message.trim()) {
+    return error.message;
+  }
+
+  if (typeof error === "object" && error !== null && "message" in error) {
+    const message = (error as { message?: unknown }).message;
+    if (typeof message === "string" && message.trim()) {
+      return message;
+    }
+  }
+
+  return fallback;
 }
 
 export default function PlanV2DebugPanel() {
@@ -28,131 +62,150 @@ export default function PlanV2DebugPanel() {
   const [error, setError] = useState("");
 
   const [fiscalYear, setFiscalYear] = useState<number>(2026);
-  const [selectedTenantId, setSelectedTenantId] = useState<string>("demo-tenant");
+  const [selectedTenantId, setSelectedTenantId] =
+    useState<string>("demo-tenant");
 
   const [tenants, setTenants] = useState<TenantRecord[]>([]);
   const [classrooms, setClassrooms] = useState<ClassroomRecord[]>([]);
-  const [schoolAnnualPlans, setSchoolAnnualPlans] = useState<SchoolAnnualPlanRecord[]>([]);
-  const [ageTargets, setAgeTargets] = useState<SchoolAnnualAgeTargetRecord[]>([]);
-  const [classAnnualPlans, setClassAnnualPlans] = useState<ClassAnnualPlanRecord[]>([]);
-  const [quarterPlans, setQuarterPlans] = useState<ClassQuarterPlanRecord[]>([]);
+  const [schoolAnnualPlans, setSchoolAnnualPlans] = useState<
+    SchoolAnnualPlanRecord[]
+  >([]);
+  const [ageTargets, setAgeTargets] = useState<SchoolAnnualAgeTargetRecord[]>(
+    [],
+  );
+  const [classAnnualPlans, setClassAnnualPlans] = useState<
+    ClassAnnualPlanRecord[]
+  >([]);
+  const [quarterPlans, setQuarterPlans] = useState<ClassQuarterPlanRecord[]>(
+    [],
+  );
   const [monthPlans, setMonthPlans] = useState<ClassMonthPlanRecord[]>([]);
 
-  async function refreshAll(tenantIdArg?: string, fiscalYearArg?: number) {
-    const tenantId = tenantIdArg ?? selectedTenantId;
-    const fy = fiscalYearArg ?? fiscalYear;
+  const refreshAll = useCallback(
+    async (tenantIdArg?: string, fiscalYearArg?: number) => {
+      const tenantId = tenantIdArg ?? selectedTenantId;
+      const fy = fiscalYearArg ?? fiscalYear;
 
-    setLoading(true);
-    setError("");
+      setLoading(true);
+      setError("");
 
-    try {
-      const [
-        tenantRes,
-        classroomRes,
-        schoolAnnualPlanRes,
-        ageTargetRes,
-        classAnnualPlanRes,
-        quarterPlanRes,
-        monthPlanRes,
-      ] = await Promise.all([
-        client.models.Tenant.list({ limit: 1000 }),
-        client.models.Classroom.list({
-          filter: { tenantId: { eq: tenantId } },
-          limit: 1000,
-        }),
-        client.models.SchoolAnnualPlan.list({
-          filter: {
-            tenantId: { eq: tenantId },
-            fiscalYear: { eq: fy },
-          },
-          limit: 100,
-        }),
-        client.models.SchoolAnnualAgeTarget.list({
-          filter: {
-            tenantId: { eq: tenantId },
-            fiscalYear: { eq: fy },
-          },
-          limit: 100,
-        }),
-        client.models.ClassAnnualPlan.list({
-          filter: {
-            tenantId: { eq: tenantId },
-            fiscalYear: { eq: fy },
-          },
-          limit: 2000,
-        }),
-        client.models.ClassQuarterPlan.list({
-          filter: {
-            tenantId: { eq: tenantId },
-            fiscalYear: { eq: fy },
-          },
-          limit: 5000,
-        }),
-        client.models.ClassMonthPlan.list({
-          filter: {
-            tenantId: { eq: tenantId },
-            fiscalYear: { eq: fy },
-          },
-          limit: 10000,
-        }),
-      ]);
+      try {
+        const [
+          tenantRes,
+          classroomRes,
+          schoolAnnualPlanRes,
+          ageTargetRes,
+          classAnnualPlanRes,
+          quarterPlanRes,
+          monthPlanRes,
+        ] = await Promise.all([
+          client.models.Tenant.list({ limit: 1000 }),
+          client.models.Classroom.list({
+            filter: { tenantId: { eq: tenantId } },
+            limit: 1000,
+          }),
+          client.models.SchoolAnnualPlan.list({
+            filter: {
+              tenantId: { eq: tenantId },
+              fiscalYear: { eq: fy },
+            },
+            limit: 100,
+          }),
+          client.models.SchoolAnnualAgeTarget.list({
+            filter: {
+              tenantId: { eq: tenantId },
+              fiscalYear: { eq: fy },
+            },
+            limit: 100,
+          }),
+          client.models.ClassAnnualPlan.list({
+            filter: {
+              tenantId: { eq: tenantId },
+              fiscalYear: { eq: fy },
+            },
+            limit: 2000,
+          }),
+          client.models.ClassQuarterPlan.list({
+            filter: {
+              tenantId: { eq: tenantId },
+              fiscalYear: { eq: fy },
+            },
+            limit: 5000,
+          }),
+          client.models.ClassMonthPlan.list({
+            filter: {
+              tenantId: { eq: tenantId },
+              fiscalYear: { eq: fy },
+            },
+            limit: 10000,
+          }),
+        ]);
 
-      const nextTenants = [...(tenantRes.data ?? [])].sort((a, b) =>
-        byText(a.tenantId, b.tenantId)
-      );
+        throwIfModelErrors(tenantRes);
+        throwIfModelErrors(classroomRes);
+        throwIfModelErrors(schoolAnnualPlanRes);
+        throwIfModelErrors(ageTargetRes);
+        throwIfModelErrors(classAnnualPlanRes);
+        throwIfModelErrors(quarterPlanRes);
+        throwIfModelErrors(monthPlanRes);
 
-      const nextClassrooms = [...(classroomRes.data ?? [])].sort((a, b) => {
-        const age = byText(a.ageBand, b.ageBand);
-        if (age !== 0) return age;
-        return byText(a.name, b.name);
-      });
+        const nextTenants = [...(tenantRes.data ?? [])].sort((a, b) =>
+          byText(a.tenantId, b.tenantId),
+        );
 
-      const nextSchoolPlans = [...(schoolAnnualPlanRes.data ?? [])].sort(
-        (a, b) => Number(a.fiscalYear ?? 0) - Number(b.fiscalYear ?? 0)
-      );
+        const nextClassrooms = [...(classroomRes.data ?? [])].sort((a, b) => {
+          const age = byText(a.ageBand, b.ageBand);
+          if (age !== 0) return age;
+          return byText(a.name, b.name);
+        });
 
-      const nextAgeTargets = [...(ageTargetRes.data ?? [])].sort((a, b) => {
-        const aa = Number(a.sortOrder ?? 9999);
-        const bb = Number(b.sortOrder ?? 9999);
-        if (aa !== bb) return aa - bb;
-        return byText(a.ageBand, b.ageBand);
-      });
+        const nextSchoolPlans = [...(schoolAnnualPlanRes.data ?? [])].sort(
+          (a, b) => Number(a.fiscalYear ?? 0) - Number(b.fiscalYear ?? 0),
+        );
 
-      const nextClassAnnualPlans = [...(classAnnualPlanRes.data ?? [])].sort((a, b) =>
-        byText(a.title, b.title)
-      );
+        const nextAgeTargets = [...(ageTargetRes.data ?? [])].sort((a, b) => {
+          const aa = Number(a.sortOrder ?? 9999);
+          const bb = Number(b.sortOrder ?? 9999);
+          if (aa !== bb) return aa - bb;
+          return byText(a.ageBand, b.ageBand);
+        });
 
-      const nextQuarterPlans = [...(quarterPlanRes.data ?? [])].sort(
-        (a, b) => Number(a.termNo ?? 0) - Number(b.termNo ?? 0)
-      );
+        const nextClassAnnualPlans = [...(classAnnualPlanRes.data ?? [])].sort(
+          (a, b) => byText(a.title, b.title),
+        );
 
-      const nextMonthPlans = [...(monthPlanRes.data ?? [])].sort((a, b) =>
-        byText(a.monthKey, b.monthKey)
-      );
+        const nextQuarterPlans = [...(quarterPlanRes.data ?? [])].sort(
+          (a, b) => Number(a.termNo ?? 0) - Number(b.termNo ?? 0),
+        );
 
-      setTenants(nextTenants);
-      setClassrooms(nextClassrooms);
-      setSchoolAnnualPlans(nextSchoolPlans);
-      setAgeTargets(nextAgeTargets);
-      setClassAnnualPlans(nextClassAnnualPlans);
-      setQuarterPlans(nextQuarterPlans);
-      setMonthPlans(nextMonthPlans);
+        const nextMonthPlans = [...(monthPlanRes.data ?? [])].sort((a, b) =>
+          byText(a.monthKey, b.monthKey),
+        );
 
-      if (!tenantId && nextTenants[0]?.tenantId) {
-        setSelectedTenantId(nextTenants[0].tenantId);
+        setTenants(nextTenants);
+        setClassrooms(nextClassrooms);
+        setSchoolAnnualPlans(nextSchoolPlans);
+        setAgeTargets(nextAgeTargets);
+        setClassAnnualPlans(nextClassAnnualPlans);
+        setQuarterPlans(nextQuarterPlans);
+        setMonthPlans(nextMonthPlans);
+
+        if (!tenantId && nextTenants[0]?.tenantId) {
+          setSelectedTenantId(nextTenants[0].tenantId);
+        }
+      } catch (error) {
+        console.error(error);
+        setError(getUnknownErrorMessage(error, "読み込みに失敗しました。"));
+      } finally {
+        setLoading(false);
       }
-    } catch (e: any) {
-      console.error(e);
-      setError(e?.message ?? "読み込みに失敗しました。");
-    } finally {
-      setLoading(false);
-    }
-  }
+    },
+    [client, fiscalYear, selectedTenantId],
+  );
 
   useEffect(() => {
     void refreshAll(selectedTenantId, fiscalYear);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [selectedTenantId, fiscalYear]);
+  }, [refreshAll, selectedTenantId, fiscalYear]);
 
   async function prepareDemoTenant() {
     setLoading(true);
@@ -167,9 +220,10 @@ export default function PlanV2DebugPanel() {
         filter: { tenantId: { eq: tenantId } },
         limit: 10,
       });
+      throwIfModelErrors(tenantList);
 
       const tenantExists = (tenantList.data ?? []).some(
-        (t) => s(t.tenantId) === tenantId
+        (t) => s(t.tenantId) === tenantId,
       );
 
       if (!tenantExists) {
@@ -180,16 +234,14 @@ export default function PlanV2DebugPanel() {
           status: "active",
           note: "PLAN v2 確認用",
         });
-
-        if (created.errors?.length) {
-          throw new Error(created.errors.map((e) => e.message).join("\n"));
-        }
+        throwIfModelErrors(created);
       }
 
       const classroomList = await client.models.Classroom.list({
         filter: { tenantId: { eq: tenantId } },
         limit: 1000,
       });
+      throwIfModelErrors(classroomList);
 
       const existing = classroomList.data ?? [];
       const exists = (name: string) =>
@@ -214,10 +266,7 @@ export default function PlanV2DebugPanel() {
           schoolName,
           status: "active",
         });
-
-        if (created.errors?.length) {
-          throw new Error(created.errors.map((e) => e.message).join("\n"));
-        }
+        throwIfModelErrors(created);
 
         createdCount += 1;
       }
@@ -225,11 +274,13 @@ export default function PlanV2DebugPanel() {
       setSelectedTenantId(tenantId);
       await refreshAll(tenantId, fiscalYear);
       setMessage(
-        `デモ保育園を準備しました。tenant=${tenantId} / 新規クラス=${createdCount}件`
+        `デモ保育園を準備しました。tenant=${tenantId} / 新規クラス=${createdCount}件`,
       );
-    } catch (e: any) {
-      console.error(e);
-      setError(e?.message ?? "デモ保育園の準備に失敗しました。");
+    } catch (error) {
+      console.error(error);
+      setError(
+        getUnknownErrorMessage(error, "デモ保育園の準備に失敗しました。"),
+      );
     } finally {
       setLoading(false);
     }
@@ -250,19 +301,21 @@ export default function PlanV2DebugPanel() {
         tenantId: selectedTenantId,
         fiscalYear,
       });
-
-      if (result.errors?.length) {
-        throw new Error(result.errors.map((e) => e.message).join("\n"));
-      }
+      throwIfModelErrors(result);
 
       await refreshAll(selectedTenantId, fiscalYear);
 
       setMessage(
-        `V2 年度テンプレートを準備しました。tenant=${selectedTenantId} / 年齢別=${result.data?.createdAgeTargetCount ?? 0}件 / クラス年計画=${result.data?.createdClassAnnualPlanCount ?? 0}件 / 期=${result.data?.createdQuarterPlanCount ?? 0}件 / 月=${result.data?.createdMonthPlanCount ?? 0}件`
+        `V2 年度テンプレートを準備しました。tenant=${selectedTenantId} / 年齢別=${result.data?.createdAgeTargetCount ?? 0}件 / クラス年計画=${result.data?.createdClassAnnualPlanCount ?? 0}件 / 期=${result.data?.createdQuarterPlanCount ?? 0}件 / 月=${result.data?.createdMonthPlanCount ?? 0}件`,
       );
-    } catch (e: any) {
-      console.error(e);
-      setError(e?.message ?? "V2 年度テンプレート生成に失敗しました。");
+    } catch (error) {
+      console.error(error);
+      setError(
+        getUnknownErrorMessage(
+          error,
+          "V2 年度テンプレート生成に失敗しました。",
+        ),
+      );
     } finally {
       setLoading(false);
     }
@@ -420,7 +473,9 @@ export default function PlanV2DebugPanel() {
           </div>
 
           {schoolAnnualPlan && (
-            <div style={{ paddingLeft: 16, marginTop: 6, display: "grid", gap: 4 }}>
+            <div
+              style={{ paddingLeft: 16, marginTop: 6, display: "grid", gap: 4 }}
+            >
               {ageTargets.length === 0 ? (
                 <div>年齢別年間方針がありません。</div>
               ) : (
@@ -445,7 +500,7 @@ export default function PlanV2DebugPanel() {
               const ageTarget = ageTargetsByAge.get(s(classroom.ageBand));
               const annual = classAnnualPlanByClassroomId.get(classroom.id);
               const quarters = annual
-                ? quarterPlansByAnnualId.get(annual.id) ?? []
+                ? (quarterPlansByAnnualId.get(annual.id) ?? [])
                 : [];
 
               return (
@@ -462,20 +517,34 @@ export default function PlanV2DebugPanel() {
                     {classroom.name}（{classroom.ageBand || "-"}）
                   </div>
                   <div style={{ fontSize: 12, color: "#666", marginTop: 2 }}>
-                    年齢別年間方針: {ageTarget ? "あり" : "未作成"} / クラス年計画:{" "}
-                    {annual ? "あり" : "未作成"}
+                    年齢別年間方針: {ageTarget ? "あり" : "未作成"} /
+                    クラス年計画: {annual ? "あり" : "未作成"}
                   </div>
 
                   {annual && (
-                    <div style={{ paddingLeft: 16, marginTop: 8, display: "grid", gap: 6 }}>
+                    <div
+                      style={{
+                        paddingLeft: 16,
+                        marginTop: 8,
+                        display: "grid",
+                        gap: 6,
+                      }}
+                    >
                       <div>└ {annual.title}</div>
 
                       {quarters.map((quarter) => {
-                        const months = monthPlansByQuarterId.get(quarter.id) ?? [];
+                        const months =
+                          monthPlansByQuarterId.get(quarter.id) ?? [];
                         return (
                           <div key={quarter.id} style={{ paddingLeft: 16 }}>
                             <div>└ {quarter.title}</div>
-                            <div style={{ paddingLeft: 16, display: "grid", gap: 2 }}>
+                            <div
+                              style={{
+                                paddingLeft: 16,
+                                display: "grid",
+                                gap: 2,
+                              }}
+                            >
                               {months.length === 0 ? (
                                 <div>月計画なし</div>
                               ) : (

@@ -28,6 +28,15 @@ const backend = defineBackend({
   transcribePoller,
 });
 
+type LambdaConfigurable = {
+  addEnvironment: (name: string, value: string) => void;
+  timeout: Duration;
+};
+
+function asLambdaConfigurable(value: unknown): LambdaConfigurable {
+  return value as LambdaConfigurable;
+}
+
 /**
  * ✅ Transcribe が S3 の音声を読む/結果を書けるようにする Data Access Role
  * - Transcribe サービスが Assume できる必要がある
@@ -136,7 +145,9 @@ backend.analyzeTranscriptObservationsFn.resources.lambda.addToRolePolicy(
 /**
  * ✅ Lambda に環境変数を注入
  */
-const summarizeLambda = backend.summarizeAudioFn.resources.lambda as any;
+const summarizeLambda = asLambdaConfigurable(
+  backend.summarizeAudioFn.resources.lambda,
+);
 summarizeLambda.addEnvironment(
   "TRANSCRIBE_DATA_ACCESS_ROLE_ARN",
   transcribeDataAccessRole.roleArn,
@@ -151,7 +162,9 @@ summarizeLambda.addEnvironment(
 );
 
 // poller 側
-const pollerLambda = backend.transcribePoller.resources.lambda as any;
+const pollerLambda = asLambdaConfigurable(
+  backend.transcribePoller.resources.lambda,
+);
 pollerLambda.addEnvironment(
   "TRANSCRIBE_OUTPUT_BUCKET",
   backend.storage.resources.bucket.bucketName,
@@ -161,7 +174,7 @@ pollerLambda.addEnvironment("TRANSCRIBE_OUTPUT_PREFIX", "transcribe-output/");
 /**
  * ✅ dailyDigest 側
  */
-const dailyLambda = backend.dailyDigest.resources.lambda as any;
+const dailyLambda = asLambdaConfigurable(backend.dailyDigest.resources.lambda);
 dailyLambda.addEnvironment(
   "BEDROCK_MODEL_ID",
   "anthropic.claude-3-5-sonnet-20240620-v1:0",
@@ -172,7 +185,9 @@ dailyLambda.addEnvironment(
 );
 
 // ✅ analyze-practice 側
-const analyzePracticeLambda = backend.analyzePracticeFn.resources.lambda as any;
+const analyzePracticeLambda = asLambdaConfigurable(
+  backend.analyzePracticeFn.resources.lambda,
+);
 analyzePracticeLambda.addEnvironment(
   "BEDROCK_MODEL_ID",
   "anthropic.claude-3-5-sonnet-20240620-v1:0",
@@ -182,8 +197,9 @@ analyzePracticeLambda.addEnvironment(
 analyzePracticeLambda.timeout = Duration.seconds(30);
 
 // ✅ suggest-practice-links 側
-const suggestPracticeLinksLambda =
-  backend.suggestPracticeLinksFn.resources.lambda as any;
+const suggestPracticeLinksLambda = asLambdaConfigurable(
+  backend.suggestPracticeLinksFn.resources.lambda,
+);
 
 suggestPracticeLinksLambda.addEnvironment(
   "BEDROCK_MODEL_ID",
@@ -192,8 +208,9 @@ suggestPracticeLinksLambda.addEnvironment(
 suggestPracticeLinksLambda.timeout = Duration.seconds(30);
 
 // ✅ analyze-transcript-observations 側
-const analyzeTranscriptLambda =
-  backend.analyzeTranscriptObservationsFn.resources.lambda as any;
+const analyzeTranscriptLambda = asLambdaConfigurable(
+  backend.analyzeTranscriptObservationsFn.resources.lambda,
+);
 
 analyzeTranscriptLambda.addEnvironment(
   "BEDROCK_MODEL_ID",

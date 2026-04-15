@@ -4,6 +4,17 @@ import {
   StartTranscriptionJobCommand,
 } from "@aws-sdk/client-transcribe";
 
+type SummarizeAudioArgs = {
+  jobId: string;
+  audioS3Uri?: string | null;
+};
+
+type HandlerErrorLike = {
+  name?: string;
+  message?: string;
+  stack?: string;
+};
+
 function guessMediaFormat(
   audioPath: string,
 ): "mp3" | "mp4" | "wav" | "flac" | "ogg" | "amr" | "webm" {
@@ -18,11 +29,34 @@ function guessMediaFormat(
   return "mp4";
 }
 
+function toHandlerErrorLike(error: unknown): HandlerErrorLike {
+  if (error instanceof Error) {
+    return {
+      name: error.name,
+      message: error.message,
+      stack: error.stack,
+    };
+  }
+
+  if (typeof error === "object" && error !== null) {
+    const obj = error as Record<string, unknown>;
+    return {
+      name: typeof obj.name === "string" ? obj.name : undefined,
+      message: typeof obj.message === "string" ? obj.message : undefined,
+      stack: typeof obj.stack === "string" ? obj.stack : undefined,
+    };
+  }
+
+  return {
+    message: String(error),
+  };
+}
+
 export const handler: Schema["summarizeAudio"]["functionHandler"] = async (
   event,
 ) => {
-  const { jobId } = event.arguments;
-  const audioS3Uri = (event.arguments as any).audioS3Uri as string | undefined;
+  const args = event.arguments as SummarizeAudioArgs;
+  const { jobId, audioS3Uri } = args;
 
   const roleArn = process.env.TRANSCRIBE_DATA_ACCESS_ROLE_ARN;
   const outBucket = process.env.TRANSCRIBE_OUTPUT_BUCKET;
@@ -85,7 +119,9 @@ export const handler: Schema["summarizeAudio"]["functionHandler"] = async (
       transcriptText: null,
       summaryText: null,
     };
-  } catch (e: any) {
+  } catch (error) {
+    const e = toHandlerErrorLike(error);
+
     console.error("StartTranscriptionJob failed", {
       jobId,
       jobName,
@@ -93,9 +129,9 @@ export const handler: Schema["summarizeAudio"]["functionHandler"] = async (
       roleArn,
       outBucket,
       outPrefix,
-      name: e?.name,
-      msg: e?.message,
-      stack: e?.stack,
+      name: e.name,
+      msg: e.message,
+      stack: e.stack,
     });
 
     return {
@@ -103,7 +139,7 @@ export const handler: Schema["summarizeAudio"]["functionHandler"] = async (
       status: "FAILED",
       transcribeJobName: null,
       transcriptText: null,
-      summaryText: `StartTranscriptionJob failed: ${e?.name ?? ""} ${e?.message ?? e}`,
+      summaryText: `StartTranscriptionJob failed: ${e.name ?? ""} ${e.message ?? String(error)}`,
     };
   }
 };

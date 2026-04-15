@@ -1,9 +1,7 @@
-import { Fragment, useEffect, useMemo, useState } from "react";
+import { Fragment, useCallback, useEffect, useMemo, useState } from "react";
 import type { CSSProperties } from "react";
 import { generateClient } from "aws-amplify/data";
 import type { Schema } from "../../../amplify/data/resource";
-
-const client = generateClient<Schema>();
 
 type Props = {
   owner: string;
@@ -16,6 +14,7 @@ type ScheduleDayRow = Schema["ScheduleDay"]["type"];
 type ClassroomRow = Schema["Classroom"]["type"];
 type AgeTargetRow = Schema["SchoolAnnualAgeTarget"]["type"];
 type PracticeRow = Schema["PracticeCode"]["type"];
+type AbilityPracticeLinkRow = Schema["AbilityPracticeLink"]["type"];
 
 type ScoreSet = {
   health: number;
@@ -42,6 +41,137 @@ type WeekSummaryRow = {
   rows: WeekDateRow[];
   totals: ScoreSet;
 };
+
+type ModelError = {
+  message?: string | null;
+};
+
+type ListOptions = Record<string, unknown>;
+type MutationInput = Record<string, unknown>;
+
+type ListResponse<TRow> = {
+  data?: TRow[] | null;
+  nextToken?: string | null;
+  errors?: ModelError[] | null;
+};
+
+type MutationResponse<TRow> = {
+  data?: TRow | null;
+  errors?: ModelError[] | null;
+};
+
+type ListableModel<TRow> = {
+  list(options?: ListOptions): Promise<ListResponse<TRow>>;
+};
+
+type CreatableModel<TRow> = {
+  create(input: MutationInput): Promise<MutationResponse<TRow>>;
+};
+
+type UpdatableModel<TRow> = {
+  update(input: MutationInput): Promise<MutationResponse<TRow>>;
+};
+
+type DeletableModel<TRow> = {
+  delete(input: MutationInput): Promise<MutationResponse<TRow>>;
+};
+
+type AbilityPracticeLinkModel = {
+  listByPractice(args: { practiceCode: string }): Promise<{
+    data?: AbilityPracticeLinkRow[] | null;
+    errors?: ModelError[] | null;
+  }>;
+};
+
+type IssueScheduleWeekArgs = {
+  scheduleMonthId: string;
+  weekStartDate: string;
+  weekEndDate: string;
+  weekNo: number;
+  issueType: "MANUAL";
+};
+
+type IssueScheduleDayArgs = {
+  scheduleWeekId: string;
+  targetDate: string;
+  issueType: "MANUAL" | "MANUAL_REISSUE";
+};
+
+type IssueScheduleWeekResult = {
+  status?: string | null;
+  message?: string | null;
+};
+
+type IssueScheduleDayResult = {
+  status?: string | null;
+  message?: string | null;
+  issueVersion?: number | null;
+};
+
+type OperationEnvelope<TData> = {
+  data?: TData | null;
+  errors?: ModelError[] | null;
+};
+
+type OperationRunner<TArgs, TData> = (
+  args: TArgs | { input: TArgs },
+) => Promise<OperationEnvelope<TData> | TData>;
+
+type SimpleScheduleWorkspaceClient = {
+  models: {
+    Classroom: ListableModel<ClassroomRow>;
+    SchoolAnnualAgeTarget: ListableModel<AgeTargetRow>;
+    PracticeCode: ListableModel<PracticeRow>;
+    ScheduleMonth: ListableModel<ScheduleMonthRow> &
+      CreatableModel<ScheduleMonthRow>;
+    ScheduleWeek: ListableModel<ScheduleWeekRow>;
+    ScheduleWeekItem: ListableModel<ScheduleWeekItemRow> &
+      CreatableModel<ScheduleWeekItemRow> &
+      UpdatableModel<ScheduleWeekItemRow> &
+      DeletableModel<ScheduleWeekItemRow>;
+    ScheduleDay: ListableModel<ScheduleDayRow>;
+    AbilityPracticeLink: AbilityPracticeLinkModel;
+  };
+  mutations?: {
+    issueScheduleWeekFromScheduleMonth?: OperationRunner<
+      IssueScheduleWeekArgs,
+      IssueScheduleWeekResult
+    >;
+    issueScheduleDayFromScheduleWeek?: OperationRunner<
+      IssueScheduleDayArgs,
+      IssueScheduleDayResult
+    >;
+  };
+};
+
+type ClassroomDisplayRow = ClassroomRow & {
+  name?: string | null;
+  title?: string | null;
+  className?: string | null;
+};
+
+type AgeTargetDisplayRow = AgeTargetRow & {
+  ageBand?: string | number | null;
+};
+
+type AbilityCodeLike = {
+  code?: string | number | null;
+  domain?: string | null;
+  category?: string | null;
+  name?: string | null;
+};
+
+type IssueVersionLike = {
+  issueVersion?: number | null;
+};
+
+type TimestampLike = {
+  updatedAt?: string | null;
+  createdAt?: string | null;
+};
+
+const client =
+  generateClient<Schema>() as unknown as SimpleScheduleWorkspaceClient;
 
 const DEFAULT_TENANT_ID = "demo-tenant";
 const DEFAULT_START_TIME = "09:00";
@@ -124,14 +254,18 @@ function weekNoInMonthFromDate(dateStr: string) {
   return Math.floor(diffDays / 7) + 1;
 }
 
-function classroomLabel(row: ClassroomRow) {
-  const r = row as any;
-  return r.name || r.title || r.className || row.id;
+function classroomLabel(row: ClassroomDisplayRow) {
+  return row.name || row.title || row.className || row.id;
 }
 
-function ageTargetLabel(row: AgeTargetRow) {
-  const r = row as any;
-  return r.name || r.title || r.label || row.id;
+function ageTargetLabel(row: AgeTargetDisplayRow) {
+  const ageBand = String(row.ageBand ?? "").trim();
+
+  if (ageBand) {
+    return ageBand.includes("歳児") ? ageBand : `${ageBand}歳児`;
+  }
+
+  return "年齢帯未設定";
 }
 
 function practiceLabel(row: PracticeRow) {
@@ -139,8 +273,8 @@ function practiceLabel(row: PracticeRow) {
 }
 
 function mapAbilityToArea(
-  codeRow?: any,
-  fallbackAbilityCode?: string | null
+  codeRow?: AbilityCodeLike,
+  fallbackAbilityCode?: string | null,
 ): keyof ScoreSet | null {
   const rawCode = String(codeRow?.code ?? fallbackAbilityCode ?? "").trim();
   const normalizedCode = rawCode.replace(/[^0-9]/g, "");
@@ -152,7 +286,9 @@ function mapAbilityToArea(
   if (prefix2 === "41") return "language";
   if (prefix2 === "51") return "expression";
 
-  const rawText = `${codeRow?.domain ?? ""} ${codeRow?.category ?? ""} ${codeRow?.name ?? ""}`;
+  const rawText = `${codeRow?.domain ?? ""} ${codeRow?.category ?? ""} ${
+    codeRow?.name ?? ""
+  }`;
   if (rawText.includes("健康")) return "health";
   if (rawText.includes("人間関係")) return "humanRelations";
   if (rawText.includes("環境")) return "environment";
@@ -181,7 +317,7 @@ function sumScoreSets(rows: Array<ScoreSet>) {
       language: acc.language + (s.language ?? 0),
       expression: acc.expression + (s.expression ?? 0),
     }),
-    emptyScores()
+    emptyScores(),
   );
 }
 
@@ -189,19 +325,68 @@ function makeWeekDateKey(scheduleWeekId: string, targetDate: string) {
   return `${scheduleWeekId}__${targetDate}`;
 }
 
-function latestIssueVersion(a: any, b: any) {
-  return (b?.issueVersion ?? 0) - (a?.issueVersion ?? 0);
+function latestIssueVersion<T extends IssueVersionLike>(a: T, b: T) {
+  return (b.issueVersion ?? 0) - (a.issueVersion ?? 0);
 }
 
-function latestItemVersion(a: any, b: any) {
-  const aTime = String((a as any)?.updatedAt ?? (a as any)?.createdAt ?? "");
-  const bTime = String((b as any)?.updatedAt ?? (b as any)?.createdAt ?? "");
+function latestItemVersion<T extends TimestampLike>(a: T, b: T) {
+  const aTime = String(a.updatedAt ?? a.createdAt ?? "");
+  const bTime = String(b.updatedAt ?? b.createdAt ?? "");
   return bTime.localeCompare(aTime);
 }
 
 function pickCanonicalWeekItem(rows: ScheduleWeekItemRow[]) {
   return [...rows].sort(latestItemVersion)[0] ?? null;
 }
+
+function formatModelErrors(
+  errors?: ModelError[] | null,
+  fallback = "Unknown error",
+) {
+  const messages = (errors ?? [])
+    .map((e) => String(e.message ?? "").trim())
+    .filter(Boolean);
+
+  return messages.length > 0 ? messages.join(", ") : fallback;
+}
+
+function getOperationErrors<TData>(
+  res: OperationEnvelope<TData> | TData,
+): ModelError[] | null {
+  if (!res || typeof res !== "object") return null;
+  if (!("errors" in res)) return null;
+  return (res as OperationEnvelope<TData>).errors ?? null;
+}
+
+function getOperationData<TData>(res: OperationEnvelope<TData> | TData): TData {
+  if (!res || typeof res !== "object") {
+    return res as TData;
+  }
+  if (!("data" in res)) {
+    return res as TData;
+  }
+  return ((res as OperationEnvelope<TData>).data ?? res) as TData;
+}
+
+const thStyle: CSSProperties = {
+  border: "1px solid #ddd",
+  padding: 8,
+  background: "#f3f4f6",
+  textAlign: "left",
+  verticalAlign: "top",
+};
+
+const tdStyle: CSSProperties = {
+  border: "1px solid #ddd",
+  padding: 8,
+  verticalAlign: "top",
+};
+
+const detailCellStyle: CSSProperties = {
+  ...tdStyle,
+  background: "#fafafa",
+  padding: 12,
+};
 
 export default function SimpleScheduleWorkspacePanel(props: Props) {
   const { owner } = props;
@@ -230,12 +415,12 @@ export default function SimpleScheduleWorkspacePanel(props: Props) {
 
   const practiceMap = useMemo(
     () => new Map(practiceRows.map((p) => [p.practice_code, p])),
-    [practiceRows]
+    [practiceRows],
   );
 
   const selectedMonth = useMemo(
     () => months.find((m) => m.id === selectedMonthId) ?? null,
-    [months, selectedMonthId]
+    [months, selectedMonthId],
   );
 
   const weekRangesInMonth = useMemo(() => {
@@ -255,14 +440,14 @@ export default function SimpleScheduleWorkspacePanel(props: Props) {
         weekEndDate: sundayEndFromMonday(monday),
         weekNoInMonth: weekNoInMonthFromDate(monday),
         label: `第${weekNoInMonthFromDate(monday)}週 ${monday} ～ ${sundayEndFromMonday(
-          monday
+          monday,
         )}`,
       }));
   }, [monthKey]);
 
   const weekMapByStartDate = useMemo(
     () => new Map(weeks.map((w) => [w.weekStartDate ?? "", w])),
-    [weeks]
+    [weeks],
   );
 
   useEffect(() => {
@@ -270,15 +455,16 @@ export default function SimpleScheduleWorkspacePanel(props: Props) {
       setExpandedWeekStartDate(weekRangesInMonth[0].weekStartDate);
       return;
     }
+
     const exists = weekRangesInMonth.some(
-      (w) => w.weekStartDate === expandedWeekStartDate
+      (w) => w.weekStartDate === expandedWeekStartDate,
     );
     if (!exists && weekRangesInMonth[0]) {
       setExpandedWeekStartDate(weekRangesInMonth[0].weekStartDate);
     }
   }, [expandedWeekStartDate, weekRangesInMonth]);
 
-  async function loadInitial() {
+  const loadInitial = useCallback(async () => {
     setLoading(true);
     try {
       const [classroomRes, ageTargetRes, practiceRes, monthRes] =
@@ -289,17 +475,17 @@ export default function SimpleScheduleWorkspacePanel(props: Props) {
           client.models.ScheduleMonth.list({
             filter: {
               owner: { eq: owner },
-            } as any,
-          }),
+            },
+          } as ListOptions),
         ]);
 
       const classroomRows = classroomRes.data ?? [];
       const ageRows = ageTargetRes.data ?? [];
       const practices = [...(practiceRes.data ?? [])].sort((a, b) =>
-        String(a.practice_code).localeCompare(String(b.practice_code))
+        String(a.practice_code).localeCompare(String(b.practice_code)),
       );
       const monthRows = [...(monthRes.data ?? [])].sort((a, b) =>
-        String(b.monthKey ?? "").localeCompare(String(a.monthKey ?? ""))
+        String(b.monthKey ?? "").localeCompare(String(a.monthKey ?? "")),
       );
 
       setClassrooms(classroomRows);
@@ -307,12 +493,8 @@ export default function SimpleScheduleWorkspacePanel(props: Props) {
       setPracticeRows(practices);
       setMonths(monthRows);
 
-      if (!classroomId && classroomRows[0]?.id) {
-        setClassroomId(classroomRows[0].id);
-      }
-      if (!ageTargetId && ageRows[0]?.id) {
-        setAgeTargetId(ageRows[0].id);
-      }
+      setClassroomId((prev) => prev || classroomRows[0]?.id || "");
+      setAgeTargetId((prev) => prev || ageRows[0]?.id || "");
 
       const sameMonth = monthRows.find((m) => m.monthKey === monthKey);
       if (sameMonth) {
@@ -320,148 +502,179 @@ export default function SimpleScheduleWorkspacePanel(props: Props) {
       }
     } catch (e) {
       console.error(e);
-      setMessage(`初期読込エラー: ${e instanceof Error ? e.message : String(e)}`);
+      setMessage(
+        `初期読込エラー: ${e instanceof Error ? e.message : String(e)}`,
+      );
     } finally {
       setLoading(false);
     }
-  }
+  }, [owner, monthKey]);
 
-  async function fetchWeekItems(
-    scheduleWeekId: string
-  ): Promise<ScheduleWeekItemRow[]> {
-    const res = await client.models.ScheduleWeekItem.list({
-      filter: {
-        scheduleWeekId: { eq: scheduleWeekId },
-      } as any,
-    });
-
-    return [...(res.data ?? [])].sort((a, b) => {
-      const d = (a.dayOfWeek ?? 0) - (b.dayOfWeek ?? 0);
-      if (d !== 0) return d;
-      return (a.sortOrder ?? 0) - (b.sortOrder ?? 0);
-    });
-  }
-
-  async function fetchScheduleDays(
-    scheduleWeekId: string
-  ): Promise<ScheduleDayRow[]> {
-    const res = await client.models.ScheduleDay.list({
-      filter: {
-        sourceWeekId: { eq: scheduleWeekId },
-      } as any,
-    });
-
-    return [...(res.data ?? [])].sort((a, b) => {
-      const d = String(a.targetDate ?? "").localeCompare(
-        String(b.targetDate ?? "")
-      );
-      if (d !== 0) return d;
-      return latestIssueVersion(a, b);
-    });
-  }
-
-  async function loadMonthDetails(monthId: string) {
-    if (!monthId) {
-      setWeeks([]);
-      setWeekItemsByWeekId({});
-      setLatestDaysByWeekDateKey({});
-      return;
-    }
-
-    setLoading(true);
-    try {
-      const weekRes = await client.models.ScheduleWeek.list({
+  const fetchWeekItems = useCallback(
+    async (scheduleWeekId: string): Promise<ScheduleWeekItemRow[]> => {
+      const res = await client.models.ScheduleWeekItem.list({
         filter: {
-          sourceScheduleMonthId: { eq: monthId },
-        } as any,
+          scheduleWeekId: { eq: scheduleWeekId },
+        },
+      } as ListOptions);
+
+      return [...(res.data ?? [])].sort((a, b) => {
+        const d = (a.dayOfWeek ?? 0) - (b.dayOfWeek ?? 0);
+        if (d !== 0) return d;
+        return (a.sortOrder ?? 0) - (b.sortOrder ?? 0);
       });
+    },
+    [],
+  );
 
-      const weekRows = [...(weekRes.data ?? [])].sort((a, b) =>
-        String(a.weekStartDate ?? "").localeCompare(
-          String(b.weekStartDate ?? "")
-        )
-      );
+  const fetchScheduleDays = useCallback(
+    async (scheduleWeekId: string): Promise<ScheduleDayRow[]> => {
+      const res = await client.models.ScheduleDay.list({
+        filter: {
+          sourceWeekId: { eq: scheduleWeekId },
+        },
+      } as ListOptions);
 
-      const entries = await Promise.all(
-        weekRows.map(async (w) => {
-          const rows = await fetchWeekItems(w.id);
-          return [w.id, rows] as const;
-        })
-      );
+      return [...(res.data ?? [])].sort((a, b) => {
+        const d = String(a.targetDate ?? "").localeCompare(
+          String(b.targetDate ?? ""),
+        );
+        if (d !== 0) return d;
+        return latestIssueVersion(a, b);
+      });
+    },
+    [],
+  );
 
-      const dayEntries = await Promise.all(
-        weekRows.map(async (w) => {
-          const rows = await fetchScheduleDays(w.id);
-          return [w.id, rows] as const;
-        })
-      );
-
-      const nextLatestDayMap: Record<string, ScheduleDayRow | null> = {};
-
-      for (const [weekId, dayRows] of dayEntries) {
-        const grouped = new Map<string, ScheduleDayRow[]>();
-
-        for (const row of dayRows) {
-          const targetDate = String(row.targetDate ?? "");
-          if (!targetDate) continue;
-
-          const list = grouped.get(targetDate) ?? [];
-          list.push(row);
-          grouped.set(targetDate, list);
-        }
-
-        for (const [targetDate, rows] of grouped.entries()) {
-          const latest = [...rows].sort(latestIssueVersion)[0] ?? null;
-          nextLatestDayMap[makeWeekDateKey(weekId, targetDate)] = latest;
-        }
+  const loadMonthDetails = useCallback(
+    async (monthId: string) => {
+      if (!monthId) {
+        setWeeks([]);
+        setWeekItemsByWeekId({});
+        setLatestDaysByWeekDateKey({});
+        return;
       }
 
-      setWeeks(weekRows);
-      setWeekItemsByWeekId(Object.fromEntries(entries));
-      setLatestDaysByWeekDateKey(nextLatestDayMap);
-    } catch (e) {
-      console.error(e);
-      setMessage(`月詳細読込エラー: ${e instanceof Error ? e.message : String(e)}`);
-    } finally {
-      setLoading(false);
-    }
-  }
+      setLoading(true);
+      try {
+        const weekRes = await client.models.ScheduleWeek.list({
+          filter: {
+            sourceScheduleMonthId: { eq: monthId },
+          },
+        } as ListOptions);
+
+        const weekRows = [...(weekRes.data ?? [])].sort((a, b) =>
+          String(a.weekStartDate ?? "").localeCompare(
+            String(b.weekStartDate ?? ""),
+          ),
+        );
+
+        const entries = await Promise.all(
+          weekRows.map(async (w) => {
+            const rows = await fetchWeekItems(w.id);
+            return [w.id, rows] as const;
+          }),
+        );
+
+        const dayEntries = await Promise.all(
+          weekRows.map(async (w) => {
+            const rows = await fetchScheduleDays(w.id);
+            return [w.id, rows] as const;
+          }),
+        );
+
+        const nextLatestDayMap: Record<string, ScheduleDayRow | null> = {};
+
+        for (const [weekId, dayRows] of dayEntries) {
+          const grouped = new Map<string, ScheduleDayRow[]>();
+
+          for (const row of dayRows) {
+            const targetDate = String(row.targetDate ?? "");
+            if (!targetDate) continue;
+
+            const list = grouped.get(targetDate) ?? [];
+            list.push(row);
+            grouped.set(targetDate, list);
+          }
+
+          for (const [targetDate, rows] of grouped.entries()) {
+            const latest = [...rows].sort(latestIssueVersion)[0] ?? null;
+            nextLatestDayMap[makeWeekDateKey(weekId, targetDate)] = latest;
+          }
+        }
+
+        setWeeks(weekRows);
+        setWeekItemsByWeekId(Object.fromEntries(entries));
+        setLatestDaysByWeekDateKey(nextLatestDayMap);
+      } catch (e) {
+        console.error(e);
+        setMessage(
+          `月詳細読込エラー: ${e instanceof Error ? e.message : String(e)}`,
+        );
+      } finally {
+        setLoading(false);
+      }
+    },
+    [fetchScheduleDays, fetchWeekItems],
+  );
 
   useEffect(() => {
     void loadInitial();
-  }, []);
+  }, [loadInitial]);
 
   useEffect(() => {
     void loadMonthDetails(selectedMonthId);
-  }, [selectedMonthId]);
+  }, [selectedMonthId, loadMonthDetails]);
 
   async function issueMissingWeeksForMonth(scheduleMonthId: string) {
     const existingWeekRes = await client.models.ScheduleWeek.list({
       filter: {
         sourceScheduleMonthId: { eq: scheduleMonthId },
-      } as any,
-    });
+      },
+    } as ListOptions);
 
     const existingStarts = new Set(
-      (existingWeekRes.data ?? []).map((w) => w.weekStartDate ?? "")
+      (existingWeekRes.data ?? []).map((w) => w.weekStartDate ?? ""),
     );
+
+    const runner = client.mutations?.issueScheduleWeekFromScheduleMonth;
+    if (!runner) {
+      throw new Error(
+        "issueScheduleWeekFromScheduleMonth が client.mutations に見つかりません。",
+      );
+    }
 
     for (const range of weekRangesInMonth) {
       if (existingStarts.has(range.weekStartDate)) continue;
 
-      const res = await client.mutations.issueScheduleWeekFromScheduleMonth({
-        scheduleMonthId,
-        weekStartDate: range.weekStartDate,
-        weekEndDate: range.weekEndDate,
-        weekNo: range.weekNoInMonth,
-        issueType: "MANUAL",
-      } as any);
+      let res:
+        | OperationEnvelope<IssueScheduleWeekResult>
+        | IssueScheduleWeekResult;
 
-      if (res.errors?.length) {
+      try {
+        res = await runner({
+          scheduleMonthId,
+          weekStartDate: range.weekStartDate,
+          weekEndDate: range.weekEndDate,
+          weekNo: range.weekNoInMonth,
+          issueType: "MANUAL",
+        });
+      } catch {
+        res = await runner({
+          input: {
+            scheduleMonthId,
+            weekStartDate: range.weekStartDate,
+            weekEndDate: range.weekEndDate,
+            weekNo: range.weekNoInMonth,
+            issueType: "MANUAL",
+          },
+        });
+      }
+
+      const errors = getOperationErrors(res);
+      if (errors?.length) {
         throw new Error(
-          `週案発行エラー (${range.weekStartDate}): ${res.errors
-            .map((e) => e.message)
-            .join(", ")}`
+          `週案発行エラー (${range.weekStartDate}): ${formatModelErrors(errors)}`,
         );
       }
     }
@@ -489,7 +702,7 @@ export default function SimpleScheduleWorkspacePanel(props: Props) {
         (m) =>
           m.monthKey === monthKey &&
           m.classroomId === classroomId &&
-          m.ageTargetId === ageTargetId
+          m.ageTargetId === ageTargetId,
       );
 
       if (existing) {
@@ -497,7 +710,7 @@ export default function SimpleScheduleWorkspacePanel(props: Props) {
         await issueMissingWeeksForMonth(existing.id);
         await loadMonthDetails(existing.id);
         setMessage(
-          "同じ月案が既にあります。既存の月案を選択し、不足している週案を補完しました。"
+          "同じ月案が既にあります。既存の月案を選択し、不足している週案を補完しました。",
         );
         return;
       }
@@ -510,16 +723,15 @@ export default function SimpleScheduleWorkspacePanel(props: Props) {
         monthKey,
         title: `${monthKey} 月案`,
         notes: "",
-        status: "ACTIVE" as any,
-        issueType: "MANUAL" as any,
+        status: "ACTIVE",
+        issueType: "MANUAL",
         issueVersion: 1,
         issuedAt: new Date().toISOString(),
-      } as any);
+      } as MutationInput);
 
       if (!res.data) {
         throw new Error(
-          res.errors?.map((e) => e.message).join(", ") ||
-            "月案の作成に失敗しました。"
+          formatModelErrors(res.errors, "月案の作成に失敗しました。"),
         );
       }
 
@@ -528,11 +740,11 @@ export default function SimpleScheduleWorkspacePanel(props: Props) {
       const monthRes = await client.models.ScheduleMonth.list({
         filter: {
           owner: { eq: owner },
-        } as any,
-      });
+        },
+      } as ListOptions);
 
       const monthRows = [...(monthRes.data ?? [])].sort((a, b) =>
-        String(b.monthKey ?? "").localeCompare(String(a.monthKey ?? ""))
+        String(b.monthKey ?? "").localeCompare(String(a.monthKey ?? "")),
       );
 
       setMonths(monthRows);
@@ -542,7 +754,9 @@ export default function SimpleScheduleWorkspacePanel(props: Props) {
       setMessage("月案と、その月の週案を作成しました。");
     } catch (e) {
       console.error(e);
-      setMessage(`月案/週案作成エラー: ${e instanceof Error ? e.message : String(e)}`);
+      setMessage(
+        `月案/週案作成エラー: ${e instanceof Error ? e.message : String(e)}`,
+      );
     } finally {
       setLoading(false);
     }
@@ -563,14 +777,16 @@ export default function SimpleScheduleWorkspacePanel(props: Props) {
       setMessage("不足している週案を補完しました。");
     } catch (e) {
       console.error(e);
-      setMessage(`週案補完エラー: ${e instanceof Error ? e.message : String(e)}`);
+      setMessage(
+        `週案補完エラー: ${e instanceof Error ? e.message : String(e)}`,
+      );
     } finally {
       setLoading(false);
     }
   }
 
   async function getScoresForPractice(
-    practiceCode: string | null | undefined
+    practiceCode: string | null | undefined,
   ): Promise<ScoreSet> {
     if (!practiceCode) return emptyScores();
 
@@ -580,7 +796,7 @@ export default function SimpleScheduleWorkspacePanel(props: Props) {
       });
 
     if (errors?.length) {
-      throw new Error(errors.map((e) => e.message).join(", "));
+      throw new Error(formatModelErrors(errors));
     }
 
     const links = data ?? [];
@@ -603,39 +819,45 @@ export default function SimpleScheduleWorkspacePanel(props: Props) {
     return scores;
   }
 
-  async function runIssueDayMutation(args: {
-    scheduleWeekId: string;
-    targetDate: string;
-    issueType: "MANUAL" | "MANUAL_REISSUE";
-  }) {
-    const res = await (client as any).mutations.issueScheduleDayFromScheduleWeek(
-      {
-        scheduleWeekId: args.scheduleWeekId,
-        targetDate: args.targetDate,
-        issueType: args.issueType,
-      } as any
-    );
-
-    if (res?.errors?.length) {
-      throw new Error(res.errors.map((e: any) => e.message).join(", "));
+  async function runIssueDayMutation(
+    args: IssueScheduleDayArgs,
+  ): Promise<IssueScheduleDayResult> {
+    const runner = client.mutations?.issueScheduleDayFromScheduleWeek;
+    if (!runner) {
+      throw new Error(
+        "issueScheduleDayFromScheduleWeek が client.mutations に見つかりません。",
+      );
     }
 
-    return res?.data ?? res;
+    let res: OperationEnvelope<IssueScheduleDayResult> | IssueScheduleDayResult;
+    try {
+      res = await runner(args);
+    } catch {
+      res = await runner({ input: args });
+    }
+
+    const errors = getOperationErrors(res);
+    if (errors?.length) {
+      throw new Error(formatModelErrors(errors, "日案発行に失敗しました。"));
+    }
+
+    return getOperationData(res);
   }
 
   function getLatestDay(
     scheduleWeekId: string,
-    targetDate: string
+    targetDate: string,
   ): ScheduleDayRow | null {
     return (
-      latestDaysByWeekDateKey[makeWeekDateKey(scheduleWeekId, targetDate)] ?? null
+      latestDaysByWeekDateKey[makeWeekDateKey(scheduleWeekId, targetDate)] ??
+      null
     );
   }
 
   async function issueDayForRow(
     scheduleWeek: ScheduleWeekRow,
     row: WeekDateRow,
-    issueType: "MANUAL" | "MANUAL_REISSUE"
+    issueType: "MANUAL" | "MANUAL_REISSUE",
   ) {
     if (!row.weekItem?.practiceCode) {
       setMessage("先に週案で Practice を登録してください。");
@@ -659,14 +881,14 @@ export default function SimpleScheduleWorkspacePanel(props: Props) {
 
       if (status === "ALREADY_ISSUED") {
         setMessage(
-          `${row.date} の日案は既に発行済みです。再発行する場合は「日案再発行」を押してください。`
+          `${row.date} の日案は既に発行済みです。再発行する場合は「日案再発行」を押してください。`,
         );
         return;
       }
 
       if (status === "REISSUE_BLOCKED") {
         setMessage(
-          `${row.date} の日案は再発行できません。既存の日案に PLANNED 以外の状態が含まれています。`
+          `${row.date} の日案は再発行できません。既存の日案に PLANNED 以外の状態が含まれています。`,
         );
         return;
       }
@@ -674,11 +896,13 @@ export default function SimpleScheduleWorkspacePanel(props: Props) {
       setMessage(
         issueType === "MANUAL_REISSUE"
           ? `${row.date} の日案を再発行しました。version=${version || "-"}`
-          : `${row.date} の日案を発行しました。version=${version || "-"}`
+          : `${row.date} の日案を発行しました。version=${version || "-"}`,
       );
     } catch (e) {
       console.error(e);
-      setMessage(`日案発行エラー: ${e instanceof Error ? e.message : String(e)}`);
+      setMessage(
+        `日案発行エラー: ${e instanceof Error ? e.message : String(e)}`,
+      );
     } finally {
       setLoading(false);
     }
@@ -687,11 +911,13 @@ export default function SimpleScheduleWorkspacePanel(props: Props) {
   const weekSummaries = useMemo<WeekSummaryRow[]>(() => {
     return weekRangesInMonth.map((range) => {
       const scheduleWeek = weekMapByStartDate.get(range.weekStartDate) ?? null;
-      const items = scheduleWeek ? weekItemsByWeekId[scheduleWeek.id] ?? [] : [];
+      const items = scheduleWeek
+        ? (weekItemsByWeekId[scheduleWeek.id] ?? [])
+        : [];
 
       const rows: WeekDateRow[] = listDates(
         range.weekStartDate,
-        range.weekEndDate
+        range.weekEndDate,
       ).map((date) => {
         const weekday = toWeekday(date);
         const hits = items.filter((it) => it.dayOfWeek === weekday);
@@ -713,7 +939,7 @@ export default function SimpleScheduleWorkspacePanel(props: Props) {
           environment: r.weekItem?.scoreEnvironment ?? 0,
           language: r.weekItem?.scoreLanguage ?? 0,
           expression: r.weekItem?.scoreExpression ?? 0,
-        }))
+        })),
       );
 
       return {
@@ -730,26 +956,32 @@ export default function SimpleScheduleWorkspacePanel(props: Props) {
 
   const monthTotals = useMemo(
     () => sumScoreSets(weekSummaries.map((w) => w.totals)),
-    [weekSummaries]
+    [weekSummaries],
   );
 
   async function saveWeekPractice(
     scheduleWeek: ScheduleWeekRow,
     row: WeekDateRow,
-    nextPracticeCode: string
+    nextPracticeCode: string,
   ) {
     setLoading(true);
     setMessage("");
 
     try {
       const allWeekItems = await fetchWeekItems(scheduleWeek.id);
-      const sameDayItems = allWeekItems.filter((item) => item.dayOfWeek === row.weekday);
+      const sameDayItems = allWeekItems.filter(
+        (item) => item.dayOfWeek === row.weekday,
+      );
       const canonical = pickCanonicalWeekItem(sameDayItems);
-      const duplicates = sameDayItems.filter((item) => item.id !== canonical?.id);
+      const duplicates = sameDayItems.filter(
+        (item) => item.id !== canonical?.id,
+      );
 
       if (!nextPracticeCode) {
         for (const item of sameDayItems) {
-          await client.models.ScheduleWeekItem.delete({ id: item.id } as any);
+          await client.models.ScheduleWeekItem.delete({
+            id: item.id,
+          } as MutationInput);
         }
 
         const nextRows = await fetchWeekItems(scheduleWeek.id);
@@ -764,7 +996,7 @@ export default function SimpleScheduleWorkspacePanel(props: Props) {
           latestDay
             ? `週案を未設定に戻しました。 ${row.date}
 既に日案 v${latestDay.issueVersion ?? 1} があるため、内容を反映するには「日案再発行」を押してください。`
-            : `週案を未設定に戻しました。 ${row.date}`
+            : `週案を未設定に戻しました。 ${row.date}`,
         );
         return;
       }
@@ -778,11 +1010,13 @@ export default function SimpleScheduleWorkspacePanel(props: Props) {
         });
 
       if (errors?.length) {
-        throw new Error(errors.map((e) => e.message).join(", "));
+        throw new Error(formatModelErrors(errors));
       }
 
       const links = data ?? [];
-      const debugCodes = links.map((x) => `${x.abilityCode}:${x.score}`).join(", ");
+      const debugCodes = links
+        .map((x) => `${x.abilityCode}:${x.score}`)
+        .join(", ");
 
       if (canonical) {
         const res = await client.models.ScheduleWeekItem.update({
@@ -797,12 +1031,11 @@ export default function SimpleScheduleWorkspacePanel(props: Props) {
           scoreEnvironment: scores.environment,
           scoreLanguage: scores.language,
           scoreExpression: scores.expression,
-        } as any);
+        } as MutationInput);
 
         if (!res.data) {
           throw new Error(
-            res.errors?.map((e) => e.message).join(", ") ||
-              "週案更新に失敗しました。"
+            formatModelErrors(res.errors, "週案更新に失敗しました。"),
           );
         }
       } else {
@@ -824,18 +1057,19 @@ export default function SimpleScheduleWorkspacePanel(props: Props) {
           scoreEnvironment: scores.environment,
           scoreLanguage: scores.language,
           scoreExpression: scores.expression,
-        } as any);
+        } as MutationInput);
 
         if (!res.data) {
           throw new Error(
-            res.errors?.map((e) => e.message).join(", ") ||
-              "週案行の作成に失敗しました。"
+            formatModelErrors(res.errors, "週案行の作成に失敗しました。"),
           );
         }
       }
 
       for (const item of duplicates) {
-        await client.models.ScheduleWeekItem.delete({ id: item.id } as any);
+        await client.models.ScheduleWeekItem.delete({
+          id: item.id,
+        } as MutationInput);
       }
 
       const nextRows = await fetchWeekItems(scheduleWeek.id);
@@ -862,11 +1096,13 @@ scores=健康:${scores.health} / 人間関係:${scores.humanRelations} / 環境:
 必要に応じて「日案発行」を押してください。
 links=${links.length}
 codes=${debugCodes}
-scores=健康:${scores.health} / 人間関係:${scores.humanRelations} / 環境:${scores.environment} / 言葉:${scores.language} / 表現:${scores.expression}`
+scores=健康:${scores.health} / 人間関係:${scores.humanRelations} / 環境:${scores.environment} / 言葉:${scores.language} / 表現:${scores.expression}`,
       );
     } catch (e) {
       console.error(e);
-      setMessage(`週案更新エラー: ${e instanceof Error ? e.message : String(e)}`);
+      setMessage(
+        `週案更新エラー: ${e instanceof Error ? e.message : String(e)}`,
+      );
     } finally {
       setLoading(false);
     }
@@ -1053,7 +1289,9 @@ scores=健康:${scores.health} / 人間関係:${scores.humanRelations} / 環境:
                   <td style={tdStyle}>{week.totals.environment}</td>
                   <td style={tdStyle}>{week.totals.language}</td>
                   <td style={tdStyle}>{week.totals.expression}</td>
-                  <td style={tdStyle}>{week.scheduleWeek ? "週案あり" : "未発行"}</td>
+                  <td style={tdStyle}>
+                    {week.scheduleWeek ? "週案あり" : "未発行"}
+                  </td>
                 </tr>
               ))}
             </tbody>
@@ -1079,7 +1317,11 @@ scores=健康:${scores.health} / 人間関係:${scores.humanRelations} / 環境:
 
         <div style={{ overflowX: "auto" }}>
           <table
-            style={{ width: "100%", borderCollapse: "collapse", minWidth: 1080 }}
+            style={{
+              width: "100%",
+              borderCollapse: "collapse",
+              minWidth: 1080,
+            }}
           >
             <thead>
               <tr>
@@ -1096,7 +1338,9 @@ scores=健康:${scores.health} / 人間関係:${scores.humanRelations} / 環境:
             <tbody>
               {weekSummaries.map((week) => {
                 const expanded = expandedWeekStartDate === week.weekStartDate;
-                const hasAnyPractice = week.rows.some((r) => !!r.weekItem);
+                const hasAnyPractice = week.rows.some(
+                  (r) => !!r.weekItem?.practiceCode,
+                );
                 const hasDuplicate = week.rows.some((r) => r.hasDuplicate);
 
                 return (
@@ -1106,7 +1350,9 @@ scores=健康:${scores.health} / 人間関係:${scores.humanRelations} / 環境:
                         <button
                           onClick={() =>
                             setExpandedWeekStartDate((prev) =>
-                              prev === week.weekStartDate ? "" : week.weekStartDate
+                              prev === week.weekStartDate
+                                ? ""
+                                : week.weekStartDate,
                             )
                           }
                         >
@@ -1167,10 +1413,14 @@ scores=健康:${scores.health} / 人間関係:${scores.humanRelations} / 環境:
                                 </thead>
                                 <tbody>
                                   {week.rows.map((row) => {
-                                    const currentCode = row.weekItem?.practiceCode ?? "";
+                                    const scheduleWeek = week.scheduleWeek;
+                                    if (!scheduleWeek) return null;
+
+                                    const currentCode =
+                                      row.weekItem?.practiceCode ?? "";
                                     const latestDay = getLatestDay(
-                                      week.scheduleWeek!.id,
-                                      row.date
+                                      scheduleWeek.id,
+                                      row.date,
                                     );
 
                                     const dayLabel = latestDay
@@ -1187,9 +1437,9 @@ scores=健康:${scores.health} / 人間関係:${scores.humanRelations} / 環境:
                                             value={currentCode}
                                             onChange={(e) => {
                                               void saveWeekPractice(
-                                                week.scheduleWeek as ScheduleWeekRow,
+                                                scheduleWeek,
                                                 row,
-                                                e.target.value
+                                                e.target.value,
                                               );
                                             }}
                                             disabled={loading}
@@ -1210,7 +1460,8 @@ scores=健康:${scores.health} / 人間関係:${scores.humanRelations} / 環境:
                                           {row.weekItem?.scoreHealth ?? 0}
                                         </td>
                                         <td style={tdStyle}>
-                                          {row.weekItem?.scoreHumanRelations ?? 0}
+                                          {row.weekItem?.scoreHumanRelations ??
+                                            0}
                                         </td>
                                         <td style={tdStyle}>
                                           {row.weekItem?.scoreEnvironment ?? 0}
@@ -1231,13 +1482,13 @@ scores=健康:${scores.health} / 人間関係:${scores.humanRelations} / 環境:
                                             }}
                                           >
                                             <button
-                                              onClick={() =>
+                                              onClick={() => {
                                                 void issueDayForRow(
-                                                  week.scheduleWeek as ScheduleWeekRow,
+                                                  scheduleWeek,
                                                   row,
-                                                  "MANUAL"
-                                                )
-                                              }
+                                                  "MANUAL",
+                                                );
+                                              }}
                                               disabled={
                                                 loading ||
                                                 !row.weekItem?.practiceCode ||
@@ -1248,13 +1499,13 @@ scores=健康:${scores.health} / 人間関係:${scores.humanRelations} / 環境:
                                             </button>
 
                                             <button
-                                              onClick={() =>
+                                              onClick={() => {
                                                 void issueDayForRow(
-                                                  week.scheduleWeek as ScheduleWeekRow,
+                                                  scheduleWeek,
                                                   row,
-                                                  "MANUAL_REISSUE"
-                                                )
-                                              }
+                                                  "MANUAL_REISSUE",
+                                                );
+                                              }}
                                               disabled={
                                                 loading ||
                                                 !row.weekItem?.practiceCode ||
@@ -1268,9 +1519,9 @@ scores=健康:${scores.health} / 人間関係:${scores.humanRelations} / 環境:
                                         <td style={tdStyle}>
                                           {row.hasDuplicate
                                             ? "重複あり"
-                                            : row.weekItem
-                                              ? "登録済み"
-                                              : "未設定"}
+                                            : row.weekItem?.practiceCode
+                                              ? "登録あり"
+                                              : "空"}
                                         </td>
                                       </tr>
                                     );
@@ -1292,22 +1543,3 @@ scores=健康:${scores.health} / 人間関係:${scores.humanRelations} / 環境:
     </div>
   );
 }
-
-const thStyle: CSSProperties = {
-  border: "1px solid #ddd",
-  padding: "8px 10px",
-  background: "#f5f5f5",
-  textAlign: "left",
-  whiteSpace: "nowrap",
-};
-
-const tdStyle: CSSProperties = {
-  border: "1px solid #ddd",
-  padding: "8px 10px",
-  verticalAlign: "top",
-};
-
-const detailCellStyle: CSSProperties = {
-  ...tdStyle,
-  background: "#fafafa",
-};

@@ -9,6 +9,19 @@ import {
 } from "@aws-sdk/client-bedrock-runtime";
 
 type JsonObject = Record<string, unknown>;
+type DataClientEnv = Parameters<typeof getAmplifyDataClientConfig>[0];
+
+type PracticeAnalyzeArgs = {
+  practiceId: string;
+};
+
+type PracticeCodeRow = Schema["PracticeCode"]["type"] & {
+  transcriptText?: string | null;
+  practiceCategory?: string | null;
+  visibility?: string | null;
+  publishScope?: string | null;
+  version?: number | null;
+};
 
 function s(v: unknown): string {
   return typeof v === "string" ? v.trim() : String(v ?? "").trim();
@@ -16,7 +29,7 @@ function s(v: unknown): string {
 
 function truncateText(text: string, max = 12000): string {
   if (text.length <= max) return text;
-  return text.slice(0, max) + "\n…(truncated)…";
+  return `${text.slice(0, max)}\n…(truncated)…`;
 }
 
 function stripCodeFence(text: string): string {
@@ -62,6 +75,15 @@ ${transcriptText}
 `.trim();
 }
 
+function toErrorMessage(error: unknown): string {
+  if (error instanceof Error) return error.message;
+  if (typeof error === "object" && error !== null && "message" in error) {
+    const message = (error as { message?: unknown }).message;
+    if (typeof message === "string") return message;
+  }
+  return String(error);
+}
+
 async function invokeBedrockJson(
   modelId: string,
   prompt: string,
@@ -94,9 +116,7 @@ async function invokeBedrockJson(
     content?: Array<{ type?: string; text?: string }>;
   };
 
-  const rawText = s(
-    json?.content?.find((x) => x?.type === "text")?.text ?? "",
-  );
+  const rawText = s(json.content?.find((x) => x?.type === "text")?.text ?? "");
 
   const parsed = safeJsonParse(rawText);
   if (!parsed) {
@@ -113,16 +133,37 @@ async function invokeBedrockJson(
   return { name, memo, rawText };
 }
 
+function buildPracticeUpdateBase(practice: PracticeCodeRow) {
+  return {
+    id: practice.id,
+    practice_code: practice.practice_code,
+    tenantId: practice.tenantId ?? undefined,
+    owner: practice.owner ?? undefined,
+    ownerType: practice.ownerType ?? undefined,
+    practiceCategory: practice.practiceCategory ?? undefined,
+    visibility: practice.visibility ?? undefined,
+    publishScope: practice.publishScope ?? undefined,
+    name: practice.name ?? "",
+    memo: practice.memo ?? "",
+    source_type: practice.source_type ?? "practiceRegister",
+    version: Number(practice.version ?? 1),
+  };
+}
+
 export const handler: Schema["analyzePractice"]["functionHandler"] = async (
   event,
 ) => {
-  const practiceId = event.arguments.practiceId;
+  const args = event.arguments as PracticeAnalyzeArgs;
+  const practiceId = s(args.practiceId);
   const modelId =
-    process.env.BEDROCK_MODEL_ID ||
-    "anthropic.claude-3-5-sonnet-20240620-v1:0";
+    process.env.BEDROCK_MODEL_ID || "anthropic.claude-3-5-sonnet-20240620-v1:0";
+
+  if (!practiceId) {
+    throw new Error("practiceId が空です。");
+  }
 
   const { resourceConfig, libraryOptions } = await getAmplifyDataClientConfig(
-    env as any,
+    env as DataClientEnv,
   );
   Amplify.configure(resourceConfig, libraryOptions);
   const dataClient = generateClient<Schema>();
@@ -137,36 +178,20 @@ export const handler: Schema["analyzePractice"]["functionHandler"] = async (
     );
   }
 
-  const practice = getResult.data;
+  const practice = (getResult.data as PracticeCodeRow | null) ?? null;
   if (!practice) {
     throw new Error(`PracticeCode not found: ${practiceId}`);
   }
 
-  const transcriptText = s((practice as any).transcriptText);
+  const transcriptText = s(practice.transcriptText);
   if (!transcriptText) {
     throw new Error("transcriptText が空のため AI 生成できません。");
   }
 
   const prompt = buildPrompt(truncateText(transcriptText));
 
-  // まず AI_ANALYZING にしておく
   const preUpdate = await dataClient.models.PracticeCode.update({
-    id: practice.id,
-
-    // 複合 index 対策で既存値を戻す
-    practice_code: practice.practice_code,
-    tenantId: practice.tenantId ?? undefined,
-    owner: practice.owner ?? undefined,
-    ownerType: practice.ownerType ?? undefined,
-    practiceCategory: (practice as any).practiceCategory ?? undefined,
-    visibility: (practice as any).visibility ?? undefined,
-    publishScope: (practice as any).publishScope ?? undefined,
-
-    name: practice.name ?? "",
-    memo: practice.memo ?? "",
-    source_type: practice.source_type ?? "practiceRegister",
-    version: Number((practice as any).version ?? 1),
-
+    ...buildPracticeUpdateBase(practice),
     status: "AI_ANALYZING",
     aiStatus: "PENDING",
     updatedBy: "analyze-practice",
@@ -184,21 +209,7 @@ export const handler: Schema["analyzePractice"]["functionHandler"] = async (
     const ai = await invokeBedrockJson(modelId, prompt);
 
     const updateResult = await dataClient.models.PracticeCode.update({
-      id: practice.id,
-
-      // 複合 index 対策
-      practice_code: practice.practice_code,
-      tenantId: practice.tenantId ?? undefined,
-      owner: practice.owner ?? undefined,
-      ownerType: practice.ownerType ?? undefined,
-      practiceCategory: (practice as any).practiceCategory ?? undefined,
-      visibility: (practice as any).visibility ?? undefined,
-      publishScope: (practice as any).publishScope ?? undefined,
-
-      source_type: practice.source_type ?? "practiceRegister",
-      version: Number((practice as any).version ?? 1),
-
-      // 更新値
+      ...buildPracticeUpdateBase(practice),
       name: ai.name,
       memo: ai.memo,
       status: "REVIEW",
@@ -226,31 +237,17 @@ export const handler: Schema["analyzePractice"]["functionHandler"] = async (
       status: "REVIEW",
       aiModel: modelId,
     };
-  } catch (e: any) {
-    const msg = e?.message ?? String(e);
+  } catch (error) {
+    const msg = toErrorMessage(error);
 
     await dataClient.models.PracticeCode.update({
-      id: practice.id,
-
-      practice_code: practice.practice_code,
-      tenantId: practice.tenantId ?? undefined,
-      owner: practice.owner ?? undefined,
-      ownerType: practice.ownerType ?? undefined,
-      practiceCategory: (practice as any).practiceCategory ?? undefined,
-      visibility: (practice as any).visibility ?? undefined,
-      publishScope: (practice as any).publishScope ?? undefined,
-
-      name: practice.name ?? "",
-      memo: practice.memo ?? "",
-      source_type: practice.source_type ?? "practiceRegister",
-      version: Number((practice as any).version ?? 1),
-
+      ...buildPracticeUpdateBase(practice),
       status: "REVIEW",
       aiStatus: "ERROR",
       errorMessage: msg,
       updatedBy: "analyze-practice",
     });
 
-    throw e;
+    throw error;
   }
 };

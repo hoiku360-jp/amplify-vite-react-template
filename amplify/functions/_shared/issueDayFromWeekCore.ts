@@ -1,11 +1,68 @@
 import type { Schema } from "../../data/resource";
 
-type Client = ReturnType<typeof import("aws-amplify/data").generateClient<Schema>>;
-
-type IssueDayArgs = {
+export type IssueDayArgs = {
   scheduleWeekId: string;
   targetDate: string; // YYYY-MM-DD
   issueType?: "AUTO" | "MANUAL" | "MANUAL_REISSUE";
+};
+
+type ModelError = {
+  message?: string | null;
+};
+
+type ListOptions = Record<string, unknown>;
+type MutationInput = Record<string, unknown>;
+
+type ListResponse<TRow> = {
+  data?: TRow[] | null;
+  nextToken?: string | null;
+  errors?: ModelError[] | null;
+};
+
+type MutationResponse<TRow> = {
+  data?: TRow | null;
+  errors?: ModelError[] | null;
+};
+
+type ListableModel<TRow> = {
+  list(options?: ListOptions): Promise<ListResponse<TRow>>;
+};
+
+type CreatableModel<TRow> = {
+  create(input: MutationInput): Promise<MutationResponse<TRow>>;
+};
+
+type UpdatableModel<TRow> = {
+  update(input: MutationInput): Promise<MutationResponse<TRow>>;
+};
+
+type ScheduleWeekRow = Schema["ScheduleWeek"]["type"];
+type ScheduleWeekItemRow = Schema["ScheduleWeekItem"]["type"] & {
+  eventLabel?: string | null;
+};
+type ScheduleDayRow = Schema["ScheduleDay"]["type"];
+type ScheduleDayItemRow = Schema["ScheduleDayItem"]["type"] & {
+  eventLabel?: string | null;
+};
+type PracticeCodeRow = Schema["PracticeCode"]["type"];
+type AbilityPracticeLinkRow = Schema["AbilityPracticeLink"]["type"];
+type AbilityCodeRow = Schema["AbilityCode"]["type"];
+type AbilityObservationHintRow = Schema["AbilityObservationHint"]["type"];
+
+type IssueDayClient = {
+  models: {
+    ScheduleWeek: ListableModel<ScheduleWeekRow>;
+    ScheduleWeekItem: ListableModel<ScheduleWeekItemRow>;
+    ScheduleDay: ListableModel<ScheduleDayRow> &
+      CreatableModel<ScheduleDayRow> &
+      UpdatableModel<ScheduleDayRow>;
+    ScheduleDayItem: ListableModel<ScheduleDayItemRow> &
+      CreatableModel<ScheduleDayItemRow>;
+    PracticeCode: ListableModel<PracticeCodeRow>;
+    AbilityPracticeLink: ListableModel<AbilityPracticeLinkRow>;
+    AbilityCode: ListableModel<AbilityCodeRow>;
+    AbilityObservationHint: ListableModel<AbilityObservationHintRow>;
+  };
 };
 
 function toDayOfWeek(targetDate: string): number {
@@ -15,32 +72,54 @@ function toDayOfWeek(targetDate: string): number {
     throw new Error(`Invalid targetDate: ${targetDate}`);
   }
 
-  // Date-only として扱う。UTC/JST変換を挟まない。
   const localDate = new Date(y, m - 1, d);
-  return localDate.getDay(); // 0: Sun, 1: Mon, ... 6: Sat
+  return localDate.getDay();
 }
 
-async function listAll(listFn: any, args: Record<string, unknown>) {
-  const rows: any[] = [];
+function formatErrors(
+  errors?: ModelError[] | null,
+  fallback = "Unknown error",
+) {
+  const messages = (errors ?? [])
+    .map((e) => String(e.message ?? "").trim())
+    .filter(Boolean);
+
+  return messages.length > 0 ? messages.join(", ") : fallback;
+}
+
+function isNonEmptyString<T extends string>(
+  value: T | null | undefined,
+): value is T {
+  return typeof value === "string" && value.trim().length > 0;
+}
+
+async function listAll<TRow>(
+  listFn: (args?: ListOptions) => Promise<ListResponse<TRow>>,
+  args: ListOptions,
+): Promise<TRow[]> {
+  const rows: TRow[] = [];
   let nextToken: string | null | undefined = undefined;
 
   do {
-    const res: any = await listFn({
+    const res = await listFn({
       ...args,
       nextToken,
     });
 
-    if (Array.isArray(res?.data) && res.data.length > 0) {
+    if (Array.isArray(res.data) && res.data.length > 0) {
       rows.push(...res.data);
     }
 
-    nextToken = res?.nextToken;
+    nextToken = res.nextToken ?? null;
   } while (nextToken);
 
   return rows;
 }
 
-async function loadPracticeTitleSnapshot(client: any, practiceCode?: string | null) {
+async function loadPracticeTitleSnapshot(
+  client: IssueDayClient,
+  practiceCode?: string | null,
+): Promise<string | null> {
   if (!practiceCode) return null;
 
   const res = await client.models.PracticeCode.list({
@@ -52,7 +131,10 @@ async function loadPracticeTitleSnapshot(client: any, practiceCode?: string | nu
   return res.data?.[0]?.name ?? null;
 }
 
-async function buildObservationSummaryJson(client: any, practiceCode?: string | null) {
+async function buildObservationSummaryJson(
+  client: IssueDayClient,
+  practiceCode?: string | null,
+): Promise<string | null> {
   if (!practiceCode) return null;
 
   const linkRows = await listAll(client.models.AbilityPracticeLink.list, {
@@ -64,7 +146,7 @@ async function buildObservationSummaryJson(client: any, practiceCode?: string | 
   if (linkRows.length === 0) return null;
 
   const abilityCodes = [
-    ...new Set(linkRows.map((x: any) => x?.abilityCode).filter(Boolean)),
+    ...new Set(linkRows.map((x) => x.abilityCode).filter(isNonEmptyString)),
   ];
 
   const abilities = await Promise.all(
@@ -85,17 +167,19 @@ async function buildObservationSummaryJson(client: any, practiceCode?: string | 
       const hint = hintRes.data?.[0];
 
       const score = linkRows
-        .filter((x: any) => x?.abilityCode === abilityCode)
-        .reduce((max: number, x: any) => Math.max(max, x?.score ?? 0), 0);
+        .filter((x) => x.abilityCode === abilityCode)
+        .reduce((max, x) => Math.max(max, x.score ?? 0), 0);
 
       return {
         abilityCode,
         abilityName: code?.name ?? hint?.abilityName ?? abilityCode,
         startingAge: hint?.startingAge ?? 0,
         score,
-        episodes: [hint?.episode1, hint?.episode2, hint?.episode3].filter(Boolean),
+        episodes: [hint?.episode1, hint?.episode2, hint?.episode3].filter(
+          isNonEmptyString,
+        ),
       };
-    })
+    }),
   );
 
   return JSON.stringify({
@@ -104,19 +188,22 @@ async function buildObservationSummaryJson(client: any, practiceCode?: string | 
   });
 }
 
-function byIssueVersionDesc(a: any, b: any) {
-  return (b?.issueVersion ?? 0) - (a?.issueVersion ?? 0);
+function byIssueVersionDesc(a: ScheduleDayRow, b: ScheduleDayRow) {
+  return (b.issueVersion ?? 0) - (a.issueVersion ?? 0);
 }
 
-async function validateReissueAllowed(client: any, scheduleDayId: string) {
+async function validateReissueAllowed(
+  client: IssueDayClient,
+  scheduleDayId: string,
+) {
   const dayItems = await listAll(client.models.ScheduleDayItem.list, {
     filter: {
       scheduleDayId: { eq: scheduleDayId },
     },
   });
 
-  const nonPlannedItems = dayItems.filter((item: any) => {
-    const status = String(item?.status ?? "");
+  const nonPlannedItems = dayItems.filter((item) => {
+    const status = String(item.status ?? "");
     return status !== "" && status !== "PLANNED";
   });
 
@@ -124,11 +211,16 @@ async function validateReissueAllowed(client: any, scheduleDayId: string) {
     allowed: nonPlannedItems.length === 0,
     itemCount: dayItems.length,
     nonPlannedCount: nonPlannedItems.length,
-    nonPlannedStatuses: [...new Set(nonPlannedItems.map((x: any) => x?.status).filter(Boolean))],
+    nonPlannedStatuses: [
+      ...new Set(nonPlannedItems.map((x) => x.status).filter(isNonEmptyString)),
+    ],
   };
 }
 
-export async function issueDayFromWeekCore(client: any, args: IssueDayArgs) {
+export async function issueDayFromWeekCore(
+  client: IssueDayClient,
+  args: IssueDayArgs,
+) {
   const issueType = args.issueType ?? "MANUAL";
 
   const weekRes = await client.models.ScheduleWeek.list({
@@ -149,7 +241,9 @@ export async function issueDayFromWeekCore(client: any, args: IssueDayArgs) {
     },
   });
 
-  const existingDays = [...(existingDaysRes.data ?? [])].sort(byIssueVersionDesc);
+  const existingDays = [...(existingDaysRes.data ?? [])].sort(
+    byIssueVersionDesc,
+  );
   const latestExisting = existingDays[0];
 
   let nextIssueVersion = 1;
@@ -171,7 +265,10 @@ export async function issueDayFromWeekCore(client: any, args: IssueDayArgs) {
       };
     }
 
-    const reissueCheck = await validateReissueAllowed(client, latestExisting.id);
+    const reissueCheck = await validateReissueAllowed(
+      client,
+      latestExisting.id,
+    );
 
     if (!reissueCheck.allowed) {
       return {
@@ -201,7 +298,7 @@ export async function issueDayFromWeekCore(client: any, args: IssueDayArgs) {
   });
 
   const sortedWeekItems = [...weekItems].sort(
-    (a: any, b: any) => (a?.sortOrder ?? 0) - (b?.sortOrder ?? 0)
+    (a, b) => (a.sortOrder ?? 0) - (b.sortOrder ?? 0),
   );
 
   const dayCreateRes = await client.models.ScheduleDay.create({
@@ -226,8 +323,7 @@ export async function issueDayFromWeekCore(client: any, args: IssueDayArgs) {
   const day = dayCreateRes.data;
   if (!day) {
     throw new Error(
-      dayCreateRes.errors?.map((e: any) => e.message).join(", ") ||
-        "ScheduleDay create failed"
+      formatErrors(dayCreateRes.errors, "ScheduleDay create failed"),
     );
   }
 
@@ -244,7 +340,7 @@ export async function issueDayFromWeekCore(client: any, args: IssueDayArgs) {
 
     const observationSummaryJson = await buildObservationSummaryJson(
       client,
-      item.practiceCode
+      item.practiceCode,
     );
 
     const dayItemCreateRes = await client.models.ScheduleDayItem.create({
@@ -271,8 +367,10 @@ export async function issueDayFromWeekCore(client: any, args: IssueDayArgs) {
 
     if (!dayItemCreateRes.data) {
       throw new Error(
-        dayItemCreateRes.errors?.map((e: any) => e.message).join(", ") ||
-          `ScheduleDayItem create failed: ${item.title}`
+        formatErrors(
+          dayItemCreateRes.errors,
+          `ScheduleDayItem create failed: ${item.title}`,
+        ),
       );
     }
 
@@ -294,8 +392,7 @@ export async function issueDayFromWeekCore(client: any, args: IssueDayArgs) {
 
   if (!dayUpdateRes.data) {
     throw new Error(
-      dayUpdateRes.errors?.map((e: any) => e.message).join(", ") ||
-        "ScheduleDay total update failed"
+      formatErrors(dayUpdateRes.errors, "ScheduleDay total update failed"),
     );
   }
 

@@ -1,22 +1,10 @@
 "use client";
 
+import { useMemo, useState, type Dispatch, type SetStateAction } from "react";
 import {
-  useEffect,
-  useMemo,
-  useState,
-  type Dispatch,
-  type SetStateAction,
-} from "react";
-import {
-  emptyClassAnnualPlanForm,
-  emptyClassroomForm,
-  emptyMonthPlanForm,
-  emptyQuarterPlanForm,
-  emptySchoolAnnualPlanForm,
   nodeKey,
   toAbilityFormA,
   toClassAnnualPlanForm,
-  toClassroomForm,
   toMonthPlanForm,
   toQuarterPlanForm,
   toSchoolAnnualPlanForm,
@@ -25,7 +13,6 @@ import {
   type ClassAnnualPlanRecord,
   type ClassMonthPlanRecord,
   type ClassQuarterPlanRecord,
-  type ClassroomForm,
   type ClassroomRecord,
   type MonthEventRecord,
   type MonthPlanForm,
@@ -64,19 +51,19 @@ type Props = {
   onSaveSchoolAnnualPlan: (form: SchoolAnnualPlanForm) => Promise<void>;
   onSaveSchoolAnnualBundle: (
     planForm: SchoolAnnualPlanForm,
-    ageRows: Array<{ id: string; form: AbilityForm }>
+    ageRows: Array<{ id: string; form: AbilityForm }>,
   ) => Promise<void>;
   onSaveAgeTarget: (form: AbilityForm) => Promise<void>;
-  onSaveClassroom: (form: ClassroomForm) => Promise<void>;
+  onSaveClassroom: (form: never) => Promise<void>;
   onSaveClassAnnualPlan: (form: ClassAnnualPlanForm) => Promise<void>;
   onSaveClassAnnualBundle: (
     annualForm: ClassAnnualPlanForm,
-    quarterRows: Array<{ id: string; form: QuarterPlanForm }>
+    quarterRows: Array<{ id: string; form: QuarterPlanForm }>,
   ) => Promise<void>;
   onSaveQuarterPlan: (form: QuarterPlanForm) => Promise<void>;
   onSaveQuarterBundle: (
     quarterForm: QuarterPlanForm,
-    monthRows: Array<{ id: string; form: MonthPlanForm }>
+    monthRows: Array<{ id: string; form: MonthPlanForm }>,
   ) => Promise<void>;
   onSaveMonthPlan: (form: MonthPlanForm) => Promise<void>;
 };
@@ -97,7 +84,7 @@ function textOr(value: string | null | undefined, fallback = ""): string {
 
 function applySharedAgeTargetToAnnualForm(
   base: ClassAnnualPlanForm,
-  shared?: SchoolAnnualAgeTargetRecord | null
+  shared?: SchoolAnnualAgeTargetRecord | null,
 ): ClassAnnualPlanForm {
   if (!shared) return base;
 
@@ -110,6 +97,64 @@ function applySharedAgeTargetToAnnualForm(
     abilityLanguage: toScoreString(shared.abilityLanguageA),
     abilityExpression: toScoreString(shared.abilityExpressionA),
   };
+}
+
+function buildSchoolAgeTargetForms(
+  schoolAgeTargets: SchoolAnnualAgeTargetRecord[],
+): Array<{ id: string; form: AbilityForm }> {
+  return [...schoolAgeTargets]
+    .sort((a, b) => {
+      const sa = Number(a.sortOrder ?? 9999);
+      const sb = Number(b.sortOrder ?? 9999);
+      if (sa !== sb) return sa - sb;
+      return String(a.ageBand ?? "").localeCompare(String(b.ageBand ?? ""));
+    })
+    .map((row) => ({
+      id: row.id,
+      form: toAbilityFormA(row),
+    }));
+}
+
+function buildClassBundleQuarterForms(
+  quarterChildrenForClassroom: ClassQuarterPlanRecord[],
+  quarterEvents: QuarterEventRecord[],
+): Array<{ id: string; form: QuarterPlanForm }> {
+  return [...quarterChildrenForClassroom]
+    .sort((a, b) => Number(a.termNo ?? 0) - Number(b.termNo ?? 0))
+    .map((row) => ({
+      id: row.id,
+      form: toQuarterPlanForm(
+        row,
+        quarterEvents.filter((x) => x.classQuarterPlanId === row.id),
+      ),
+    }));
+}
+
+function buildQuarterMonthForms(
+  monthChildren: ClassMonthPlanRecord[],
+  monthEvents: MonthEventRecord[],
+): Array<{ id: string; form: MonthPlanForm }> {
+  return [...monthChildren]
+    .sort((a, b) =>
+      String(a.monthKey ?? "").localeCompare(String(b.monthKey ?? "")),
+    )
+    .map((row) => ({
+      id: row.id,
+      form: toMonthPlanForm(
+        row,
+        monthEvents.filter((x) => x.classMonthPlanId === row.id),
+      ),
+    }));
+}
+
+function buildMonthForm(
+  monthPlan?: ClassMonthPlanRecord | null,
+  monthEvents: MonthEventRecord[] = [],
+): MonthPlanForm {
+  const selectedMonthEvents = monthPlan
+    ? monthEvents.filter((x) => x.classMonthPlanId === monthPlan.id)
+    : [];
+  return toMonthPlanForm(monthPlan, selectedMonthEvents);
 }
 
 function AnnualLikeFieldsLite<T extends AnnualLikeForm>(props: {
@@ -138,7 +183,7 @@ function AnnualLikeFieldsLite<T extends AnnualLikeForm>(props: {
             value={textOr(form.title)}
             onChange={(e) =>
               setForm((s) =>
-                "title" in s ? ({ ...s, title: e.target.value } as T) : s
+                "title" in s ? ({ ...s, title: e.target.value } as T) : s,
               )
             }
             style={{ width: "100%" }}
@@ -147,7 +192,9 @@ function AnnualLikeFieldsLite<T extends AnnualLikeForm>(props: {
       ) : null}
 
       {"periodStart" in form && "periodEnd" in form ? (
-        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}>
+        <div
+          style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}
+        >
           <label>
             periodStart
             <input
@@ -157,7 +204,7 @@ function AnnualLikeFieldsLite<T extends AnnualLikeForm>(props: {
                 setForm((s) =>
                   "periodStart" in s
                     ? ({ ...s, periodStart: e.target.value } as T)
-                    : s
+                    : s,
                 )
               }
               style={{ width: "100%" }}
@@ -172,7 +219,7 @@ function AnnualLikeFieldsLite<T extends AnnualLikeForm>(props: {
                 setForm((s) =>
                   "periodEnd" in s
                     ? ({ ...s, periodEnd: e.target.value } as T)
-                    : s
+                    : s,
                 )
               }
               style={{ width: "100%" }}
@@ -185,9 +232,7 @@ function AnnualLikeFieldsLite<T extends AnnualLikeForm>(props: {
         対象年齢
         <input
           value={textOr(form.ageBand)}
-          onChange={(e) =>
-            setForm((s) => ({ ...s, ageBand: e.target.value }))
-          }
+          onChange={(e) => setForm((s) => ({ ...s, ageBand: e.target.value }))}
           style={{ width: "100%" }}
         />
       </label>
@@ -198,9 +243,7 @@ function AnnualLikeFieldsLite<T extends AnnualLikeForm>(props: {
           rows={3}
           value={textOr(form.goalText)}
           disabled={lockGoalAndAbilities}
-          onChange={(e) =>
-            setForm((s) => ({ ...s, goalText: e.target.value }))
-          }
+          onChange={(e) => setForm((s) => ({ ...s, goalText: e.target.value }))}
           style={{ width: "100%", ...disabledStyle }}
         />
       </label>
@@ -290,7 +333,7 @@ function AnnualLikeFieldsLite<T extends AnnualLikeForm>(props: {
               setForm((s) =>
                 "eventSummary" in s
                   ? ({ ...s, eventSummary: e.target.value } as T)
-                  : s
+                  : s,
               )
             }
             style={{ width: "100%" }}
@@ -302,6 +345,60 @@ function AnnualLikeFieldsLite<T extends AnnualLikeForm>(props: {
 }
 
 export default function PlanV2Editor(props: Props) {
+  const {
+    selectedNode,
+    schoolAnnualPlan,
+    schoolAgeTargets = [],
+    ageTarget,
+    classroom,
+    classAnnualPlan,
+    classAnnualPlanForClassroom,
+    quarterPlan,
+    monthPlan,
+    quarterChildrenForClassroom = [],
+    selectedQuarterEvents = [],
+    monthChildren = [],
+    monthEvents = [],
+  } = props;
+
+  const editorKey = useMemo(
+    () =>
+      [
+        nodeKey(selectedNode),
+        schoolAnnualPlan?.id ?? "",
+        ageTarget?.id ?? "",
+        classroom?.id ?? "",
+        classAnnualPlan?.id ?? "",
+        classAnnualPlanForClassroom?.id ?? "",
+        quarterPlan?.id ?? "",
+        monthPlan?.id ?? "",
+        schoolAgeTargets.map((x) => x.id).join(","),
+        quarterChildrenForClassroom.map((x) => x.id).join(","),
+        selectedQuarterEvents.map((x) => x.id).join(","),
+        monthChildren.map((x) => x.id).join(","),
+        monthEvents.map((x) => x.id).join(","),
+      ].join("::"),
+    [
+      selectedNode,
+      schoolAnnualPlan?.id,
+      ageTarget?.id,
+      classroom?.id,
+      classAnnualPlan?.id,
+      classAnnualPlanForClassroom?.id,
+      quarterPlan?.id,
+      monthPlan?.id,
+      schoolAgeTargets,
+      quarterChildrenForClassroom,
+      selectedQuarterEvents,
+      monthChildren,
+      monthEvents,
+    ],
+  );
+
+  return <PlanV2EditorInner key={editorKey} {...props} />;
+}
+
+function PlanV2EditorInner(props: Props) {
   const {
     selectedNode,
     tenant,
@@ -330,107 +427,36 @@ export default function PlanV2Editor(props: Props) {
     onSaveMonthPlan,
   } = props;
 
-  const [schoolForm, setSchoolForm] = useState<SchoolAnnualPlanForm>(
-    emptySchoolAnnualPlanForm()
+  const [schoolForm, setSchoolForm] = useState<SchoolAnnualPlanForm>(() =>
+    toSchoolAnnualPlanForm(schoolAnnualPlan),
   );
   const [schoolAgeTargetForms, setSchoolAgeTargetForms] = useState<
     Array<{ id: string; form: AbilityForm }>
-  >([]);
-  const [ageForm, setAgeForm] = useState<AbilityForm>(toAbilityFormA(null));
-  const [, setClassroomForm] = useState<ClassroomForm>(
-    emptyClassroomForm()
+  >(() => buildSchoolAgeTargetForms(schoolAgeTargets));
+  const [ageForm, setAgeForm] = useState<AbilityForm>(() =>
+    toAbilityFormA(ageTarget),
   );
-  const [annualForm, setAnnualForm] = useState<ClassAnnualPlanForm>(
-    emptyClassAnnualPlanForm()
+  const [annualForm, setAnnualForm] = useState<ClassAnnualPlanForm>(() =>
+    toClassAnnualPlanForm(classAnnualPlan),
   );
   const [classBundleAnnualForm, setClassBundleAnnualForm] =
-    useState<ClassAnnualPlanForm>(emptyClassAnnualPlanForm());
+    useState<ClassAnnualPlanForm>(() =>
+      toClassAnnualPlanForm(classAnnualPlanForClassroom),
+    );
   const [classBundleQuarterForms, setClassBundleQuarterForms] = useState<
     Array<{ id: string; form: QuarterPlanForm }>
-  >([]);
+  >(() =>
+    buildClassBundleQuarterForms(quarterChildrenForClassroom, quarterEvents),
+  );
   const [quarterBundleForm, setQuarterBundleForm] = useState<QuarterPlanForm>(
-    emptyQuarterPlanForm()
+    () => toQuarterPlanForm(quarterPlan, selectedQuarterEvents),
   );
   const [quarterMonthForms, setQuarterMonthForms] = useState<
     Array<{ id: string; form: MonthPlanForm }>
-  >([]);
-  const [monthForm, setMonthForm] = useState<MonthPlanForm>(
-    emptyMonthPlanForm()
+  >(() => buildQuarterMonthForms(monthChildren, monthEvents));
+  const [monthForm, setMonthForm] = useState<MonthPlanForm>(() =>
+    buildMonthForm(monthPlan, monthEvents),
   );
-
-  useEffect(() => {
-    setSchoolForm(toSchoolAnnualPlanForm(schoolAnnualPlan));
-  }, [schoolAnnualPlan?.id]);
-
-  useEffect(() => {
-    const rows = [...schoolAgeTargets]
-      .sort((a, b) => {
-        const sa = Number(a.sortOrder ?? 9999);
-        const sb = Number(b.sortOrder ?? 9999);
-        if (sa !== sb) return sa - sb;
-        return String(a.ageBand ?? "").localeCompare(String(b.ageBand ?? ""));
-      })
-      .map((row) => ({
-        id: row.id,
-        form: toAbilityFormA(row),
-      }));
-    setSchoolAgeTargetForms(rows);
-  }, [schoolAgeTargets]);
-
-  useEffect(() => {
-    setAgeForm(toAbilityFormA(ageTarget));
-  }, [ageTarget?.id]);
-
-  useEffect(() => {
-    setClassroomForm(toClassroomForm(classroom));
-  }, [classroom?.id]);
-
-  useEffect(() => {
-    setAnnualForm(toClassAnnualPlanForm(classAnnualPlan));
-  }, [classAnnualPlan?.id]);
-
-  useEffect(() => {
-    setClassBundleAnnualForm(toClassAnnualPlanForm(classAnnualPlanForClassroom));
-  }, [classAnnualPlanForClassroom?.id]);
-
-  useEffect(() => {
-    const rows = [...quarterChildrenForClassroom]
-      .sort((a, b) => Number(a.termNo ?? 0) - Number(b.termNo ?? 0))
-      .map((row) => ({
-        id: row.id,
-        form: toQuarterPlanForm(
-          row,
-          quarterEvents.filter((x) => x.classQuarterPlanId === row.id)
-        ),
-      }));
-    setClassBundleQuarterForms(rows);
-  }, [quarterChildrenForClassroom, quarterEvents]);
-
-  useEffect(() => {
-    setQuarterBundleForm(toQuarterPlanForm(quarterPlan, selectedQuarterEvents));
-  }, [quarterPlan?.id, selectedQuarterEvents]);
-
-  useEffect(() => {
-    const rows = [...monthChildren]
-      .sort((a, b) =>
-        String(a.monthKey ?? "").localeCompare(String(b.monthKey ?? ""))
-      )
-      .map((row) => ({
-        id: row.id,
-        form: toMonthPlanForm(
-          row,
-          monthEvents.filter((x) => x.classMonthPlanId === row.id)
-        ),
-      }));
-    setQuarterMonthForms(rows);
-  }, [monthChildren, monthEvents]);
-
-  useEffect(() => {
-    const selectedMonthEvents = monthPlan
-      ? monthEvents.filter((x) => x.classMonthPlanId === monthPlan.id)
-      : [];
-    setMonthForm(toMonthPlanForm(monthPlan, selectedMonthEvents));
-  }, [monthPlan?.id, monthEvents]);
 
   const sharedAgeTargetForSelectedClassroom = useMemo(() => {
     const ageBand =
@@ -451,18 +477,18 @@ export default function PlanV2Editor(props: Props) {
     () =>
       applySharedAgeTargetToAnnualForm(
         classBundleAnnualForm,
-        sharedAgeTargetForSelectedClassroom
+        sharedAgeTargetForSelectedClassroom,
       ),
-    [classBundleAnnualForm, sharedAgeTargetForSelectedClassroom]
+    [classBundleAnnualForm, sharedAgeTargetForSelectedClassroom],
   );
 
   const annualSharedForm = useMemo(
     () =>
       applySharedAgeTargetToAnnualForm(
         annualForm,
-        sharedAgeTargetForSelectedAnnualPlan
+        sharedAgeTargetForSelectedAnnualPlan,
       ),
-    [annualForm, sharedAgeTargetForSelectedAnnualPlan]
+    [annualForm, sharedAgeTargetForSelectedAnnualPlan],
   );
 
   const lockClassroomAnnualA = !!sharedAgeTargetForSelectedClassroom;
@@ -484,7 +510,9 @@ export default function PlanV2Editor(props: Props) {
         <div style={{ display: "grid", gap: 12 }}>
           <div>
             <div style={{ fontSize: 12, color: "#666" }}>保育所</div>
-            <h3 style={{ margin: "4px 0 0 0" }}>{textOr(tenant.name, tenant.tenantId)}</h3>
+            <h3 style={{ margin: "4px 0 0 0" }}>
+              {textOr(tenant.name, tenant.tenantId)}
+            </h3>
             <div style={{ fontSize: 12, color: "#666" }}>
               tenantId={tenant.tenantId}
             </div>
@@ -507,7 +535,9 @@ export default function PlanV2Editor(props: Props) {
         <div style={{ display: "grid", gap: 16 }}>
           <div>
             <div style={{ fontSize: 12, color: "#666" }}>保育所の年計画</div>
-            <h3 style={{ margin: "4px 0 0 0" }}>{textOr(schoolAnnualPlan.title)}</h3>
+            <h3 style={{ margin: "4px 0 0 0" }}>
+              {textOr(schoolAnnualPlan.title)}
+            </h3>
           </div>
 
           <div
@@ -534,7 +564,11 @@ export default function PlanV2Editor(props: Props) {
             </label>
 
             <div
-              style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}
+              style={{
+                display: "grid",
+                gridTemplateColumns: "1fr 1fr",
+                gap: 8,
+              }}
             >
               <label>
                 periodStart
@@ -605,25 +639,39 @@ export default function PlanV2Editor(props: Props) {
                 >
                   <thead>
                     <tr style={{ textAlign: "left" }}>
-                      <th style={{ padding: 8, borderBottom: "1px solid #eee" }}>
+                      <th
+                        style={{ padding: 8, borderBottom: "1px solid #eee" }}
+                      >
                         対象年齢
                       </th>
-                      <th style={{ padding: 8, borderBottom: "1px solid #eee" }}>
+                      <th
+                        style={{ padding: 8, borderBottom: "1px solid #eee" }}
+                      >
                         目標(A)
                       </th>
-                      <th style={{ padding: 8, borderBottom: "1px solid #eee" }}>
+                      <th
+                        style={{ padding: 8, borderBottom: "1px solid #eee" }}
+                      >
                         健康
                       </th>
-                      <th style={{ padding: 8, borderBottom: "1px solid #eee" }}>
+                      <th
+                        style={{ padding: 8, borderBottom: "1px solid #eee" }}
+                      >
                         人間関係
                       </th>
-                      <th style={{ padding: 8, borderBottom: "1px solid #eee" }}>
+                      <th
+                        style={{ padding: 8, borderBottom: "1px solid #eee" }}
+                      >
                         環境
                       </th>
-                      <th style={{ padding: 8, borderBottom: "1px solid #eee" }}>
+                      <th
+                        style={{ padding: 8, borderBottom: "1px solid #eee" }}
+                      >
                         言葉
                       </th>
-                      <th style={{ padding: 8, borderBottom: "1px solid #eee" }}>
+                      <th
+                        style={{ padding: 8, borderBottom: "1px solid #eee" }}
+                      >
                         表現
                       </th>
                     </tr>
@@ -641,7 +689,12 @@ export default function PlanV2Editor(props: Props) {
                         >
                           {textOr(row.form.ageBand)}
                         </td>
-                        <td style={{ padding: 8, borderBottom: "1px solid #f0f0f0" }}>
+                        <td
+                          style={{
+                            padding: 8,
+                            borderBottom: "1px solid #f0f0f0",
+                          }}
+                        >
                           <textarea
                             rows={3}
                             value={textOr(row.form.goalText)}
@@ -651,16 +704,24 @@ export default function PlanV2Editor(props: Props) {
                                   i === idx
                                     ? {
                                         ...x,
-                                        form: { ...x.form, goalText: e.target.value },
+                                        form: {
+                                          ...x.form,
+                                          goalText: e.target.value,
+                                        },
                                       }
-                                    : x
-                                )
+                                    : x,
+                                ),
                               )
                             }
                             style={{ width: "100%", minWidth: 260 }}
                           />
                         </td>
-                        <td style={{ padding: 8, borderBottom: "1px solid #f0f0f0" }}>
+                        <td
+                          style={{
+                            padding: 8,
+                            borderBottom: "1px solid #f0f0f0",
+                          }}
+                        >
                           <input
                             type="number"
                             value={textOr(row.form.abilityHealth)}
@@ -675,14 +736,19 @@ export default function PlanV2Editor(props: Props) {
                                           abilityHealth: e.target.value,
                                         },
                                       }
-                                    : x
-                                )
+                                    : x,
+                                ),
                               )
                             }
                             style={{ width: 90 }}
                           />
                         </td>
-                        <td style={{ padding: 8, borderBottom: "1px solid #f0f0f0" }}>
+                        <td
+                          style={{
+                            padding: 8,
+                            borderBottom: "1px solid #f0f0f0",
+                          }}
+                        >
                           <input
                             type="number"
                             value={textOr(row.form.abilityHumanRelations)}
@@ -697,14 +763,19 @@ export default function PlanV2Editor(props: Props) {
                                           abilityHumanRelations: e.target.value,
                                         },
                                       }
-                                    : x
-                                )
+                                    : x,
+                                ),
                               )
                             }
                             style={{ width: 90 }}
                           />
                         </td>
-                        <td style={{ padding: 8, borderBottom: "1px solid #f0f0f0" }}>
+                        <td
+                          style={{
+                            padding: 8,
+                            borderBottom: "1px solid #f0f0f0",
+                          }}
+                        >
                           <input
                             type="number"
                             value={textOr(row.form.abilityEnvironment)}
@@ -719,14 +790,19 @@ export default function PlanV2Editor(props: Props) {
                                           abilityEnvironment: e.target.value,
                                         },
                                       }
-                                    : x
-                                )
+                                    : x,
+                                ),
                               )
                             }
                             style={{ width: 90 }}
                           />
                         </td>
-                        <td style={{ padding: 8, borderBottom: "1px solid #f0f0f0" }}>
+                        <td
+                          style={{
+                            padding: 8,
+                            borderBottom: "1px solid #f0f0f0",
+                          }}
+                        >
                           <input
                             type="number"
                             value={textOr(row.form.abilityLanguage)}
@@ -741,14 +817,19 @@ export default function PlanV2Editor(props: Props) {
                                           abilityLanguage: e.target.value,
                                         },
                                       }
-                                    : x
-                                )
+                                    : x,
+                                ),
                               )
                             }
                             style={{ width: 90 }}
                           />
                         </td>
-                        <td style={{ padding: 8, borderBottom: "1px solid #f0f0f0" }}>
+                        <td
+                          style={{
+                            padding: 8,
+                            borderBottom: "1px solid #f0f0f0",
+                          }}
+                        >
                           <input
                             type="number"
                             value={textOr(row.form.abilityExpression)}
@@ -763,8 +844,8 @@ export default function PlanV2Editor(props: Props) {
                                           abilityExpression: e.target.value,
                                         },
                                       }
-                                    : x
-                                )
+                                    : x,
+                                ),
                               )
                             }
                             style={{ width: 90 }}
@@ -780,7 +861,10 @@ export default function PlanV2Editor(props: Props) {
             <div>
               <button
                 onClick={() =>
-                  void onSaveSchoolAnnualBundle(schoolForm, schoolAgeTargetForms)
+                  void onSaveSchoolAnnualBundle(
+                    schoolForm,
+                    schoolAgeTargetForms,
+                  )
                 }
               >
                 保育所の年計画を保存
@@ -794,7 +878,9 @@ export default function PlanV2Editor(props: Props) {
         <div style={{ display: "grid", gap: 12 }}>
           <div>
             <div style={{ fontSize: 12, color: "#666" }}>年齢別年間方針</div>
-            <h3 style={{ margin: "4px 0 0 0" }}>{textOr(ageTarget.ageBand)} 年間方針</h3>
+            <h3 style={{ margin: "4px 0 0 0" }}>
+              {textOr(ageTarget.ageBand)} 年間方針
+            </h3>
           </div>
 
           <AnnualLikeFieldsLite form={ageForm} setForm={setAgeForm} />
@@ -839,7 +925,8 @@ export default function PlanV2Editor(props: Props) {
                 />
 
                 <div style={{ fontSize: 12, color: "#666" }}>
-                  ※ 目標(A) と 5領域(A) は、保育所年計画の「年齢別年間方針」の同一年齢の内容を表示しています。
+                  ※ 目標(A) と 5領域(A)
+                  は、保育所年計画の「年齢別年間方針」の同一年齢の内容を表示しています。
                   {lockClassroomAnnualA
                     ? " ここでは編集せず、保育所年計画側で変更してください。"
                     : " 同一年齢の年齢別年間方針が未設定のため、現状はクラス側の値を表示しています。"}
@@ -855,9 +942,7 @@ export default function PlanV2Editor(props: Props) {
                   borderRadius: 8,
                 }}
               >
-                <div style={{ fontWeight: 700 }}>
-                  ②〜⑤ 四半期比較（1Q〜4Q）
-                </div>
+                <div style={{ fontWeight: 700 }}>②〜⑤ 四半期比較（1Q〜4Q）</div>
 
                 {classBundleQuarterForms.length === 0 ? (
                   <div>期計画がありません。</div>
@@ -872,28 +957,68 @@ export default function PlanV2Editor(props: Props) {
                     >
                       <thead>
                         <tr style={{ textAlign: "left" }}>
-                          <th style={{ padding: 8, borderBottom: "1px solid #eee" }}>
+                          <th
+                            style={{
+                              padding: 8,
+                              borderBottom: "1px solid #eee",
+                            }}
+                          >
                             期
                           </th>
-                          <th style={{ padding: 8, borderBottom: "1px solid #eee" }}>
+                          <th
+                            style={{
+                              padding: 8,
+                              borderBottom: "1px solid #eee",
+                            }}
+                          >
                             目標(B)
                           </th>
-                          <th style={{ padding: 8, borderBottom: "1px solid #eee" }}>
+                          <th
+                            style={{
+                              padding: 8,
+                              borderBottom: "1px solid #eee",
+                            }}
+                          >
                             健康
                           </th>
-                          <th style={{ padding: 8, borderBottom: "1px solid #eee" }}>
+                          <th
+                            style={{
+                              padding: 8,
+                              borderBottom: "1px solid #eee",
+                            }}
+                          >
                             人間関係
                           </th>
-                          <th style={{ padding: 8, borderBottom: "1px solid #eee" }}>
+                          <th
+                            style={{
+                              padding: 8,
+                              borderBottom: "1px solid #eee",
+                            }}
+                          >
                             環境
                           </th>
-                          <th style={{ padding: 8, borderBottom: "1px solid #eee" }}>
+                          <th
+                            style={{
+                              padding: 8,
+                              borderBottom: "1px solid #eee",
+                            }}
+                          >
                             言葉
                           </th>
-                          <th style={{ padding: 8, borderBottom: "1px solid #eee" }}>
+                          <th
+                            style={{
+                              padding: 8,
+                              borderBottom: "1px solid #eee",
+                            }}
+                          >
                             表現
                           </th>
-                          <th style={{ padding: 8, borderBottom: "1px solid #eee" }}>
+                          <th
+                            style={{
+                              padding: 8,
+                              borderBottom: "1px solid #eee",
+                            }}
+                          >
                             行事
                           </th>
                         </tr>
@@ -933,8 +1058,8 @@ export default function PlanV2Editor(props: Props) {
                                               goalText: e.target.value,
                                             },
                                           }
-                                        : x
-                                    )
+                                        : x,
+                                    ),
                                   )
                                 }
                                 style={{ width: "100%", minWidth: 220 }}
@@ -961,8 +1086,8 @@ export default function PlanV2Editor(props: Props) {
                                               abilityHealth: e.target.value,
                                             },
                                           }
-                                        : x
-                                    )
+                                        : x,
+                                    ),
                                   )
                                 }
                                 style={{ width: 90 }}
@@ -990,8 +1115,8 @@ export default function PlanV2Editor(props: Props) {
                                                 e.target.value,
                                             },
                                           }
-                                        : x
-                                    )
+                                        : x,
+                                    ),
                                   )
                                 }
                                 style={{ width: 90 }}
@@ -1015,11 +1140,12 @@ export default function PlanV2Editor(props: Props) {
                                             ...x,
                                             form: {
                                               ...x.form,
-                                              abilityEnvironment: e.target.value,
+                                              abilityEnvironment:
+                                                e.target.value,
                                             },
                                           }
-                                        : x
-                                    )
+                                        : x,
+                                    ),
                                   )
                                 }
                                 style={{ width: 90 }}
@@ -1046,8 +1172,8 @@ export default function PlanV2Editor(props: Props) {
                                               abilityLanguage: e.target.value,
                                             },
                                           }
-                                        : x
-                                    )
+                                        : x,
+                                    ),
                                   )
                                 }
                                 style={{ width: 90 }}
@@ -1074,8 +1200,8 @@ export default function PlanV2Editor(props: Props) {
                                               abilityExpression: e.target.value,
                                             },
                                           }
-                                        : x
-                                    )
+                                        : x,
+                                    ),
                                   )
                                 }
                                 style={{ width: 90 }}
@@ -1102,8 +1228,8 @@ export default function PlanV2Editor(props: Props) {
                                               eventSummary: e.target.value,
                                             },
                                           }
-                                        : x
-                                    )
+                                        : x,
+                                    ),
                                   )
                                 }
                                 style={{ width: "100%", minWidth: 220 }}
@@ -1121,7 +1247,7 @@ export default function PlanV2Editor(props: Props) {
                     onClick={() =>
                       void onSaveClassAnnualBundle(
                         classBundleAnnualSharedForm,
-                        classBundleQuarterForms
+                        classBundleQuarterForms,
                       )
                     }
                   >
@@ -1138,7 +1264,9 @@ export default function PlanV2Editor(props: Props) {
         <div style={{ display: "grid", gap: 12 }}>
           <div>
             <div style={{ fontSize: 12, color: "#666" }}>クラス年計画</div>
-            <h3 style={{ margin: "4px 0 0 0" }}>{textOr(classAnnualPlan.title)}</h3>
+            <h3 style={{ margin: "4px 0 0 0" }}>
+              {textOr(classAnnualPlan.title)}
+            </h3>
           </div>
 
           <AnnualLikeFieldsLite
@@ -1148,14 +1276,17 @@ export default function PlanV2Editor(props: Props) {
           />
 
           <div style={{ fontSize: 12, color: "#666" }}>
-            ※ 目標(A) と 5領域(A) は、保育所年計画の「年齢別年間方針」の同一年齢の内容を表示しています。
+            ※ 目標(A) と 5領域(A)
+            は、保育所年計画の「年齢別年間方針」の同一年齢の内容を表示しています。
             {lockAnnualA
               ? " ここでは編集せず、保育所年計画側で変更してください。"
               : " 同一年齢の年齢別年間方針が未設定のため、現状はクラス側の値を表示しています。"}
           </div>
 
           <div>
-            <button onClick={() => void onSaveClassAnnualPlan(annualSharedForm)}>
+            <button
+              onClick={() => void onSaveClassAnnualPlan(annualSharedForm)}
+            >
               クラス年計画を保存
             </button>
           </div>
@@ -1166,7 +1297,9 @@ export default function PlanV2Editor(props: Props) {
               {quarterChildren.length === 0 ? (
                 <div>期計画はまだありません。</div>
               ) : (
-                quarterChildren.map((row) => <div key={row.id}>{textOr(row.title)}</div>)
+                quarterChildren.map((row) => (
+                  <div key={row.id}>{textOr(row.title)}</div>
+                ))
               )}
             </div>
           </div>
@@ -1225,28 +1358,44 @@ export default function PlanV2Editor(props: Props) {
                 >
                   <thead>
                     <tr style={{ textAlign: "left" }}>
-                      <th style={{ padding: 8, borderBottom: "1px solid #eee" }}>
+                      <th
+                        style={{ padding: 8, borderBottom: "1px solid #eee" }}
+                      >
                         月
                       </th>
-                      <th style={{ padding: 8, borderBottom: "1px solid #eee" }}>
+                      <th
+                        style={{ padding: 8, borderBottom: "1px solid #eee" }}
+                      >
                         目標(C)
                       </th>
-                      <th style={{ padding: 8, borderBottom: "1px solid #eee" }}>
+                      <th
+                        style={{ padding: 8, borderBottom: "1px solid #eee" }}
+                      >
                         健康
                       </th>
-                      <th style={{ padding: 8, borderBottom: "1px solid #eee" }}>
+                      <th
+                        style={{ padding: 8, borderBottom: "1px solid #eee" }}
+                      >
                         人間関係
                       </th>
-                      <th style={{ padding: 8, borderBottom: "1px solid #eee" }}>
+                      <th
+                        style={{ padding: 8, borderBottom: "1px solid #eee" }}
+                      >
                         環境
                       </th>
-                      <th style={{ padding: 8, borderBottom: "1px solid #eee" }}>
+                      <th
+                        style={{ padding: 8, borderBottom: "1px solid #eee" }}
+                      >
                         言葉
                       </th>
-                      <th style={{ padding: 8, borderBottom: "1px solid #eee" }}>
+                      <th
+                        style={{ padding: 8, borderBottom: "1px solid #eee" }}
+                      >
                         表現
                       </th>
-                      <th style={{ padding: 8, borderBottom: "1px solid #eee" }}>
+                      <th
+                        style={{ padding: 8, borderBottom: "1px solid #eee" }}
+                      >
                         行事
                       </th>
                     </tr>
@@ -1286,8 +1435,8 @@ export default function PlanV2Editor(props: Props) {
                                           goalText: e.target.value,
                                         },
                                       }
-                                    : x
-                                )
+                                    : x,
+                                ),
                               )
                             }
                             style={{ width: "100%", minWidth: 220 }}
@@ -1314,8 +1463,8 @@ export default function PlanV2Editor(props: Props) {
                                           abilityHealth: e.target.value,
                                         },
                                       }
-                                    : x
-                                )
+                                    : x,
+                                ),
                               )
                             }
                             style={{ width: 90 }}
@@ -1342,8 +1491,8 @@ export default function PlanV2Editor(props: Props) {
                                           abilityHumanRelations: e.target.value,
                                         },
                                       }
-                                    : x
-                                )
+                                    : x,
+                                ),
                               )
                             }
                             style={{ width: 90 }}
@@ -1370,8 +1519,8 @@ export default function PlanV2Editor(props: Props) {
                                           abilityEnvironment: e.target.value,
                                         },
                                       }
-                                    : x
-                                )
+                                    : x,
+                                ),
                               )
                             }
                             style={{ width: 90 }}
@@ -1398,8 +1547,8 @@ export default function PlanV2Editor(props: Props) {
                                           abilityLanguage: e.target.value,
                                         },
                                       }
-                                    : x
-                                )
+                                    : x,
+                                ),
                               )
                             }
                             style={{ width: 90 }}
@@ -1426,8 +1575,8 @@ export default function PlanV2Editor(props: Props) {
                                           abilityExpression: e.target.value,
                                         },
                                       }
-                                    : x
-                                )
+                                    : x,
+                                ),
                               )
                             }
                             style={{ width: 90 }}
@@ -1454,8 +1603,8 @@ export default function PlanV2Editor(props: Props) {
                                           eventSummary: e.target.value,
                                         },
                                       }
-                                    : x
-                                )
+                                    : x,
+                                ),
                               )
                             }
                             style={{ width: "100%", minWidth: 220 }}

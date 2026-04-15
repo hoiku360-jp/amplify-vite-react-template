@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { generateClient } from "aws-amplify/data";
 import type { Schema } from "../../../amplify/data/resource";
 import PlanV2Sidebar from "./PlanV2Sidebar";
@@ -35,6 +35,7 @@ type ModelResultLike =
   | undefined;
 
 type PlanStatus = "DRAFT" | "REVIEWED" | "FINAL";
+type ClassroomStatus = "active" | "inactive";
 
 function parseEventSummary(summary: string): string[] {
   return summary
@@ -62,6 +63,36 @@ function toPlanStatus(value: string | null | undefined): PlanStatus | null {
   return null;
 }
 
+function toClassroomStatus(
+  value: string | null | undefined,
+): ClassroomStatus | null {
+  if (value === "active" || value === "inactive") {
+    return value;
+  }
+  if (value === "ACTIVE") {
+    return "active";
+  }
+  if (value === "INACTIVE") {
+    return "inactive";
+  }
+  return null;
+}
+
+function getUnknownErrorMessage(error: unknown, fallback: string): string {
+  if (error instanceof Error && error.message.trim()) {
+    return error.message;
+  }
+
+  if (typeof error === "object" && error !== null && "message" in error) {
+    const message = (error as { message?: unknown }).message;
+    if (typeof message === "string" && message.trim()) {
+      return message;
+    }
+  }
+
+  return fallback;
+}
+
 export default function PlanV2WorkspacePanel(props: { owner: string }) {
   const { owner } = props;
   const client = useMemo(() => generateClient<Schema>(), []);
@@ -80,155 +111,159 @@ export default function PlanV2WorkspacePanel(props: { owner: string }) {
     SchoolAnnualPlanRecord[]
   >([]);
   const [ageTargets, setAgeTargets] = useState<SchoolAnnualAgeTargetRecord[]>(
-    []
+    [],
   );
   const [classAnnualPlans, setClassAnnualPlans] = useState<
     ClassAnnualPlanRecord[]
   >([]);
-  const [quarterPlans, setQuarterPlans] = useState<ClassQuarterPlanRecord[]>([]);
+  const [quarterPlans, setQuarterPlans] = useState<ClassQuarterPlanRecord[]>(
+    [],
+  );
   const [quarterEvents, setQuarterEvents] = useState<QuarterEventRecord[]>([]);
   const [monthPlans, setMonthPlans] = useState<ClassMonthPlanRecord[]>([]);
   const [monthEvents, setMonthEvents] = useState<MonthEventRecord[]>([]);
 
-  async function refreshAll(tenantIdArg?: string, fiscalYearArg?: number) {
-    const fy = fiscalYearArg ?? fiscalYear;
+  const refreshAll = useCallback(
+    async (tenantIdArg?: string, fiscalYearArg?: number) => {
+      const fy = fiscalYearArg ?? fiscalYear;
 
-    setLoading(true);
-    setError("");
+      setLoading(true);
+      setError("");
 
-    try {
-      const tenantRes = await client.models.Tenant.list({ limit: 1000 });
-      throwIfModelErrors(tenantRes);
+      try {
+        const tenantRes = await client.models.Tenant.list({ limit: 1000 });
+        throwIfModelErrors(tenantRes);
 
-      const nextTenants = [...(tenantRes.data ?? [])].sort((a, b) =>
-        byText(a.tenantId, b.tenantId)
-      );
-      setTenants(nextTenants);
+        const nextTenants = [...(tenantRes.data ?? [])].sort((a, b) =>
+          byText(a.tenantId, b.tenantId),
+        );
+        setTenants(nextTenants);
 
-      let tenantId = tenantIdArg ?? selectedTenantId;
-      if (!tenantId) {
-        tenantId = nextTenants[0]?.tenantId ?? "";
+        let tenantId = tenantIdArg ?? selectedTenantId;
+        if (!tenantId) {
+          tenantId = nextTenants[0]?.tenantId ?? "";
+        }
+        setSelectedTenantId(tenantId);
+
+        if (!tenantId) {
+          setClassrooms([]);
+          setSchoolAnnualPlans([]);
+          setAgeTargets([]);
+          setClassAnnualPlans([]);
+          setQuarterPlans([]);
+          setQuarterEvents([]);
+          setMonthPlans([]);
+          setMonthEvents([]);
+          return;
+        }
+
+        const [
+          classroomRes,
+          schoolAnnualPlanRes,
+          ageTargetRes,
+          classAnnualPlanRes,
+          quarterPlanRes,
+          quarterEventRes,
+          monthPlanRes,
+          monthEventRes,
+        ] = await Promise.all([
+          client.models.Classroom.list({
+            filter: { tenantId: { eq: tenantId } },
+            limit: 1000,
+          }),
+          client.models.SchoolAnnualPlan.list({
+            filter: {
+              tenantId: { eq: tenantId },
+              fiscalYear: { eq: fy },
+            },
+            limit: 100,
+          }),
+          client.models.SchoolAnnualAgeTarget.list({
+            filter: {
+              tenantId: { eq: tenantId },
+              fiscalYear: { eq: fy },
+            },
+            limit: 100,
+          }),
+          client.models.ClassAnnualPlan.list({
+            filter: {
+              tenantId: { eq: tenantId },
+              fiscalYear: { eq: fy },
+            },
+            limit: 2000,
+          }),
+          client.models.ClassQuarterPlan.list({
+            filter: {
+              tenantId: { eq: tenantId },
+              fiscalYear: { eq: fy },
+            },
+            limit: 5000,
+          }),
+          client.models.QuarterEvent.list({
+            limit: 10000,
+          }),
+          client.models.ClassMonthPlan.list({
+            filter: {
+              tenantId: { eq: tenantId },
+              fiscalYear: { eq: fy },
+            },
+            limit: 10000,
+          }),
+          client.models.MonthEvent.list({
+            limit: 20000,
+          }),
+        ]);
+
+        throwIfModelErrors(classroomRes);
+        throwIfModelErrors(schoolAnnualPlanRes);
+        throwIfModelErrors(ageTargetRes);
+        throwIfModelErrors(classAnnualPlanRes);
+        throwIfModelErrors(quarterPlanRes);
+        throwIfModelErrors(quarterEventRes);
+        throwIfModelErrors(monthPlanRes);
+        throwIfModelErrors(monthEventRes);
+
+        const nextQuarterPlans = [...(quarterPlanRes.data ?? [])];
+        const quarterIds = new Set(nextQuarterPlans.map((x) => x.id));
+
+        const nextMonthPlans = [...(monthPlanRes.data ?? [])];
+        const monthIds = new Set(nextMonthPlans.map((x) => x.id));
+
+        setClassrooms(
+          [...(classroomRes.data ?? [])].sort((a, b) => {
+            const age = byText(a.ageBand, b.ageBand);
+            if (age !== 0) return age;
+            return byText(a.name, b.name);
+          }),
+        );
+        setSchoolAnnualPlans([...(schoolAnnualPlanRes.data ?? [])]);
+        setAgeTargets([...(ageTargetRes.data ?? [])]);
+        setClassAnnualPlans([...(classAnnualPlanRes.data ?? [])]);
+        setQuarterPlans(nextQuarterPlans);
+        setQuarterEvents(
+          [...(quarterEventRes.data ?? [])].filter((x) =>
+            quarterIds.has(x.classQuarterPlanId),
+          ),
+        );
+        setMonthPlans(nextMonthPlans);
+        setMonthEvents(
+          [...(monthEventRes.data ?? [])].filter((x) =>
+            monthIds.has(x.classMonthPlanId),
+          ),
+        );
+      } catch (e) {
+        console.error(e);
+        setError(getUnknownErrorMessage(e, "読み込みに失敗しました。"));
+      } finally {
+        setLoading(false);
       }
-      setSelectedTenantId(tenantId);
-
-      if (!tenantId) {
-        setClassrooms([]);
-        setSchoolAnnualPlans([]);
-        setAgeTargets([]);
-        setClassAnnualPlans([]);
-        setQuarterPlans([]);
-        setQuarterEvents([]);
-        setMonthPlans([]);
-        setMonthEvents([]);
-        return;
-      }
-
-      const [
-        classroomRes,
-        schoolAnnualPlanRes,
-        ageTargetRes,
-        classAnnualPlanRes,
-        quarterPlanRes,
-        quarterEventRes,
-        monthPlanRes,
-        monthEventRes,
-      ] = await Promise.all([
-        client.models.Classroom.list({
-          filter: { tenantId: { eq: tenantId } },
-          limit: 1000,
-        }),
-        client.models.SchoolAnnualPlan.list({
-          filter: {
-            tenantId: { eq: tenantId },
-            fiscalYear: { eq: fy },
-          },
-          limit: 100,
-        }),
-        client.models.SchoolAnnualAgeTarget.list({
-          filter: {
-            tenantId: { eq: tenantId },
-            fiscalYear: { eq: fy },
-          },
-          limit: 100,
-        }),
-        client.models.ClassAnnualPlan.list({
-          filter: {
-            tenantId: { eq: tenantId },
-            fiscalYear: { eq: fy },
-          },
-          limit: 2000,
-        }),
-        client.models.ClassQuarterPlan.list({
-          filter: {
-            tenantId: { eq: tenantId },
-            fiscalYear: { eq: fy },
-          },
-          limit: 5000,
-        }),
-        client.models.QuarterEvent.list({
-          limit: 10000,
-        }),
-        client.models.ClassMonthPlan.list({
-          filter: {
-            tenantId: { eq: tenantId },
-            fiscalYear: { eq: fy },
-          },
-          limit: 10000,
-        }),
-        client.models.MonthEvent.list({
-          limit: 20000,
-        }),
-      ]);
-
-      throwIfModelErrors(classroomRes);
-      throwIfModelErrors(schoolAnnualPlanRes);
-      throwIfModelErrors(ageTargetRes);
-      throwIfModelErrors(classAnnualPlanRes);
-      throwIfModelErrors(quarterPlanRes);
-      throwIfModelErrors(quarterEventRes);
-      throwIfModelErrors(monthPlanRes);
-      throwIfModelErrors(monthEventRes);
-
-      const nextQuarterPlans = [...(quarterPlanRes.data ?? [])];
-      const quarterIds = new Set(nextQuarterPlans.map((x) => x.id));
-
-      const nextMonthPlans = [...(monthPlanRes.data ?? [])];
-      const monthIds = new Set(nextMonthPlans.map((x) => x.id));
-
-      setClassrooms(
-        [...(classroomRes.data ?? [])].sort((a, b) => {
-          const age = byText(a.ageBand, b.ageBand);
-          if (age !== 0) return age;
-          return byText(a.name, b.name);
-        })
-      );
-      setSchoolAnnualPlans([...(schoolAnnualPlanRes.data ?? [])]);
-      setAgeTargets([...(ageTargetRes.data ?? [])]);
-      setClassAnnualPlans([...(classAnnualPlanRes.data ?? [])]);
-      setQuarterPlans(nextQuarterPlans);
-      setQuarterEvents(
-        [...(quarterEventRes.data ?? [])].filter((x) =>
-          quarterIds.has(x.classQuarterPlanId)
-        )
-      );
-      setMonthPlans(nextMonthPlans);
-      setMonthEvents(
-        [...(monthEventRes.data ?? [])].filter((x) =>
-          monthIds.has(x.classMonthPlanId)
-        )
-      );
-    } catch (e: any) {
-      console.error(e);
-      setError(e?.message ?? "読み込みに失敗しました。");
-    } finally {
-      setLoading(false);
-    }
-  }
+    },
+    [client, fiscalYear, selectedTenantId],
+  );
 
   useEffect(() => {
     void refreshAll(selectedTenantId, fiscalYear);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [selectedTenantId, fiscalYear]);
+  }, [refreshAll, selectedTenantId, fiscalYear]);
 
   useEffect(() => {
     if (!selectedTenantId) return;
@@ -249,32 +284,32 @@ export default function PlanV2WorkspacePanel(props: { owner: string }) {
 
   const selectedSchoolAnnualPlan =
     selectedNode?.kind === "schoolAnnualPlan"
-      ? schoolAnnualPlans.find((x) => x.id === selectedNode.id) ?? null
+      ? (schoolAnnualPlans.find((x) => x.id === selectedNode.id) ?? null)
       : null;
 
   const selectedAgeTarget =
     selectedNode?.kind === "ageTarget"
-      ? ageTargets.find((x) => x.id === selectedNode.id) ?? null
+      ? (ageTargets.find((x) => x.id === selectedNode.id) ?? null)
       : null;
 
   const selectedClassroom =
     selectedNode?.kind === "classroom"
-      ? classrooms.find((x) => x.id === selectedNode.id) ?? null
+      ? (classrooms.find((x) => x.id === selectedNode.id) ?? null)
       : null;
 
   const selectedClassAnnualPlan =
     selectedNode?.kind === "classAnnualPlan"
-      ? classAnnualPlans.find((x) => x.id === selectedNode.id) ?? null
+      ? (classAnnualPlans.find((x) => x.id === selectedNode.id) ?? null)
       : null;
 
   const selectedQuarterPlan =
     selectedNode?.kind === "quarter"
-      ? quarterPlans.find((x) => x.id === selectedNode.id) ?? null
+      ? (quarterPlans.find((x) => x.id === selectedNode.id) ?? null)
       : null;
 
   const selectedMonthPlan =
     selectedNode?.kind === "month"
-      ? monthPlans.find((x) => x.id === selectedNode.id) ?? null
+      ? (monthPlans.find((x) => x.id === selectedNode.id) ?? null)
       : null;
 
   const classAnnualPlanForSelectedClassroom = useMemo(() => {
@@ -295,7 +330,9 @@ export default function PlanV2WorkspacePanel(props: { owner: string }) {
   const quarterChildrenForClassroom = useMemo(() => {
     if (!classAnnualPlanForSelectedClassroom) return [];
     return quarterPlans
-      .filter((x) => x.classAnnualPlanId === classAnnualPlanForSelectedClassroom.id)
+      .filter(
+        (x) => x.classAnnualPlanId === classAnnualPlanForSelectedClassroom.id,
+      )
       .sort((a, b) => Number(a.termNo ?? 0) - Number(b.termNo ?? 0));
   }, [quarterPlans, classAnnualPlanForSelectedClassroom]);
 
@@ -318,7 +355,8 @@ export default function PlanV2WorkspacePanel(props: { owner: string }) {
 
   const tenantForEditor = tenant ?? undefined;
   const selectedNodeForEditor = selectedNode;
-  const selectedSchoolAnnualPlanForEditor = selectedSchoolAnnualPlan ?? undefined;
+  const selectedSchoolAnnualPlanForEditor =
+    selectedSchoolAnnualPlan ?? undefined;
   const selectedAgeTargetForEditor = selectedAgeTarget ?? undefined;
   const selectedClassroomForEditor = selectedClassroom ?? undefined;
   const selectedClassAnnualPlanForEditor = selectedClassAnnualPlan ?? undefined;
@@ -329,10 +367,10 @@ export default function PlanV2WorkspacePanel(props: { owner: string }) {
 
   async function replaceQuarterEvents(
     classQuarterPlanId: string,
-    eventSummary: string
+    eventSummary: string,
   ) {
     const existing = quarterEvents.filter(
-      (x) => x.classQuarterPlanId === classQuarterPlanId
+      (x) => x.classQuarterPlanId === classQuarterPlanId,
     );
 
     for (const row of existing) {
@@ -354,10 +392,10 @@ export default function PlanV2WorkspacePanel(props: { owner: string }) {
 
   async function replaceMonthEvents(
     classMonthPlanId: string,
-    eventSummary: string
+    eventSummary: string,
   ) {
     const existing = monthEvents.filter(
-      (x) => x.classMonthPlanId === classMonthPlanId
+      (x) => x.classMonthPlanId === classMonthPlanId,
     );
 
     for (const row of existing) {
@@ -393,7 +431,7 @@ export default function PlanV2WorkspacePanel(props: { owner: string }) {
       throwIfModelErrors(tenantList);
 
       const tenantExists = (tenantList.data ?? []).some(
-        (t) => s(t.tenantId) === tenantId
+        (t) => s(t.tenantId) === tenantId,
       );
 
       if (!tenantExists) {
@@ -444,11 +482,11 @@ export default function PlanV2WorkspacePanel(props: { owner: string }) {
       setNavPath([{ kind: "tenant", tenantId }]);
       await refreshAll(tenantId, fiscalYear);
       setMessage(
-        `デモ保育園を準備しました。tenant=${tenantId} / 新規クラス=${createdCount}件`
+        `デモ保育園を準備しました。tenant=${tenantId} / 新規クラス=${createdCount}件`,
       );
-    } catch (e: any) {
+    } catch (e) {
       console.error(e);
-      setError(e?.message ?? "デモ保育園の準備に失敗しました。");
+      setError(getUnknownErrorMessage(e, "デモ保育園の準備に失敗しました。"));
     } finally {
       setLoading(false);
     }
@@ -475,11 +513,13 @@ export default function PlanV2WorkspacePanel(props: { owner: string }) {
       setNavPath([{ kind: "tenant", tenantId: selectedTenantId }]);
 
       setMessage(
-        `V2 年度テンプレートを準備しました。年齢別=${result.data?.createdAgeTargetCount ?? 0}件 / クラス年計画=${result.data?.createdClassAnnualPlanCount ?? 0}件 / 期=${result.data?.createdQuarterPlanCount ?? 0}件 / 月=${result.data?.createdMonthPlanCount ?? 0}件`
+        `V2 年度テンプレートを準備しました。年齢別=${result.data?.createdAgeTargetCount ?? 0}件 / クラス年計画=${result.data?.createdClassAnnualPlanCount ?? 0}件 / 期=${result.data?.createdQuarterPlanCount ?? 0}件 / 月=${result.data?.createdMonthPlanCount ?? 0}件`,
       );
-    } catch (e: any) {
+    } catch (e) {
       console.error(e);
-      setError(e?.message ?? "V2 年度テンプレート生成に失敗しました。");
+      setError(
+        getUnknownErrorMessage(e, "V2 年度テンプレート生成に失敗しました。"),
+      );
     } finally {
       setLoading(false);
     }
@@ -505,9 +545,9 @@ export default function PlanV2WorkspacePanel(props: { owner: string }) {
 
       await refreshAll(selectedTenantId, fiscalYear);
       setMessage("保育所年計画を保存しました。");
-    } catch (e: any) {
+    } catch (e) {
       console.error(e);
-      setError(e?.message ?? "保育所年計画の保存に失敗しました。");
+      setError(getUnknownErrorMessage(e, "保育所年計画の保存に失敗しました。"));
     } finally {
       setLoading(false);
     }
@@ -515,7 +555,7 @@ export default function PlanV2WorkspacePanel(props: { owner: string }) {
 
   async function saveSchoolAnnualBundle(
     form: SchoolAnnualPlanForm,
-    ageRows: Array<{ id: string; form: AbilityForm }>
+    ageRows: Array<{ id: string; form: AbilityForm }>,
   ) {
     if (!selectedSchoolAnnualPlan?.id) return;
 
@@ -552,9 +592,11 @@ export default function PlanV2WorkspacePanel(props: { owner: string }) {
 
       await refreshAll(selectedTenantId, fiscalYear);
       setMessage("保育所の年計画を保存しました。");
-    } catch (e: any) {
+    } catch (e) {
       console.error(e);
-      setError(e?.message ?? "保育所の年計画の保存に失敗しました。");
+      setError(
+        getUnknownErrorMessage(e, "保育所の年計画の保存に失敗しました。"),
+      );
     } finally {
       setLoading(false);
     }
@@ -584,9 +626,11 @@ export default function PlanV2WorkspacePanel(props: { owner: string }) {
 
       await refreshAll(selectedTenantId, fiscalYear);
       setMessage("年齢別年間方針を保存しました。");
-    } catch (e: any) {
+    } catch (e) {
       console.error(e);
-      setError(e?.message ?? "年齢別年間方針の保存に失敗しました。");
+      setError(
+        getUnknownErrorMessage(e, "年齢別年間方針の保存に失敗しました。"),
+      );
     } finally {
       setLoading(false);
     }
@@ -605,15 +649,15 @@ export default function PlanV2WorkspacePanel(props: { owner: string }) {
         name: form.name,
         ageBand: form.ageBand,
         schoolName: form.schoolName || null,
-        status: (form.status || null) as any,
+        status: toClassroomStatus(form.status),
       });
       throwIfModelErrors(updated);
 
       await refreshAll(selectedTenantId, fiscalYear);
       setMessage("クラスを保存しました。");
-    } catch (e: any) {
+    } catch (e) {
       console.error(e);
-      setError(e?.message ?? "クラスの保存に失敗しました。");
+      setError(getUnknownErrorMessage(e, "クラスの保存に失敗しました。"));
     } finally {
       setLoading(false);
     }
@@ -650,9 +694,9 @@ export default function PlanV2WorkspacePanel(props: { owner: string }) {
 
       await refreshAll(selectedTenantId, fiscalYear);
       setMessage("クラス年計画を保存しました。");
-    } catch (e: any) {
+    } catch (e) {
       console.error(e);
-      setError(e?.message ?? "クラス年計画の保存に失敗しました。");
+      setError(getUnknownErrorMessage(e, "クラス年計画の保存に失敗しました。"));
     } finally {
       setLoading(false);
     }
@@ -660,7 +704,7 @@ export default function PlanV2WorkspacePanel(props: { owner: string }) {
 
   async function saveClassAnnualBundle(
     annualForm: ClassAnnualPlanForm,
-    quarterRows: Array<{ id: string; form: QuarterPlanForm }>
+    quarterRows: Array<{ id: string; form: QuarterPlanForm }>,
   ) {
     if (!classAnnualPlanForSelectedClassroom?.id) return;
 
@@ -714,9 +758,11 @@ export default function PlanV2WorkspacePanel(props: { owner: string }) {
 
       await refreshAll(selectedTenantId, fiscalYear);
       setMessage("クラスの年計画を保存しました。");
-    } catch (e: any) {
+    } catch (e) {
       console.error(e);
-      setError(e?.message ?? "クラスの年計画の保存に失敗しました。");
+      setError(
+        getUnknownErrorMessage(e, "クラスの年計画の保存に失敗しました。"),
+      );
     } finally {
       setLoading(false);
     }
@@ -753,9 +799,9 @@ export default function PlanV2WorkspacePanel(props: { owner: string }) {
 
       await refreshAll(selectedTenantId, fiscalYear);
       setMessage("期計画を保存しました。");
-    } catch (e: any) {
+    } catch (e) {
       console.error(e);
-      setError(e?.message ?? "期計画の保存に失敗しました。");
+      setError(getUnknownErrorMessage(e, "期計画の保存に失敗しました。"));
     } finally {
       setLoading(false);
     }
@@ -763,7 +809,7 @@ export default function PlanV2WorkspacePanel(props: { owner: string }) {
 
   async function saveQuarterBundle(
     quarterForm: QuarterPlanForm,
-    monthRows: Array<{ id: string; form: MonthPlanForm }>
+    monthRows: Array<{ id: string; form: MonthPlanForm }>,
   ) {
     if (!selectedQuarterPlan?.id) return;
 
@@ -791,7 +837,10 @@ export default function PlanV2WorkspacePanel(props: { owner: string }) {
       });
       throwIfModelErrors(updatedQuarter);
 
-      await replaceQuarterEvents(selectedQuarterPlan.id, quarterForm.eventSummary);
+      await replaceQuarterEvents(
+        selectedQuarterPlan.id,
+        quarterForm.eventSummary,
+      );
 
       for (const row of monthRows) {
         const updatedMonth = await client.models.ClassMonthPlan.update({
@@ -818,9 +867,11 @@ export default function PlanV2WorkspacePanel(props: { owner: string }) {
 
       await refreshAll(selectedTenantId, fiscalYear);
       setMessage("期計画と月計画を保存しました。");
-    } catch (e: any) {
+    } catch (e) {
       console.error(e);
-      setError(e?.message ?? "期計画と月計画の保存に失敗しました。");
+      setError(
+        getUnknownErrorMessage(e, "期計画と月計画の保存に失敗しました。"),
+      );
     } finally {
       setLoading(false);
     }
@@ -857,9 +908,9 @@ export default function PlanV2WorkspacePanel(props: { owner: string }) {
 
       await refreshAll(selectedTenantId, fiscalYear);
       setMessage("月計画を保存しました。");
-    } catch (e: any) {
+    } catch (e) {
       console.error(e);
-      setError(e?.message ?? "月計画の保存に失敗しました。");
+      setError(getUnknownErrorMessage(e, "月計画の保存に失敗しました。"));
     } finally {
       setLoading(false);
     }

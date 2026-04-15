@@ -13,6 +13,9 @@ import PlanV2DebugPanel from "./features/plan-v2/PlanV2DebugPanel";
 import PlanV2WorkspacePanel from "./features/plan-v2/PlanV2WorkspacePanel";
 import ScheduleDayPanel from "./features/schedule/ScheduleDayPanel";
 import SimpleScheduleWorkspacePanel from "./features/schedule/SimpleScheduleWorkspacePanel";
+import AbilityDashboardPanel from "./features/check/AbilityDashboardPanel";
+import ClassWeeklyReportPanel from "./features/check/ClassWeeklyReportPanel";
+import ChildWeekendLetterPanel from "./features/check/ChildWeekendLetterPanel";
 
 type TabKey =
   | "plan"
@@ -20,6 +23,9 @@ type TabKey =
   | "planV2Workspace"
   | "schedulePlan"
   | "scheduleDay"
+  | "abilityDashboard"
+  | "classWeeklyReport"
+  | "childWeekendLetter"
   | "todos"
   | "board"
   | "practice"
@@ -60,6 +66,13 @@ export default function SignedInApp(props: {
         <button onClick={() => setTab("planV2Workspace")}>PLAN v2</button>
         <button onClick={() => setTab("schedulePlan")}>月案＞週案</button>
         <button onClick={() => setTab("scheduleDay")}>日案</button>
+        <button onClick={() => setTab("abilityDashboard")}>
+          5領域ダッシュボード
+        </button>
+        <button onClick={() => setTab("classWeeklyReport")}>クラス週報</button>
+        <button onClick={() => setTab("childWeekendLetter")}>
+          子ども週末だより
+        </button>
         <button onClick={() => setTab("todos")}>Todos</button>
         <button onClick={() => setTab("board")}>Board</button>
         <button onClick={() => setTab("practice")}>Practice</button>
@@ -77,11 +90,21 @@ export default function SignedInApp(props: {
       {tab === "planV2" && <PlanV2DebugPanel />}
       {tab === "planV2Workspace" && <PlanV2WorkspacePanel owner={owner} />}
 
-      {tab === "schedulePlan" && (
-        <SimpleScheduleWorkspacePanel owner={owner} />
-      )}
+      {tab === "schedulePlan" && <SimpleScheduleWorkspacePanel owner={owner} />}
 
       {tab === "scheduleDay" && <ScheduleDayPanel owner={owner} />}
+
+      {tab === "abilityDashboard" && (
+        <AbilityDashboardPanel owner={owner} tenantId={tenantId} />
+      )}
+
+      {tab === "classWeeklyReport" && (
+        <ClassWeeklyReportPanel owner={owner} tenantId={tenantId} />
+      )}
+
+      {tab === "childWeekendLetter" && (
+        <ChildWeekendLetterPanel owner={owner} tenantId={tenantId} />
+      )}
 
       {tab === "todos" && <TodosPanel owner={owner} />}
       {tab === "board" && <BoardPanel owner={owner} />}
