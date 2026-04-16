@@ -10,21 +10,25 @@ import {
   suggestPracticeLinksFn,
   registerPracticeLinksFn,
   analyzeTranscriptObservationsFn,
+  cleanupTranscriptTextFn,
 } from "./data/resource";
 import { storage } from "./storage/resource";
 import { dailyDigest } from "./jobs/daily-digest/resource";
 import { transcribePoller } from "./jobs/transcribe-poller/resource";
+import { issueNextDaySchedules } from "./jobs/issue-next-day-schedules/resource";
 
 const backend = defineBackend({
   auth,
   data,
   storage,
   dailyDigest,
+  issueNextDaySchedules,
   summarizeAudioFn,
   analyzePracticeFn,
   suggestPracticeLinksFn,
   registerPracticeLinksFn,
   analyzeTranscriptObservationsFn,
+  cleanupTranscriptTextFn,
   transcribePoller,
 });
 
@@ -142,6 +146,19 @@ backend.analyzeTranscriptObservationsFn.resources.lambda.addToRolePolicy(
   }),
 );
 
+backend.cleanupTranscriptTextFn.resources.lambda.addToRolePolicy(
+  new PolicyStatement({
+    actions: [
+      "bedrock:InvokeModel",
+      "bedrock:GetInferenceProfile",
+      "aws-marketplace:Subscribe",
+      "aws-marketplace:Unsubscribe",
+      "aws-marketplace:ViewSubscriptions",
+    ],
+    resources: ["*"],
+  }),
+);
+
 /**
  * ✅ Lambda に環境変数を注入
  */
@@ -217,6 +234,24 @@ analyzeTranscriptLambda.addEnvironment(
   "apac.anthropic.claude-3-5-sonnet-20241022-v2:0",
 );
 analyzeTranscriptLambda.timeout = Duration.seconds(60);
+
+const cleanupTranscriptLambda = asLambdaConfigurable(
+  backend.cleanupTranscriptTextFn.resources.lambda,
+);
+
+cleanupTranscriptLambda.addEnvironment(
+  "BEDROCK_MODEL_ID",
+  "apac.anthropic.claude-3-5-sonnet-20241022-v2:0",
+);
+cleanupTranscriptLambda.timeout = Duration.seconds(60);
+
+/**
+ * ✅ issue-next-day-schedules 側
+ */
+const issueNextDayLambda = asLambdaConfigurable(
+  backend.issueNextDaySchedules.resources.lambda,
+);
+issueNextDayLambda.timeout = Duration.seconds(60);
 
 // 必要なら
 // suggestPracticeLinksLambda.memorySize = 1024;

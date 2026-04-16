@@ -64,6 +64,17 @@ export const analyzeTranscriptObservationsFn = defineFunction({
   runtime: 22,
 });
 
+export const cleanupTranscriptTextFn = defineFunction({
+  name: "cleanup-transcript-text",
+  entry: "../functions/cleanup-transcript-text/handler.ts",
+  timeoutSeconds: 60,
+  memoryMB: 512,
+  environment: {
+    BEDROCK_MODEL_ID: "apac.anthropic.claude-3-5-sonnet-20241022-v2:0",
+  },
+  runtime: 22,
+});
+
 export const syncScheduleDayObservationsFn = defineFunction({
   name: "sync-schedule-day-observations",
   entry: "../functions/sync-schedule-day-observations/handler.ts",
@@ -231,6 +242,26 @@ const schema = a
       skipped: a.boolean().required(),
       message: a.string().required(),
     }),
+
+    CleanupTranscriptTextResponse: a.customType({
+      originalText: a.string().required(),
+      cleanedText: a.string().required(),
+      status: a.string().required(),
+      message: a.string(),
+    }),
+
+    cleanupTranscriptText: a
+      .mutation()
+      .arguments({
+        scheduleDayId: a.id().required(),
+        scheduleDayItemId: a.id().required(),
+        practiceCode: a.string(),
+        childNames: a.string().array(),
+        transcriptText: a.string().required(),
+      })
+      .returns(a.ref("CleanupTranscriptTextResponse"))
+      .authorization((allow) => [allow.authenticated()])
+      .handler(a.handler.function(cleanupTranscriptTextFn)),
 
     IssueScheduleDayFromScheduleWeekResponse: a.customType({
       scheduleWeekId: a.id().required(),

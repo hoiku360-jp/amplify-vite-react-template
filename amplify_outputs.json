@@ -8070,6 +8070,39 @@
             }
           }
         },
+        "CleanupTranscriptTextResponse": {
+          "name": "CleanupTranscriptTextResponse",
+          "fields": {
+            "originalText": {
+              "name": "originalText",
+              "isArray": false,
+              "type": "String",
+              "isRequired": true,
+              "attributes": []
+            },
+            "cleanedText": {
+              "name": "cleanedText",
+              "isArray": false,
+              "type": "String",
+              "isRequired": true,
+              "attributes": []
+            },
+            "status": {
+              "name": "status",
+              "isArray": false,
+              "type": "String",
+              "isRequired": true,
+              "attributes": []
+            },
+            "message": {
+              "name": "message",
+              "isArray": false,
+              "type": "String",
+              "isRequired": false,
+              "attributes": []
+            }
+          }
+        },
         "IssueScheduleDayFromScheduleWeekResponse": {
           "name": "IssueScheduleDayFromScheduleWeekResponse",
           "fields": {
@@ -8467,6 +8500,47 @@
           "arguments": {
             "practiceCode": {
               "name": "practiceCode",
+              "isArray": false,
+              "type": "String",
+              "isRequired": true
+            }
+          }
+        },
+        "cleanupTranscriptText": {
+          "name": "cleanupTranscriptText",
+          "isArray": false,
+          "type": {
+            "nonModel": "CleanupTranscriptTextResponse"
+          },
+          "isRequired": false,
+          "arguments": {
+            "scheduleDayId": {
+              "name": "scheduleDayId",
+              "isArray": false,
+              "type": "ID",
+              "isRequired": true
+            },
+            "scheduleDayItemId": {
+              "name": "scheduleDayItemId",
+              "isArray": false,
+              "type": "ID",
+              "isRequired": true
+            },
+            "practiceCode": {
+              "name": "practiceCode",
+              "isArray": false,
+              "type": "String",
+              "isRequired": false
+            },
+            "childNames": {
+              "name": "childNames",
+              "isArray": true,
+              "type": "String",
+              "isRequired": false,
+              "isArrayNullable": true
+            },
+            "transcriptText": {
+              "name": "transcriptText",
               "isArray": false,
               "type": "String",
               "isRequired": true

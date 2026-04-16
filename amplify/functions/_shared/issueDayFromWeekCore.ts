@@ -223,28 +223,25 @@ export async function issueDayFromWeekCore(
 ) {
   const issueType = args.issueType ?? "MANUAL";
 
-  const weekRes = await client.models.ScheduleWeek.list({
+  const weeks = await listAll(client.models.ScheduleWeek.list, {
     filter: {
       id: { eq: args.scheduleWeekId },
     },
   });
 
-  const week = weekRes.data?.[0];
+  const week = weeks[0];
   if (!week) {
     throw new Error(`ScheduleWeek not found: ${args.scheduleWeekId}`);
   }
 
-  const existingDaysRes = await client.models.ScheduleDay.list({
+  const existingDays = await listAll(client.models.ScheduleDay.list, {
     filter: {
       sourceWeekId: { eq: week.id },
       targetDate: { eq: args.targetDate },
     },
   });
 
-  const existingDays = [...(existingDaysRes.data ?? [])].sort(
-    byIssueVersionDesc,
-  );
-  const latestExisting = existingDays[0];
+  const latestExisting = [...existingDays].sort(byIssueVersionDesc)[0];
 
   let nextIssueVersion = 1;
   let previousScheduleDayId: string | undefined = undefined;
@@ -300,6 +297,20 @@ export async function issueDayFromWeekCore(
   const sortedWeekItems = [...weekItems].sort(
     (a, b) => (a.sortOrder ?? 0) - (b.sortOrder ?? 0),
   );
+
+  if (sortedWeekItems.length === 0) {
+    return {
+      scheduleWeekId: week.id,
+      previousScheduleDayId,
+      targetDate: args.targetDate,
+      createdDay: false,
+      createdItemCount: 0,
+      issueVersion: latestExisting?.issueVersion ?? 0,
+      status: "NO_WEEK_ITEMS",
+      message:
+        "対象曜日の ScheduleWeekItem が存在しないため、空の日案は発行しませんでした。",
+    };
+  }
 
   const dayCreateRes = await client.models.ScheduleDay.create({
     tenantId: week.tenantId,

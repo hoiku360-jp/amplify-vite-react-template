@@ -137,6 +137,13 @@ type SummarizeAudioResult = {
   errors?: ModelError[] | null;
 };
 
+type CleanupTranscriptResult = {
+  originalText?: string;
+  cleanedText?: string;
+  status?: string;
+  message?: string;
+};
+
 type SyncScheduleDayArgs = {
   scheduleDayId: string;
 };
@@ -152,6 +159,14 @@ type SummarizeAudioArgs = {
   audioPath: string;
   audioUrl: string;
   audioS3Uri: string;
+};
+
+type CleanupTranscriptArgs = {
+  scheduleDayId: string;
+  scheduleDayItemId: string;
+  practiceCode?: string | null;
+  childNames?: string[];
+  transcriptText: string;
 };
 
 type OperationEnvelope<TData> = {
@@ -193,6 +208,10 @@ type ScheduleDayPanelClient = {
       AnalyzeTranscriptResult
     >;
     summarizeAudio?: OperationRunner<SummarizeAudioArgs, SummarizeAudioResult>;
+    cleanupTranscriptText?: OperationRunner<
+      CleanupTranscriptArgs,
+      CleanupTranscriptResult
+    >;
   };
 };
 
@@ -511,6 +530,9 @@ export default function ScheduleDayPanel(props: { owner: string }) {
   >(null);
   const [transcribingTranscriptItemId, setTranscribingTranscriptItemId] =
     useState<string | null>(null);
+  const [cleaningTranscriptItemId, setCleaningTranscriptItemId] = useState<
+    string | null
+  >(null);
   const [closing, setClosing] = useState(false);
   const [reopening, setReopening] = useState(false);
   const [message, setMessage] = useState("");
@@ -649,6 +671,16 @@ export default function ScheduleDayPanel(props: { owner: string }) {
     return getRecordsForItem(itemId).filter(
       (record) =>
         record.recordType === "MEMO" || record.recordType === "APPEND_NOTE",
+    );
+  }
+
+  function hasUnsavedTranscriptDraft(itemId: string): boolean {
+    const draft = transcriptDrafts[itemId] ?? createEmptyTranscriptDraft();
+
+    return Boolean(
+      draft.transcriptText.trim() ||
+      draft.childNamesText.trim() ||
+      draft.audioFile,
     );
   }
 
@@ -1118,7 +1150,9 @@ export default function ScheduleDayPanel(props: { owner: string }) {
         audioJobId: jobId,
       });
 
-      setMessage("文字起こし結果を transcript text に反映しました。");
+      setMessage(
+        "文字起こし結果を transcript text に反映しました。次に AIクリーンアップ → 音声メモを保存 ができます。",
+      );
     } catch (e) {
       console.error(e);
       const msg = e instanceof Error ? e.message : String(e);
@@ -1130,6 +1164,86 @@ export default function ScheduleDayPanel(props: { owner: string }) {
       setMessage(`文字起こしエラー: ${msg}`);
     } finally {
       setTranscribingTranscriptItemId(null);
+    }
+  }
+
+  async function cleanupTranscriptDraft(item: ScheduleDayItemRow) {
+    if (!day) return;
+    if (day.status === "CLOSED") {
+      setMessage("締め後は AI クリーンアップを実行できません。");
+      return;
+    }
+
+    const draft = transcriptDrafts[item.id] ?? createEmptyTranscriptDraft();
+    const transcriptText = draft.transcriptText.trim();
+    const childNames = parseChildNamesText(draft.childNamesText);
+
+    if (!transcriptText) {
+      setMessage(
+        "先に文字起こしを実行するか、transcript text を入力してください。",
+      );
+      return;
+    }
+
+    setCleaningTranscriptItemId(item.id);
+    setMessage("");
+
+    try {
+      const runner = client.mutations?.cleanupTranscriptText;
+      if (!runner) {
+        throw new Error(
+          "cleanupTranscriptText が client.mutations に見つかりません。resource.ts の custom operation 名を確認してください。",
+        );
+      }
+
+      let res:
+        | OperationEnvelope<CleanupTranscriptResult>
+        | CleanupTranscriptResult;
+
+      const args: CleanupTranscriptArgs = {
+        scheduleDayId: day.id,
+        scheduleDayItemId: item.id,
+        practiceCode: item.practiceCode ?? null,
+        childNames,
+        transcriptText,
+      };
+
+      try {
+        res = await runner(args);
+      } catch {
+        res = await runner({ input: args });
+      }
+
+      const errors = getOperationErrors(res);
+      if (errors?.length) {
+        throw new Error(
+          formatModelErrors(errors, "AIクリーンアップに失敗しました。"),
+        );
+      }
+
+      const data = getOperationData(res);
+      const cleanedText = String(data?.cleanedText ?? "").trim();
+
+      if (!cleanedText) {
+        throw new Error("AIクリーンアップ結果が空です。");
+      }
+
+      updateTranscriptDraft(item.id, {
+        transcriptText: cleanedText,
+      });
+
+      setMessage(
+        data?.message
+          ? `AIクリーンアップを反映しました。 ${data.message}`
+          : "AIクリーンアップを反映しました。",
+      );
+    } catch (e) {
+      console.error(e);
+      setMessage(
+        `AIクリーンアップエラー: ${e instanceof Error ? e.message : String(e)}`,
+      );
+    } finally {
+      setCleaningTranscriptItemId(null);
     }
   }
 
@@ -1961,6 +2075,7 @@ export default function ScheduleDayPanel(props: { owner: string }) {
                           disabled={
                             day?.status === "CLOSED" ||
                             transcribingTranscriptItemId === item.id ||
+                            cleaningTranscriptItemId === item.id ||
                             savingTranscriptItemId === item.id
                           }
                         >
@@ -1970,9 +2085,25 @@ export default function ScheduleDayPanel(props: { owner: string }) {
                         </button>
 
                         <button
+                          onClick={() => cleanupTranscriptDraft(item)}
+                          disabled={
+                            day?.status === "CLOSED" ||
+                            cleaningTranscriptItemId === item.id ||
+                            transcribingTranscriptItemId === item.id ||
+                            savingTranscriptItemId === item.id ||
+                            analyzingTranscriptItemId === item.id
+                          }
+                        >
+                          {cleaningTranscriptItemId === item.id
+                            ? "AIクリーンアップ中..."
+                            : "AIによるクリーンアップ"}
+                        </button>
+
+                        <button
                           onClick={() => saveTranscript(item)}
                           disabled={
                             savingTranscriptItemId === item.id ||
+                            cleaningTranscriptItemId === item.id ||
                             analyzingTranscriptItemId === item.id ||
                             transcribingTranscriptItemId === item.id ||
                             day?.status === "CLOSED"
@@ -1987,9 +2118,11 @@ export default function ScheduleDayPanel(props: { owner: string }) {
                           onClick={() => analyzeTranscript(item)}
                           disabled={
                             savingTranscriptItemId === item.id ||
+                            cleaningTranscriptItemId === item.id ||
                             analyzingTranscriptItemId === item.id ||
                             transcribingTranscriptItemId === item.id ||
-                            itemTranscriptRecords.length === 0
+                            itemTranscriptRecords.length === 0 ||
+                            hasUnsavedTranscriptDraft(item.id)
                           }
                         >
                           {analyzingTranscriptItemId === item.id
@@ -1997,6 +2130,14 @@ export default function ScheduleDayPanel(props: { owner: string }) {
                             : "AIで観察記録を抽出"}
                         </button>
                       </div>
+
+                      {hasUnsavedTranscriptDraft(item.id) ? (
+                        <div style={{ marginTop: 8, color: "#666" }}>
+                          保存前の transcript draft
+                          があります。AIで観察記録を抽出する前に
+                          「音声メモを保存」を押してください。
+                        </div>
+                      ) : null}
 
                       {day?.status === "CLOSED" ? (
                         <div style={{ marginTop: 8, color: "#666" }}>
