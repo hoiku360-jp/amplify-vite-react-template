@@ -13,6 +13,7 @@ import {
   todayYYYYMMDD,
   truncateText,
   upsertReportArtifact,
+  type AbilityDomainGroup,
   type CheckActionReportBundle,
 } from "./reporting";
 
@@ -157,6 +158,7 @@ export default function ClassWeeklyReportPanel(props: Props) {
             domainCounts: bundle.observation.domainCounts,
             practiceRows: bundle.observation.practiceRows,
             abilityRows: bundle.observation.abilityRows,
+            abilityGroups: bundle.observation.abilityGroups,
             childRows: bundle.observation.childRows,
             evidenceRows: bundle.observation.evidenceRows.slice(0, 20),
           },
@@ -185,6 +187,39 @@ export default function ClassWeeklyReportPanel(props: Props) {
     } catch (e) {
       console.error(e);
       setMessage(`コピーエラー: ${e instanceof Error ? e.message : String(e)}`);
+    }
+  }
+
+  function downloadMarkdown() {
+    if (!markdownText) {
+      setMessage("先にクラス週報を作成してください。");
+      return;
+    }
+
+    try {
+      const classroomName = selectedClassroom?.name ?? "class-weekly-report";
+      const safeClassroomName = classroomName.replace(/[\\/:*?"<>|]/g, "_");
+      const filename = `${safeClassroomName}_${fromDate}_${toDate}.md`;
+
+      const blob = new Blob([markdownText], {
+        type: "text/markdown;charset=utf-8",
+      });
+      const url = URL.createObjectURL(blob);
+
+      const anchor = document.createElement("a");
+      anchor.href = url;
+      anchor.download = filename;
+      document.body.appendChild(anchor);
+      anchor.click();
+      document.body.removeChild(anchor);
+
+      URL.revokeObjectURL(url);
+      setMessage("markdown をダウンロードしました。");
+    } catch (e) {
+      console.error(e);
+      setMessage(
+        `ダウンロードエラー: ${e instanceof Error ? e.message : String(e)}`,
+      );
     }
   }
 
@@ -272,6 +307,10 @@ export default function ClassWeeklyReportPanel(props: Props) {
 
           <button onClick={copyMarkdown} disabled={!markdownText}>
             markdown をコピー
+          </button>
+
+          <button onClick={downloadMarkdown} disabled={!markdownText}>
+            markdown をダウンロード
           </button>
         </div>
 
@@ -446,57 +485,14 @@ export default function ClassWeeklyReportPanel(props: Props) {
           <div
             style={{
               display: "grid",
-              gridTemplateColumns: "1.4fr 1fr",
               gap: 16,
+              gridTemplateColumns: "minmax(340px, 1fr) minmax(280px, 360px)",
             }}
           >
-            <div
-              style={{
-                padding: 16,
-                border: "1px solid #d0d7de",
-                borderRadius: 8,
-                background: "#fff",
-              }}
-            >
-              <h3 style={{ marginTop: 0, marginBottom: 12 }}>
-                よく見られた育ち
-              </h3>
-
-              {bundle.observation.abilityRows.length === 0 ? (
-                <div style={{ color: "#666" }}>データがありません。</div>
-              ) : (
-                <div style={{ overflowX: "auto" }}>
-                  <table
-                    style={{
-                      width: "100%",
-                      borderCollapse: "collapse",
-                      minWidth: 520,
-                    }}
-                  >
-                    <thead>
-                      <tr>
-                        <th style={thStyle}>abilityCode</th>
-                        <th style={thStyle}>abilityName</th>
-                        <th style={thStyle}>domain</th>
-                        <th style={thStyle}>count</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {bundle.observation.abilityRows
-                        .slice(0, 15)
-                        .map((row) => (
-                          <tr key={`${row.abilityCode}_${row.abilityName}`}>
-                            <td style={tdStyle}>{row.abilityCode}</td>
-                            <td style={tdStyle}>{row.abilityName}</td>
-                            <td style={tdStyle}>{row.domain}</td>
-                            <td style={tdStyle}>{row.count}</td>
-                          </tr>
-                        ))}
-                    </tbody>
-                  </table>
-                </div>
-              )}
-            </div>
+            <AbilityHierarchySection
+              title="よく見られた育ち"
+              groups={bundle.observation.abilityGroups}
+            />
 
             <div
               style={{
@@ -621,18 +617,24 @@ export default function ClassWeeklyReportPanel(props: Props) {
             }}
           >
             <h3 style={{ marginTop: 0, marginBottom: 12 }}>
-              markdown プレビュー
+              生成された markdown
             </h3>
-            <textarea
-              value={markdownText}
-              onChange={(e) => setMarkdownText(e.target.value)}
-              rows={34}
+
+            <pre
               style={{
-                width: "100%",
-                boxSizing: "border-box",
-                fontFamily: "monospace",
+                margin: 0,
+                whiteSpace: "pre-wrap",
+                wordBreak: "break-word",
+                background: "#f8fafc",
+                border: "1px solid #e5e7eb",
+                borderRadius: 8,
+                padding: 12,
+                fontSize: 13,
+                lineHeight: 1.6,
               }}
-            />
+            >
+              {markdownText}
+            </pre>
           </div>
         </>
       ) : null}
@@ -690,6 +692,180 @@ function StatCard(props: { label: string; value: number }) {
     <div style={{ padding: 12, borderRadius: 8, background: "#fff" }}>
       <div>{props.label}</div>
       <b style={{ fontSize: 20 }}>{props.value}</b>
+    </div>
+  );
+}
+
+function AbilityHierarchySection(props: {
+  title: string;
+  groups: AbilityDomainGroup[];
+}) {
+  return (
+    <div
+      style={{
+        padding: 16,
+        border: "1px solid #d0d7de",
+        borderRadius: 8,
+        background: "#fff",
+      }}
+    >
+      <h3 style={{ marginTop: 0, marginBottom: 12 }}>{props.title}</h3>
+
+      {props.groups.length === 0 ? (
+        <div style={{ color: "#666" }}>データがありません。</div>
+      ) : (
+        <div style={{ display: "grid", gap: 14 }}>
+          {props.groups.map((domainGroup) => (
+            <section
+              key={domainGroup.domain}
+              style={{
+                border: "1px solid #d8dee4",
+                borderRadius: 10,
+                background: "#f8fafc",
+                padding: 12,
+              }}
+            >
+              <div
+                style={{
+                  display: "flex",
+                  alignItems: "center",
+                  gap: 8,
+                  marginBottom: 10,
+                }}
+              >
+                <span
+                  style={{
+                    fontSize: 11,
+                    color: "#666",
+                    background: "#eef2f7",
+                    border: "1px solid #d8dee4",
+                    borderRadius: 999,
+                    padding: "2px 8px",
+                    flexShrink: 0,
+                  }}
+                >
+                  領域
+                </span>
+                <div style={{ fontWeight: 800, fontSize: 16 }}>
+                  {domainGroup.domain}
+                </div>
+                <span style={{ color: "#666", fontSize: 13 }}>
+                  {domainGroup.totalCount}件
+                </span>
+              </div>
+
+              <div style={{ display: "grid", gap: 10 }}>
+                {domainGroup.categories.map((categoryGroup) => (
+                  <section
+                    key={`${domainGroup.domain}_${categoryGroup.category}`}
+                    style={{
+                      marginLeft: 16,
+                      padding: 10,
+                      borderLeft: "4px solid #d8dee4",
+                      borderRadius: 8,
+                      background: "#fff",
+                    }}
+                  >
+                    <div
+                      style={{
+                        display: "flex",
+                        alignItems: "center",
+                        gap: 8,
+                        marginBottom: 8,
+                      }}
+                    >
+                      <span
+                        style={{
+                          fontSize: 11,
+                          color: "#666",
+                          background: "#f3f4f6",
+                          border: "1px solid #e5e7eb",
+                          borderRadius: 999,
+                          padding: "2px 8px",
+                          flexShrink: 0,
+                        }}
+                      >
+                        カテゴリ
+                      </span>
+                      <div style={{ fontWeight: 700, fontSize: 14 }}>
+                        {categoryGroup.category}
+                      </div>
+                      <span style={{ color: "#666", fontSize: 12 }}>
+                        {categoryGroup.totalCount}件
+                      </span>
+                    </div>
+
+                    <div style={{ display: "grid", gap: 4, marginLeft: 12 }}>
+                      {categoryGroup.rows.map((row) => (
+                        <div
+                          key={`${row.abilityCode}_${row.abilityName}`}
+                          style={{
+                            display: "grid",
+                            gridTemplateColumns: "1fr auto",
+                            alignItems: "center",
+                            columnGap: 8,
+                            padding: "4px 0",
+                            borderBottom: "1px solid #f3f4f6",
+                          }}
+                        >
+                          <div
+                            style={{
+                              display: "flex",
+                              alignItems: "center",
+                              gap: 8,
+                              minWidth: 0,
+                            }}
+                          >
+                            <span
+                              style={{
+                                fontSize: 11,
+                                color: "#666",
+                                background: "#fafafa",
+                                border: "1px solid #ececec",
+                                borderRadius: 999,
+                                padding: "1px 6px",
+                                flexShrink: 0,
+                              }}
+                            >
+                              育ち
+                            </span>
+                            <span
+                              style={{
+                                fontSize: 14,
+                                lineHeight: 1.5,
+                                wordBreak: "break-word",
+                              }}
+                            >
+                              {row.abilityName}
+                            </span>
+                          </div>
+
+                          <span
+                            style={{
+                              justifySelf: "end",
+                              minWidth: 40,
+                              textAlign: "center",
+                              fontSize: 12,
+                              fontWeight: 700,
+                              color: "#374151",
+                              background: "#f3f4f6",
+                              borderRadius: 999,
+                              padding: "2px 8px",
+                              flexShrink: 0,
+                            }}
+                          >
+                            {row.count}件
+                          </span>
+                        </div>
+                      ))}
+                    </div>
+                  </section>
+                ))}
+              </div>
+            </section>
+          ))}
+        </div>
+      )}
     </div>
   );
 }

@@ -8,16 +8,22 @@ import PlanV2Editor from "./PlanV2Editor";
 import {
   byText,
   s,
+  stringifyAbilitySummary,
+  summarizeAbilityWeightsByDomain,
   toIntOrNull,
   type AbilityForm,
   type ClassAnnualPlanForm,
   type ClassAnnualPlanRecord,
+  type ClassMonthPlanPhraseSelectionRecord,
   type ClassMonthPlanRecord,
   type ClassQuarterPlanRecord,
   type ClassroomForm,
   type ClassroomRecord,
   type MonthEventRecord,
   type MonthPlanForm,
+  type MonthPlanPhraseSelectionForm,
+  type PlanPhraseAbilityLinkRecord,
+  type PlanPhraseRecord,
   type QuarterEventRecord,
   type QuarterPlanForm,
   type SchoolAnnualAgeTargetRecord,
@@ -93,6 +99,16 @@ function getUnknownErrorMessage(error: unknown, fallback: string): string {
   return fallback;
 }
 
+function uniqueAbilityCodes(rows: MonthPlanPhraseSelectionForm): string[] {
+  return Array.from(
+    new Set(
+      rows.abilitySummary
+        .map((x) => s(x.abilityCode))
+        .filter((x) => x.length > 0),
+    ),
+  );
+}
+
 export default function PlanV2WorkspacePanel(props: { owner: string }) {
   const { owner } = props;
   const client = useMemo(() => generateClient<Schema>(), []);
@@ -122,6 +138,13 @@ export default function PlanV2WorkspacePanel(props: { owner: string }) {
   const [quarterEvents, setQuarterEvents] = useState<QuarterEventRecord[]>([]);
   const [monthPlans, setMonthPlans] = useState<ClassMonthPlanRecord[]>([]);
   const [monthEvents, setMonthEvents] = useState<MonthEventRecord[]>([]);
+  const [planPhrases, setPlanPhrases] = useState<PlanPhraseRecord[]>([]);
+  const [planPhraseAbilityLinks, setPlanPhraseAbilityLinks] = useState<
+    PlanPhraseAbilityLinkRecord[]
+  >([]);
+  const [monthPhraseSelections, setMonthPhraseSelections] = useState<
+    ClassMonthPlanPhraseSelectionRecord[]
+  >([]);
 
   const refreshAll = useCallback(
     async (tenantIdArg?: string, fiscalYearArg?: number) => {
@@ -154,6 +177,9 @@ export default function PlanV2WorkspacePanel(props: { owner: string }) {
           setQuarterEvents([]);
           setMonthPlans([]);
           setMonthEvents([]);
+          setPlanPhrases([]);
+          setPlanPhraseAbilityLinks([]);
+          setMonthPhraseSelections([]);
           return;
         }
 
@@ -166,6 +192,9 @@ export default function PlanV2WorkspacePanel(props: { owner: string }) {
           quarterEventRes,
           monthPlanRes,
           monthEventRes,
+          planPhraseRes,
+          planPhraseAbilityLinkRes,
+          monthPhraseSelectionRes,
         ] = await Promise.all([
           client.models.Classroom.list({
             filter: { tenantId: { eq: tenantId } },
@@ -212,6 +241,27 @@ export default function PlanV2WorkspacePanel(props: { owner: string }) {
           client.models.MonthEvent.list({
             limit: 20000,
           }),
+          client.models.PlanPhrase.list({
+            filter: {
+              planPeriodType: { eq: "MONTH" },
+              status: { eq: "active" },
+            },
+            limit: 10000,
+          }),
+          client.models.PlanPhraseAbilityLink.list({
+            filter: {
+              planPeriodType: { eq: "MONTH" },
+              status: { eq: "active" },
+            },
+            limit: 20000,
+          }),
+          client.models.ClassMonthPlanPhraseSelection.list({
+            filter: {
+              tenantId: { eq: tenantId },
+              fiscalYear: { eq: fy },
+            },
+            limit: 20000,
+          }),
         ]);
 
         throwIfModelErrors(classroomRes);
@@ -222,6 +272,9 @@ export default function PlanV2WorkspacePanel(props: { owner: string }) {
         throwIfModelErrors(quarterEventRes);
         throwIfModelErrors(monthPlanRes);
         throwIfModelErrors(monthEventRes);
+        throwIfModelErrors(planPhraseRes);
+        throwIfModelErrors(planPhraseAbilityLinkRes);
+        throwIfModelErrors(monthPhraseSelectionRes);
 
         const nextQuarterPlans = [...(quarterPlanRes.data ?? [])];
         const quarterIds = new Set(nextQuarterPlans.map((x) => x.id));
@@ -250,6 +303,27 @@ export default function PlanV2WorkspacePanel(props: { owner: string }) {
           [...(monthEventRes.data ?? [])].filter((x) =>
             monthIds.has(x.classMonthPlanId),
           ),
+        );
+        setPlanPhrases(
+          [...(planPhraseRes.data ?? [])].sort((a, b) => {
+            const age = Number(a.ageYears ?? 0) - Number(b.ageYears ?? 0);
+            if (age !== 0) return age;
+            const domain = byText(a.domainCode, b.domainCode);
+            if (domain !== 0) return domain;
+            return Number(a.sortOrder ?? 0) - Number(b.sortOrder ?? 0);
+          }),
+        );
+        setPlanPhraseAbilityLinks(
+          [...(planPhraseAbilityLinkRes.data ?? [])].sort(
+            (a, b) => Number(a.sortOrder ?? 0) - Number(b.sortOrder ?? 0),
+          ),
+        );
+        setMonthPhraseSelections(
+          [...(monthPhraseSelectionRes.data ?? [])]
+            .filter((x) => monthIds.has(x.classMonthPlanId))
+            .sort(
+              (a, b) => Number(a.sortOrder ?? 0) - Number(b.sortOrder ?? 0),
+            ),
         );
       } catch (e) {
         console.error(e);
@@ -410,6 +484,56 @@ export default function PlanV2WorkspacePanel(props: { owner: string }) {
         classMonthPlanId,
         label: labels[i],
         sortOrder: i + 1,
+      });
+      throwIfModelErrors(created);
+    }
+  }
+
+  async function replaceMonthPhraseSelections(
+    monthPlan: ClassMonthPlanRecord,
+    phraseSelections: MonthPlanPhraseSelectionForm[],
+  ) {
+    const existing = monthPhraseSelections.filter(
+      (x) => x.classMonthPlanId === monthPlan.id,
+    );
+
+    for (const row of existing) {
+      const deleted = await client.models.ClassMonthPlanPhraseSelection.delete({
+        id: row.id,
+      });
+      throwIfModelErrors(deleted);
+    }
+
+    const activeSelections = phraseSelections.filter(
+      (x) => x.status !== "ARCHIVED" && s(x.planPhraseId) !== "",
+    );
+
+    for (let i = 0; i < activeSelections.length; i += 1) {
+      const row = activeSelections[i];
+      const abilitySummary = row.abilitySummary ?? [];
+      const totals = summarizeAbilityWeightsByDomain(abilitySummary);
+
+      const created = await client.models.ClassMonthPlanPhraseSelection.create({
+        tenantId: selectedTenantId,
+        classMonthPlanId: monthPlan.id,
+        classQuarterPlanId: monthPlan.classQuarterPlanId,
+        fiscalYear: monthPlan.fiscalYear,
+        monthKey: monthPlan.monthKey,
+        planPhraseId: row.planPhraseId,
+        phraseTextSnapshot: row.phraseTextSnapshot,
+        selectedDomainCode: row.selectedDomainCode || null,
+        selectedDomain: row.selectedDomain || null,
+        ageYears: toIntOrNull(row.ageYears),
+        abilityCodes: uniqueAbilityCodes(row),
+        abilitySummaryJson: stringifyAbilitySummary(abilitySummary),
+        scoreHealth: totals.health,
+        scoreHumanRelations: totals.humanRelations,
+        scoreEnvironment: totals.environment,
+        scoreLanguage: totals.language,
+        scoreExpression: totals.expression,
+        status: "ACTIVE",
+        sortOrder: i + 1,
+        selectedAt: row.selectedAt || new Date().toISOString(),
       });
       throwIfModelErrors(created);
     }
@@ -843,6 +967,8 @@ export default function PlanV2WorkspacePanel(props: { owner: string }) {
       );
 
       for (const row of monthRows) {
+        const monthPlan = monthPlans.find((x) => x.id === row.id) ?? null;
+
         const updatedMonth = await client.models.ClassMonthPlan.update({
           id: row.id,
           title: row.form.title,
@@ -863,6 +989,12 @@ export default function PlanV2WorkspacePanel(props: { owner: string }) {
         throwIfModelErrors(updatedMonth);
 
         await replaceMonthEvents(row.id, row.form.eventSummary);
+        if (monthPlan) {
+          await replaceMonthPhraseSelections(
+            monthPlan,
+            row.form.phraseSelections,
+          );
+        }
       }
 
       await refreshAll(selectedTenantId, fiscalYear);
@@ -905,6 +1037,10 @@ export default function PlanV2WorkspacePanel(props: { owner: string }) {
       throwIfModelErrors(updated);
 
       await replaceMonthEvents(selectedMonthPlan.id, form.eventSummary);
+      await replaceMonthPhraseSelections(
+        selectedMonthPlan,
+        form.phraseSelections,
+      );
 
       await refreshAll(selectedTenantId, fiscalYear);
       setMessage("月計画を保存しました。");
@@ -915,6 +1051,40 @@ export default function PlanV2WorkspacePanel(props: { owner: string }) {
       setLoading(false);
     }
   }
+
+  const editorProps = {
+    selectedNode: selectedNodeForEditor,
+    tenant: tenantForEditor,
+    schoolAnnualPlan: selectedSchoolAnnualPlanForEditor,
+    schoolAgeTargets: ageTargets,
+    ageTarget: selectedAgeTargetForEditor,
+    classroom: selectedClassroomForEditor,
+    classAnnualPlan: selectedClassAnnualPlanForEditor,
+    classAnnualPlanForClassroom: classAnnualPlanForClassroomForEditor,
+    quarterPlan: selectedQuarterPlanForEditor,
+    monthPlan: selectedMonthPlanForEditor,
+    quarterChildren,
+    quarterChildrenForClassroom,
+    monthChildren,
+    quarterEvents,
+    selectedQuarterEvents,
+    monthEvents,
+    planPhrases,
+    planPhraseAbilityLinks,
+    monthPhraseSelections,
+    classroomCount: classrooms.length,
+    ageTargetCount: ageTargets.length,
+    classAnnualPlanCount: classAnnualPlans.length,
+    onSaveSchoolAnnualPlan: saveSchoolAnnualPlan,
+    onSaveSchoolAnnualBundle: saveSchoolAnnualBundle,
+    onSaveAgeTarget: saveAgeTarget,
+    onSaveClassroom: saveClassroom,
+    onSaveClassAnnualPlan: saveClassAnnualPlan,
+    onSaveClassAnnualBundle: saveClassAnnualBundle,
+    onSaveQuarterPlan: saveQuarterPlan,
+    onSaveQuarterBundle: saveQuarterBundle,
+    onSaveMonthPlan: saveMonthPlan,
+  };
 
   return (
     <div style={{ display: "grid", gap: 12 }}>
@@ -1045,36 +1215,7 @@ export default function PlanV2WorkspacePanel(props: { owner: string }) {
         )}
 
         {tenantForEditor && selectedNodeForEditor ? (
-          <PlanV2Editor
-            selectedNode={selectedNodeForEditor}
-            tenant={tenantForEditor}
-            schoolAnnualPlan={selectedSchoolAnnualPlanForEditor}
-            schoolAgeTargets={ageTargets}
-            ageTarget={selectedAgeTargetForEditor}
-            classroom={selectedClassroomForEditor}
-            classAnnualPlan={selectedClassAnnualPlanForEditor}
-            classAnnualPlanForClassroom={classAnnualPlanForClassroomForEditor}
-            quarterPlan={selectedQuarterPlanForEditor}
-            monthPlan={selectedMonthPlanForEditor}
-            quarterChildren={quarterChildren}
-            quarterChildrenForClassroom={quarterChildrenForClassroom}
-            monthChildren={monthChildren}
-            quarterEvents={quarterEvents}
-            selectedQuarterEvents={selectedQuarterEvents}
-            monthEvents={monthEvents}
-            classroomCount={classrooms.length}
-            ageTargetCount={ageTargets.length}
-            classAnnualPlanCount={classAnnualPlans.length}
-            onSaveSchoolAnnualPlan={saveSchoolAnnualPlan}
-            onSaveSchoolAnnualBundle={saveSchoolAnnualBundle}
-            onSaveAgeTarget={saveAgeTarget}
-            onSaveClassroom={saveClassroom}
-            onSaveClassAnnualPlan={saveClassAnnualPlan}
-            onSaveClassAnnualBundle={saveClassAnnualBundle}
-            onSaveQuarterPlan={saveQuarterPlan}
-            onSaveQuarterBundle={saveQuarterBundle}
-            onSaveMonthPlan={saveMonthPlan}
-          />
+          <PlanV2Editor {...editorProps} />
         ) : (
           <div
             style={{

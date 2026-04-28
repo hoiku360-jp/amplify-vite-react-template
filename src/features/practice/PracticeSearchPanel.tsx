@@ -1,14 +1,103 @@
 // src/features/practice/PracticeSearchPanel.tsx
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { generateClient } from "aws-amplify/data";
 import type { Schema } from "../../../amplify/data/resource";
 
 type SortKey = "scoreSum" | "scoreMax" | "linkCount";
 type ViewMode = "ability" | "debug";
 
+type GraphqlErrorLike = {
+  message?: string | null;
+};
+
+type ListResult<T> = {
+  data?: T[] | null;
+  nextToken?: string | null;
+  errors?: GraphqlErrorLike[] | null;
+};
+
+type ListArgs = {
+  authMode: "userPool";
+  limit?: number;
+  nextToken?: string | null;
+  filter?: Record<string, unknown>;
+};
+
+type AbilityCodeRow = Schema["AbilityCode"]["type"] & {
+  code?: string | null;
+  name?: string | null;
+  parent_code?: string | null;
+  level?: number | null;
+  sort_order?: number | null;
+  status?: string | null;
+};
+
+type AbilityPracticeAggRow = Schema["AbilityPracticeAgg"]["type"] & {
+  id?: string | null;
+  abilityCode?: string | null;
+  practiceCode?: string | null;
+  scoreSum?: number | null;
+  scoreMax?: number | null;
+  linkCount?: number | null;
+};
+
+type AbilityPracticeLinkRow = Schema["AbilityPracticeLink"]["type"] & {
+  abilityCode?: string | null;
+  practiceCode?: string | null;
+};
+
+type PracticeCodeRow = Schema["PracticeCode"]["type"] & {
+  id?: string | null;
+  practice_code?: string | null;
+  category_code?: string | null;
+  category_name?: string | null;
+  name?: string | null;
+  memo?: string | null;
+  source_type?: string | null;
+  source_ref?: string | null;
+  source_url?: string | null;
+  status?: string | null;
+  version?: number | null;
+  tenantId?: string | null;
+  createdBy?: string | null;
+  updatedBy?: string | null;
+  visibility?: string | null;
+  publishScope?: string | null;
+  ownerType?: string | null;
+  owner?: string | null;
+  practiceCategory?: string | null;
+  practiceSourceType?: string | null;
+  audioKey?: string | null;
+  recordedAt?: string | null;
+  transcriptKey?: string | null;
+  transcriptText?: string | null;
+  transcribeJobName?: string | null;
+  transcribeStatus?: string | null;
+  aiStatus?: string | null;
+  aiModel?: string | null;
+  aiRawJson?: string | null;
+  errorMessage?: string | null;
+  reviewedAt?: string | null;
+  completedAt?: string | null;
+};
+
+type PracticeLinkSuggestionRow = Schema["PracticeLinkSuggestion"]["type"] & {
+  id: string;
+  tenantId?: string | null;
+  practiceCode?: string | null;
+  abilityCode?: string | null;
+  score?: number | null;
+  reason?: string | null;
+  status?: string | null;
+  sortOrder?: number | null;
+  createdBy?: string | null;
+  updatedBy?: string | null;
+};
+
 type PracticeLite = {
+  id?: string | null;
   practice_code: string;
   category_name?: string | null;
   name?: string | null;
@@ -16,12 +105,39 @@ type PracticeLite = {
   source_url?: string | null;
   source_type?: string | null;
   status?: string | null;
+  version?: number | null;
+  tenantId?: string | null;
+  createdBy?: string | null;
+  updatedBy?: string | null;
+  visibility?: string | null;
+  publishScope?: string | null;
+  ownerType?: string | null;
+  owner?: string | null;
+  practiceCategory?: string | null;
+  practiceSourceType?: string | null;
+  audioKey?: string | null;
+  recordedAt?: string | null;
+  transcriptKey?: string | null;
+  transcriptText?: string | null;
+  transcribeJobName?: string | null;
+  transcribeStatus?: string | null;
+  aiStatus?: string | null;
+  aiModel?: string | null;
+  aiRawJson?: string | null;
+  errorMessage?: string | null;
+  reviewedAt?: string | null;
+  completedAt?: string | null;
 };
 
 type PracticeMap = Record<string, PracticeLite>;
 
 function s(v: unknown): string {
   return String(v ?? "").trim();
+}
+
+function n(v: unknown, fallback = 0): number {
+  const value = Number(v ?? fallback);
+  return Number.isFinite(value) ? value : fallback;
 }
 
 function chunk<T>(arr: T[], size: number): T[][] {
@@ -33,13 +149,94 @@ function chunk<T>(arr: T[], size: number): T[][] {
 function previewText(v: unknown, max = 120): string {
   const text = s(v).replace(/\s+/g, " ");
   if (!text) return "";
-  return text.length <= max ? text : text.slice(0, max) + "…";
+  return text.length <= max ? text : `${text.slice(0, max)}…`;
 }
 
-function buildAbilityMaps(codes: Array<Schema["AbilityCode"]["type"]>) {
-  const byCode = new Map<string, Schema["AbilityCode"]["type"]>();
-  for (const c of codes) {
-    byCode.set(String(c.code), c);
+function errorText(errors?: GraphqlErrorLike[] | null): string {
+  const messages = (errors ?? []).map((e) => s(e.message)).filter(Boolean);
+  return messages.join("\n") || "GraphQL request failed.";
+}
+
+function isRecord(v: unknown): v is Record<string, unknown> {
+  return typeof v === "object" && v !== null;
+}
+
+function readValue(obj: unknown, key: string): unknown {
+  if (!isRecord(obj)) return undefined;
+  return obj[key];
+}
+
+async function listAll<T, TArgs>(
+  listFn: (args: TArgs) => Promise<ListResult<T>>,
+  args?: Partial<Omit<ListArgs, "authMode" | "limit" | "nextToken">>,
+): Promise<T[]> {
+  const rows: T[] = [];
+  let nextToken: string | null | undefined = undefined;
+
+  do {
+    const request = {
+      authMode: "userPool",
+      limit: 1000,
+      ...(args ?? {}),
+      nextToken,
+    } satisfies ListArgs;
+
+    const result = await listFn(request as unknown as TArgs);
+
+    if (result.errors?.length) {
+      throw new Error(errorText(result.errors));
+    }
+
+    rows.push(...(result.data ?? []));
+    nextToken = result.nextToken ?? null;
+  } while (nextToken);
+
+  return rows;
+}
+
+function toPracticeLite(row: PracticeCodeRow): PracticeLite | null {
+  const practiceCode = s(row.practice_code);
+  if (!practiceCode) return null;
+
+  return {
+    id: row.id ?? null,
+    practice_code: practiceCode,
+    category_name: row.category_name ?? null,
+    name: row.name ?? null,
+    memo: row.memo ?? null,
+    source_url: row.source_url ?? null,
+    source_type: row.source_type ?? null,
+    status: row.status ?? null,
+    version: row.version ?? null,
+    tenantId: row.tenantId ?? null,
+    createdBy: row.createdBy ?? null,
+    updatedBy: row.updatedBy ?? null,
+    visibility: row.visibility ?? null,
+    publishScope: row.publishScope ?? null,
+    ownerType: row.ownerType ?? null,
+    owner: row.owner ?? null,
+    practiceCategory: row.practiceCategory ?? null,
+    practiceSourceType: row.practiceSourceType ?? null,
+    audioKey: row.audioKey ?? null,
+    recordedAt: row.recordedAt ?? null,
+    transcriptKey: row.transcriptKey ?? null,
+    transcriptText: row.transcriptText ?? null,
+    transcribeJobName: row.transcribeJobName ?? null,
+    transcribeStatus: row.transcribeStatus ?? null,
+    aiStatus: row.aiStatus ?? null,
+    aiModel: row.aiModel ?? null,
+    aiRawJson: row.aiRawJson ?? null,
+    errorMessage: row.errorMessage ?? null,
+    reviewedAt: row.reviewedAt ?? null,
+    completedAt: row.completedAt ?? null,
+  };
+}
+
+function buildAbilityMaps(codes: AbilityCodeRow[]) {
+  const byCode = new Map<string, AbilityCodeRow>();
+  for (const code of codes) {
+    const key = s(code.code);
+    if (key) byCode.set(key, code);
   }
 
   function buildCodeName(code: string): string {
@@ -52,7 +249,7 @@ function buildAbilityMaps(codes: Array<Schema["AbilityCode"]["type"]>) {
     const item = byCode.get(code);
     if (!item) return "-";
 
-    const parentCode = s((item as any).parent_code);
+    const parentCode = s(item.parent_code);
     if (!parentCode) return "-";
 
     const parent = byCode.get(parentCode);
@@ -61,47 +258,42 @@ function buildAbilityMaps(codes: Array<Schema["AbilityCode"]["type"]>) {
     return `${s(parent.code)}_${s(parent.name)}`;
   }
 
-  return { byCode, buildCodeName, buildParentLabel };
+  return { buildCodeName, buildParentLabel };
 }
 
-export default function PracticeSearchPanel(_props: { owner?: string }) {
+export default function PracticeSearchPanel(props: { owner?: string }) {
+  void props;
+
   const client = useMemo(() => generateClient<Schema>(), []);
 
   const [viewMode, setViewMode] = useState<ViewMode>("ability");
 
   const [abilityRawCount, setAbilityRawCount] = useState(0);
-  const [abilityOptions, setAbilityOptions] = useState<
-    Array<Schema["AbilityCode"]["type"]>
-  >([]);
-  const [allAbilityCodes, setAllAbilityCodes] = useState<
-    Array<Schema["AbilityCode"]["type"]>
-  >([]);
-  const [selectedAbility, setSelectedAbility] = useState<string>("");
+  const [abilityOptions, setAbilityOptions] = useState<AbilityCodeRow[]>([]);
+  const [allAbilityCodes, setAllAbilityCodes] = useState<AbilityCodeRow[]>([]);
+  const [selectedAbility, setSelectedAbility] = useState("");
 
   const [sortKey, setSortKey] = useState<SortKey>("scoreSum");
-  const [rows, setRows] = useState<Array<Schema["AbilityPracticeAgg"]["type"]>>(
-    [],
-  );
-
+  const [rows, setRows] = useState<AbilityPracticeAggRow[]>([]);
   const [practiceByCode, setPracticeByCode] = useState<PracticeMap>({});
 
   const [loadingAbility, setLoadingAbility] = useState(false);
   const [loadingAgg, setLoadingAgg] = useState(false);
   const [loadingPractice, setLoadingPractice] = useState(false);
-  const [error, setError] = useState<string>("");
+  const [loadingDebug, setLoadingDebug] = useState(false);
+  const [loadingSuggestions, setLoadingSuggestions] = useState(false);
+
+  const [error, setError] = useState("");
 
   const [practiceReloadKey, setPracticeReloadKey] = useState(0);
 
-  const [pageSize, setPageSize] = useState<number>(5);
-  const [page, setPage] = useState<number>(0);
+  const [pageSize, setPageSize] = useState(5);
+  const [page, setPage] = useState(0);
 
   const [suggestionPage, setSuggestionPage] = useState(0);
-  const [suggestionPageSize, setSuggestionPageSize] = useState(5);
+  const suggestionPageSize = 5;
 
-  const [debugRows, setDebugRows] = useState<Array<Schema["PracticeCode"]["type"]>>(
-    [],
-  );
-  const [loadingDebug, setLoadingDebug] = useState(false);
+  const [debugRows, setDebugRows] = useState<PracticeCodeRow[]>([]);
   const [debugFilter, setDebugFilter] = useState("");
   const [debugStatusFilter, setDebugStatusFilter] = useState("");
 
@@ -114,104 +306,193 @@ export default function PracticeSearchPanel(_props: { owner?: string }) {
   const [registeringPracticeCode, setRegisteringPracticeCode] = useState("");
   const [registerMessage, setRegisterMessage] = useState("");
 
+  const [archivingPracticeCode, setArchivingPracticeCode] = useState("");
+  const [archiveMessage, setArchiveMessage] = useState("");
+
   const [selectedPracticeCode, setSelectedPracticeCode] = useState("");
-  const [suggestions, setSuggestions] = useState<
-    Array<Schema["PracticeLinkSuggestion"]["type"]>
-  >([]);
-  const [loadingSuggestions, setLoadingSuggestions] = useState(false);
+  const [suggestions, setSuggestions] = useState<PracticeLinkSuggestionRow[]>(
+    [],
+  );
   const [savingSuggestionId, setSavingSuggestionId] = useState("");
 
+  const listAbilityCodes = useCallback(async () => {
+    return listAll<
+      AbilityCodeRow,
+      Parameters<typeof client.models.AbilityCode.list>[0]
+    >(
+      (args) =>
+        client.models.AbilityCode.list(args) as unknown as Promise<
+          ListResult<AbilityCodeRow>
+        >,
+    );
+  }, [client]);
+
+  const listAbilityPracticeAggs = useCallback(
+    async (
+      filter: Record<string, unknown>,
+    ): Promise<AbilityPracticeAggRow[]> => {
+      return listAll<
+        AbilityPracticeAggRow,
+        Parameters<typeof client.models.AbilityPracticeAgg.list>[0]
+      >(
+        (args) =>
+          client.models.AbilityPracticeAgg.list(args) as unknown as Promise<
+            ListResult<AbilityPracticeAggRow>
+          >,
+        { filter },
+      );
+    },
+    [client],
+  );
+
+  const listAbilityPracticeLinks = useCallback(
+    async (
+      filter: Record<string, unknown>,
+    ): Promise<AbilityPracticeLinkRow[]> => {
+      return listAll<
+        AbilityPracticeLinkRow,
+        Parameters<typeof client.models.AbilityPracticeLink.list>[0]
+      >(
+        (args) =>
+          client.models.AbilityPracticeLink.list(args) as unknown as Promise<
+            ListResult<AbilityPracticeLinkRow>
+          >,
+        { filter },
+      );
+    },
+    [client],
+  );
+
+  const listPracticeCodes = useCallback(
+    async (filter?: Record<string, unknown>): Promise<PracticeCodeRow[]> => {
+      return listAll<
+        PracticeCodeRow,
+        Parameters<typeof client.models.PracticeCode.list>[0]
+      >(
+        (args) =>
+          client.models.PracticeCode.list(args) as unknown as Promise<
+            ListResult<PracticeCodeRow>
+          >,
+        filter ? { filter } : undefined,
+      );
+    },
+    [client],
+  );
+
+  const listPracticeLinkSuggestions = useCallback(
+    async (
+      filter: Record<string, unknown>,
+    ): Promise<PracticeLinkSuggestionRow[]> => {
+      return listAll<
+        PracticeLinkSuggestionRow,
+        Parameters<typeof client.models.PracticeLinkSuggestion.list>[0]
+      >(
+        (args) =>
+          client.models.PracticeLinkSuggestion.list(args) as unknown as Promise<
+            ListResult<PracticeLinkSuggestionRow>
+          >,
+        { filter },
+      );
+    },
+    [client],
+  );
+
   useEffect(() => {
+    let ignore = false;
+
     (async () => {
       setLoadingAbility(true);
       setError("");
+
       try {
-        const { data, errors } = await client.models.AbilityCode.list({
-          authMode: "userPool",
-          limit: 10000,
-        });
+        const raw = await listAbilityCodes();
+        if (ignore) return;
 
-        if (errors?.length) {
-          throw new Error(errors.map((e) => e.message).join("\n"));
-        }
-
-        const raw = data ?? [];
         setAbilityRawCount(raw.length);
         setAllAbilityCodes(raw);
 
         const filtered = raw.filter((x) => {
-          const status = s((x as any).status || "active").toLowerCase();
-          const level = Number((x as any).level ?? 0);
+          const status = s(x.status || "active").toLowerCase();
+          const level = n(x.level);
           return (level === 1 || level === 2) && status === "active";
         });
 
         const items = [...filtered].sort((a, b) => {
-          const sa = Number((a as any).sort_order ?? 999999);
-          const sb = Number((b as any).sort_order ?? 999999);
+          const sa = n(a.sort_order, 999999);
+          const sb = n(b.sort_order, 999999);
           if (sa !== sb) return sa - sb;
-          return s((a as any).code).localeCompare(s((b as any).code));
+          return s(a.code).localeCompare(s(b.code));
         });
 
         setAbilityOptions(items);
 
-        const first =
-          items.find((i) => Number((i as any).level) === 2) ?? items[0];
-        if (first?.code) setSelectedAbility(String(first.code));
-      } catch (e: any) {
-        setError(e?.message ?? JSON.stringify(e, null, 2));
+        const first = items.find((i) => n(i.level) === 2) ?? items[0];
+        setSelectedAbility(first?.code ? s(first.code) : "");
+      } catch (e) {
+        if (ignore) return;
+        setError(e instanceof Error ? e.message : JSON.stringify(e, null, 2));
         setAbilityRawCount(0);
         setAbilityOptions([]);
         setAllAbilityCodes([]);
         setSelectedAbility("");
       } finally {
-        setLoadingAbility(false);
+        if (!ignore) setLoadingAbility(false);
       }
     })();
-  }, [client]);
+
+    return () => {
+      ignore = true;
+    };
+  }, [listAbilityCodes]);
 
   useEffect(() => {
+    let ignore = false;
+
     if (!selectedAbility) {
       setRows([]);
-      return;
+      return () => {
+        ignore = true;
+      };
     }
 
     (async () => {
       setLoadingAgg(true);
       setError("");
+
       try {
-        const { data, errors } = await client.models.AbilityPracticeAgg.list({
-          authMode: "userPool",
-          filter: { abilityCode: { eq: selectedAbility } },
-          limit: 10000,
+        const list = await listAbilityPracticeAggs({
+          abilityCode: { eq: selectedAbility },
         });
 
-        if (errors?.length) {
-          throw new Error(errors.map((e) => e.message).join("\n"));
-        }
+        if (ignore) return;
 
-        const list = data ?? [];
-        const onlyPR = list.filter((r) =>
-          s((r as any).practiceCode).startsWith("PR-"),
-        );
+        const onlyPR = list.filter((r) => s(r.practiceCode).startsWith("PR-"));
 
         const sorted = [...onlyPR].sort((a, b) => {
-          const av = Number((a as any)[sortKey] ?? 0);
-          const bv = Number((b as any)[sortKey] ?? 0);
+          const av = n(a[sortKey]);
+          const bv = n(b[sortKey]);
           return bv - av;
         });
 
         setRows(sorted);
         setPage(0);
-      } catch (e: any) {
-        setError(e?.message ?? JSON.stringify(e, null, 2));
+      } catch (e) {
+        if (ignore) return;
+        setError(e instanceof Error ? e.message : JSON.stringify(e, null, 2));
         setRows([]);
       } finally {
-        setLoadingAgg(false);
+        if (!ignore) setLoadingAgg(false);
       }
     })();
-  }, [client, selectedAbility, sortKey]);
+
+    return () => {
+      ignore = true;
+    };
+  }, [listAbilityPracticeAggs, selectedAbility, sortKey, practiceReloadKey]);
 
   useEffect(() => {
+    let ignore = false;
+
     (async () => {
       setLoadingPractice(true);
       setError("");
@@ -220,207 +501,189 @@ export default function PracticeSearchPanel(_props: { owner?: string }) {
         const codes = Array.from(
           new Set(
             rows
-              .map((r) => s((r as any).practiceCode))
-              .filter((c) => c.startsWith("PR-")),
+              .map((r) => s(r.practiceCode))
+              .filter((code) => code.startsWith("PR-")),
           ),
         );
 
         if (codes.length === 0) {
-          setPracticeByCode({});
+          if (!ignore) setPracticeByCode({});
           return;
         }
 
-        const baseMap: PracticeMap = practiceReloadKey
-          ? {}
-          : { ...practiceByCode };
-        const need = codes.filter((c) => !baseMap[c]);
-        if (need.length === 0) {
-          setPracticeByCode(baseMap);
-          return;
-        }
-
-        const batches = chunk(need, 20);
+        const nextMap: PracticeMap = {};
+        const batches = chunk(codes, 20);
 
         for (const batch of batches) {
-          const or = batch.map((pc) => ({ practice_code: { eq: pc } }));
+          const or = batch.map((practiceCode) => ({
+            practice_code: { eq: practiceCode },
+          }));
 
-          const { data, errors } = await client.models.PracticeCode.list({
-            authMode: "userPool",
-            filter: { or },
-            limit: 10000,
-          });
+          const data = await listPracticeCodes({ or });
 
-          if (errors?.length) {
-            throw new Error(errors.map((e) => e.message).join("\n"));
-          }
-
-          for (const it of data ?? []) {
-            const pc = s((it as any).practice_code);
-            if (!pc) continue;
-
-            baseMap[pc] = {
-              practice_code: pc,
-              category_name: (it as any).category_name ?? null,
-              name: (it as any).name ?? null,
-              memo: (it as any).memo ?? null,
-              source_url: (it as any).source_url ?? null,
-              source_type: (it as any).source_type ?? null,
-              status: (it as any).status ?? null,
-            };
+          for (const item of data) {
+            const lite = toPracticeLite(item);
+            if (lite) nextMap[lite.practice_code] = lite;
           }
         }
 
-        setPracticeByCode(baseMap);
-      } catch (e: any) {
-        setError(e?.message ?? JSON.stringify(e, null, 2));
+        if (!ignore) setPracticeByCode(nextMap);
+      } catch (e) {
+        if (!ignore) {
+          setError(e instanceof Error ? e.message : JSON.stringify(e, null, 2));
+        }
       } finally {
-        setLoadingPractice(false);
+        if (!ignore) setLoadingPractice(false);
       }
     })();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [client, rows, practiceReloadKey]);
+
+    return () => {
+      ignore = true;
+    };
+  }, [listPracticeCodes, rows, practiceReloadKey]);
 
   useEffect(() => {
-    if (viewMode !== "debug") return;
+    let ignore = false;
+
+    if (viewMode !== "debug") {
+      return () => {
+        ignore = true;
+      };
+    }
 
     (async () => {
       setLoadingDebug(true);
       setError("");
+
       try {
-        const { data, errors } = await client.models.PracticeCode.list({
-          authMode: "userPool",
-          limit: 10000,
-        });
+        const list = await listPracticeCodes();
 
-        if (errors?.length) {
-          throw new Error(errors.map((e) => e.message).join("\n"));
-        }
+        if (ignore) return;
 
-        const list = (data ?? []).filter((x) =>
-          s((x as any).practice_code).startsWith("PR-"),
-        );
+        const onlyPR = list.filter((x) => s(x.practice_code).startsWith("PR-"));
 
-        list.sort((a, b) => {
-          const ra = s((a as any).recordedAt);
-          const rb = s((b as any).recordedAt);
+        onlyPR.sort((a, b) => {
+          const ra = s(a.recordedAt);
+          const rb = s(b.recordedAt);
           return rb.localeCompare(ra);
         });
 
-        setDebugRows(list);
+        setDebugRows(onlyPR);
         setPage(0);
-      } catch (e: any) {
-        setError(e?.message ?? JSON.stringify(e, null, 2));
+      } catch (e) {
+        if (ignore) return;
+        setError(e instanceof Error ? e.message : JSON.stringify(e, null, 2));
         setDebugRows([]);
       } finally {
-        setLoadingDebug(false);
+        if (!ignore) setLoadingDebug(false);
       }
     })();
-  }, [client, viewMode, practiceReloadKey]);
+
+    return () => {
+      ignore = true;
+    };
+  }, [listPracticeCodes, viewMode, practiceReloadKey]);
 
   useEffect(() => {
+    let ignore = false;
+
     if (!selectedPracticeCode) {
       setSuggestions([]);
-      return;
+      return () => {
+        ignore = true;
+      };
     }
 
     (async () => {
       setLoadingSuggestions(true);
       setError("");
+
       try {
-        const { data, errors } =
-          await client.models.PracticeLinkSuggestion.list({
-            authMode: "userPool",
-            filter: {
-              practiceCode: { eq: selectedPracticeCode },
-            },
-            limit: 1000,
-          });
+        const list = await listPracticeLinkSuggestions({
+          practiceCode: { eq: selectedPracticeCode },
+        });
 
-        if (errors?.length) {
-          throw new Error(errors.map((e) => e.message).join("\n"));
-        }
+        if (ignore) return;
 
-        const list = [...(data ?? [])].sort((a, b) => {
-          const sa = Number((a as any).sortOrder ?? 9999);
-          const sb = Number((b as any).sortOrder ?? 9999);
+        const sorted = [...list].sort((a, b) => {
+          const sa = n(a.sortOrder, 9999);
+          const sb = n(b.sortOrder, 9999);
           return sa - sb;
         });
 
-        setSuggestions(list);
+        setSuggestions(sorted);
         setSuggestionPage(0);
-      } catch (e: any) {
-        setError(e?.message ?? JSON.stringify(e, null, 2));
+      } catch (e) {
+        if (ignore) return;
+        setError(e instanceof Error ? e.message : JSON.stringify(e, null, 2));
         setSuggestions([]);
       } finally {
-        setLoadingSuggestions(false);
+        if (!ignore) setLoadingSuggestions(false);
       }
     })();
-  }, [client, selectedPracticeCode, practiceReloadKey]);
+
+    return () => {
+      ignore = true;
+    };
+  }, [listPracticeLinkSuggestions, selectedPracticeCode, practiceReloadKey]);
 
   const abilityGroups = useMemo(() => {
-    const parents = abilityOptions.filter(
-      (a) => Number((a as any).level) === 1,
-    );
-    const children = abilityOptions.filter(
-      (a) => Number((a as any).level) === 2,
-    );
+    const parents = abilityOptions.filter((a) => n(a.level) === 1);
+    const children = abilityOptions.filter((a) => n(a.level) === 2);
 
-    const childrenByParent = new Map<
-      string,
-      Array<Schema["AbilityCode"]["type"]>
-    >();
-    for (const c of children) {
-      const parentCode = s((c as any).parent_code);
+    const childrenByParent = new Map<string, AbilityCodeRow[]>();
+
+    for (const child of children) {
+      const parentCode = s(child.parent_code);
       if (!childrenByParent.has(parentCode)) {
         childrenByParent.set(parentCode, []);
       }
-      childrenByParent.get(parentCode)!.push(c);
+      childrenByParent.get(parentCode)?.push(child);
     }
 
-    for (const [k, arr] of childrenByParent.entries()) {
-      arr.sort((a, b) => {
-        const sa = Number((a as any).sort_order ?? 999999);
-        const sb = Number((b as any).sort_order ?? 999999);
+    for (const [key, value] of childrenByParent.entries()) {
+      value.sort((a, b) => {
+        const sa = n(a.sort_order, 999999);
+        const sb = n(b.sort_order, 999999);
         if (sa !== sb) return sa - sb;
-        return s((a as any).code).localeCompare(s((b as any).code));
+        return s(a.code).localeCompare(s(b.code));
       });
-      childrenByParent.set(k, arr);
+      childrenByParent.set(key, value);
     }
 
     parents.sort((a, b) => {
-      const sa = Number((a as any).sort_order ?? 999999);
-      const sb = Number((b as any).sort_order ?? 999999);
+      const sa = n(a.sort_order, 999999);
+      const sb = n(b.sort_order, 999999);
       if (sa !== sb) return sa - sb;
-      return s((a as any).code).localeCompare(s((b as any).code));
+      return s(a.code).localeCompare(s(b.code));
     });
 
     return { parents, childrenByParent };
   }, [abilityOptions]);
 
   const selectedAbilityLabel = useMemo(() => {
-    const a = abilityOptions.find(
-      (x) => String(x.code) === String(selectedAbility),
-    );
-    if (!a) return "";
-    const level = Number((a as any).level);
+    const found = abilityOptions.find((x) => s(x.code) === s(selectedAbility));
+    if (!found) return "";
+
+    const level = n(found.level);
     const prefix = level === 1 ? "大分類" : level === 2 ? "中分類" : "小分類";
-    return `${prefix}：${s((a as any).name)}（${s((a as any).code)}）`;
+    return `${prefix}：${s(found.name)}（${s(found.code)}）`;
   }, [abilityOptions, selectedAbility]);
 
   const totalScoreSum = useMemo(() => {
-    return rows.reduce((acc, r) => acc + Number((r as any).scoreSum ?? 0), 0);
+    return rows.reduce((acc, row) => acc + n(row.scoreSum), 0);
   }, [rows]);
 
   const filteredDebugRows = useMemo(() => {
     const q = s(debugFilter).toLowerCase();
     const st = s(debugStatusFilter).toUpperCase();
 
-    return debugRows.filter((r) => {
-      const practiceCode = s((r as any).practice_code);
-      const name = s((r as any).name);
-      const memo = s((r as any).memo);
-      const transcriptText = s((r as any).transcriptText);
-      const status = s((r as any).status).toUpperCase();
+    return debugRows.filter((row) => {
+      const practiceCode = s(row.practice_code);
+      const name = s(row.name);
+      const memo = s(row.memo);
+      const transcriptText = s(row.transcriptText);
+      const status = s(row.status).toUpperCase();
 
       const hitQuery =
         !q ||
@@ -440,17 +703,22 @@ export default function PracticeSearchPanel(_props: { owner?: string }) {
     [allAbilityCodes],
   );
 
-  const sourceRows = viewMode === "ability" ? rows : filteredDebugRows;
-
-  const totalRows = sourceRows.length;
+  const totalRows =
+    viewMode === "ability" ? rows.length : filteredDebugRows.length;
   const totalPages = Math.max(1, Math.ceil(totalRows / pageSize));
   const clampedPage = Math.min(Math.max(page, 0), totalPages - 1);
 
-  const pageRows = useMemo(() => {
+  const pageRowsAbility = useMemo(() => {
     const start = clampedPage * pageSize;
     const end = start + pageSize;
-    return sourceRows.slice(start, end);
-  }, [sourceRows, clampedPage, pageSize]);
+    return rows.slice(start, end);
+  }, [rows, clampedPage, pageSize]);
+
+  const pageRowsDebug = useMemo(() => {
+    const start = clampedPage * pageSize;
+    const end = start + pageSize;
+    return filteredDebugRows.slice(start, end);
+  }, [filteredDebugRows, clampedPage, pageSize]);
 
   const from = totalRows === 0 ? 0 : clampedPage * pageSize + 1;
   const to = Math.min(totalRows, (clampedPage + 1) * pageSize);
@@ -469,7 +737,7 @@ export default function PracticeSearchPanel(_props: { owner?: string }) {
     const start = suggestionClampedPage * suggestionPageSize;
     const end = start + suggestionPageSize;
     return suggestions.slice(start, end);
-  }, [suggestions, suggestionClampedPage, suggestionPageSize]);
+  }, [suggestions, suggestionClampedPage]);
 
   const suggestionFrom =
     suggestionTotalRows === 0
@@ -480,6 +748,13 @@ export default function PracticeSearchPanel(_props: { owner?: string }) {
     (suggestionClampedPage + 1) * suggestionPageSize,
   );
 
+  const acceptedCount = useMemo(() => {
+    return suggestions.filter((x) => {
+      const st = s(x.status).toLowerCase();
+      return st === "accepted" || st === "edited";
+    }).length;
+  }, [suggestions]);
+
   const loading =
     loadingAbility ||
     loadingAgg ||
@@ -487,10 +762,21 @@ export default function PracticeSearchPanel(_props: { owner?: string }) {
     loadingDebug ||
     loadingSuggestions;
 
+  async function findPracticeRowByCode(
+    practiceCode: string,
+  ): Promise<PracticeCodeRow | null> {
+    const list = await listPracticeCodes({
+      practice_code: { eq: practiceCode },
+    });
+
+    return list[0] ?? null;
+  }
+
   async function handleAnalyzePractice(practiceId: string) {
     setAnalyzeMessage("");
     setSuggestMessage("");
     setRegisterMessage("");
+    setArchiveMessage("");
     setError("");
     setAnalyzingPracticeId(practiceId);
 
@@ -500,17 +786,17 @@ export default function PracticeSearchPanel(_props: { owner?: string }) {
       });
 
       if (result.errors?.length) {
-        throw new Error(result.errors.map((e) => e.message).join("\n"));
+        throw new Error(errorText(result.errors));
       }
 
-      const name = s(result.data?.name);
+      const name = s(readValue(result.data, "name"));
       setAnalyzeMessage(
         name ? `AI生成が完了しました: ${name}` : "AI生成が完了しました。",
       );
 
       setPracticeReloadKey((k) => k + 1);
-    } catch (e: any) {
-      setError(e?.message ?? "AI生成に失敗しました。");
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "AI生成に失敗しました。");
     } finally {
       setAnalyzingPracticeId("");
     }
@@ -520,6 +806,7 @@ export default function PracticeSearchPanel(_props: { owner?: string }) {
     setSuggestMessage("");
     setAnalyzeMessage("");
     setRegisterMessage("");
+    setArchiveMessage("");
     setError("");
     setSuggestingPracticeId(practiceId);
 
@@ -529,22 +816,24 @@ export default function PracticeSearchPanel(_props: { owner?: string }) {
       });
 
       if (result.errors?.length) {
-        throw new Error(result.errors.map((e) => e.message).join("\n"));
+        throw new Error(errorText(result.errors));
       }
 
-      const count = Number(result.data?.suggestionCount ?? 0);
+      const count = n(readValue(result.data, "suggestionCount"));
       setSuggestMessage(`AI候補生成が完了しました: ${count}件`);
       setSelectedPracticeCode(practiceCode);
       setPracticeReloadKey((k) => k + 1);
-    } catch (e: any) {
-      setError(e?.message ?? "Ability候補生成に失敗しました。");
+    } catch (e) {
+      setError(
+        e instanceof Error ? e.message : "Ability候補生成に失敗しました。",
+      );
     } finally {
       setSuggestingPracticeId("");
     }
   }
 
   async function updateSuggestionStatus(
-    row: Schema["PracticeLinkSuggestion"]["type"],
+    row: PracticeLinkSuggestionRow,
     checked: boolean,
   ) {
     setError("");
@@ -553,63 +842,73 @@ export default function PracticeSearchPanel(_props: { owner?: string }) {
     try {
       const nextStatus = checked ? "accepted" : "rejected";
 
-      const result = await client.models.PracticeLinkSuggestion.update({
+      const payload = {
         id: row.id,
-        tenantId: row.tenantId,
-        practiceCode: row.practiceCode,
-        abilityCode: row.abilityCode,
-        score: Number((row as any).score ?? 1),
+        tenantId: row.tenantId ?? undefined,
+        practiceCode: row.practiceCode ?? "",
+        abilityCode: row.abilityCode ?? "",
+        score: n(row.score, 1),
         reason: row.reason ?? "",
         status: nextStatus,
-        sortOrder: Number((row as any).sortOrder ?? 0),
+        sortOrder: n(row.sortOrder),
         createdBy: row.createdBy ?? undefined,
         updatedBy: "practice-search-panel",
-      });
+      };
+
+      const result = await client.models.PracticeLinkSuggestion.update(
+        payload as unknown as Parameters<
+          typeof client.models.PracticeLinkSuggestion.update
+        >[0],
+      );
 
       if (result.errors?.length) {
-        throw new Error(result.errors.map((e) => e.message).join("\n"));
+        throw new Error(errorText(result.errors));
       }
 
       setPracticeReloadKey((k) => k + 1);
-    } catch (e: any) {
-      setError(e?.message ?? "候補ステータス更新に失敗しました。");
+    } catch (e) {
+      setError(
+        e instanceof Error ? e.message : "候補ステータス更新に失敗しました。",
+      );
     } finally {
       setSavingSuggestionId("");
     }
   }
 
   async function updateSuggestionScore(
-    row: Schema["PracticeLinkSuggestion"]["type"],
+    row: PracticeLinkSuggestionRow,
     score: number,
   ) {
     setError("");
     setSavingSuggestionId(row.id);
 
     try {
-      const currentStatus = s((row as any).status).toLowerCase();
-      const nextStatus =
-        currentStatus === "accepted" ? "edited" : "edited";
-
-      const result = await client.models.PracticeLinkSuggestion.update({
+      const payload = {
         id: row.id,
-        tenantId: row.tenantId,
-        practiceCode: row.practiceCode,
-        abilityCode: row.abilityCode,
+        tenantId: row.tenantId ?? undefined,
+        practiceCode: row.practiceCode ?? "",
+        abilityCode: row.abilityCode ?? "",
         score,
         reason: row.reason ?? "",
-        status: nextStatus,
-        sortOrder: Number((row as any).sortOrder ?? 0),
+        status: "edited",
+        sortOrder: n(row.sortOrder),
         createdBy: row.createdBy ?? undefined,
         updatedBy: "practice-search-panel",
-      });
+      };
+
+      const result = await client.models.PracticeLinkSuggestion.update(
+        payload as unknown as Parameters<
+          typeof client.models.PracticeLinkSuggestion.update
+        >[0],
+      );
 
       if (result.errors?.length) {
-        throw new Error(result.errors.map((e) => e.message).join("\n"));
+        throw new Error(errorText(result.errors));
       }
 
       setPracticeReloadKey((k) => k + 1);
-    } catch (e: any) {
-      setError(e?.message ?? "score更新に失敗しました。");
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "score更新に失敗しました。");
     } finally {
       setSavingSuggestionId("");
     }
@@ -617,6 +916,7 @@ export default function PracticeSearchPanel(_props: { owner?: string }) {
 
   async function handleRegisterPracticeLinks(practiceCode: string) {
     setRegisterMessage("");
+    setArchiveMessage("");
     setError("");
     setRegisteringPracticeCode(practiceCode);
 
@@ -626,25 +926,228 @@ export default function PracticeSearchPanel(_props: { owner?: string }) {
       });
 
       if (result.errors?.length) {
-        throw new Error(result.errors.map((e) => e.message).join("\n"));
+        throw new Error(errorText(result.errors));
       }
 
-      const count = Number(result.data?.registeredCount ?? 0);
+      const count = n(readValue(result.data, "registeredCount"));
       setRegisterMessage(`本登録が完了しました: ${count}件`);
       setPracticeReloadKey((k) => k + 1);
-    } catch (e: any) {
-      setError(e?.message ?? "本登録に失敗しました。");
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "本登録に失敗しました。");
     } finally {
       setRegisteringPracticeCode("");
     }
   }
 
-  const acceptedCount = useMemo(() => {
-    return suggestions.filter((x) => {
-      const st = s((x as any).status).toLowerCase();
-      return st === "accepted" || st === "edited";
-    }).length;
-  }, [suggestions]);
+  async function handleCleanupPracticeByCode(
+    practiceCode: string,
+    practiceRow?: PracticeCodeRow | null,
+  ) {
+    const normalizedPracticeCode = s(practiceCode);
+    if (!normalizedPracticeCode) {
+      setError("practiceCode が空のため整理できません。");
+      return;
+    }
+
+    setError("");
+    setArchiveMessage("");
+    setAnalyzeMessage("");
+    setSuggestMessage("");
+    setRegisterMessage("");
+    setArchivingPracticeCode(normalizedPracticeCode);
+
+    try {
+      const resolvedPractice =
+        practiceRow === undefined
+          ? await findPracticeRowByCode(normalizedPracticeCode)
+          : practiceRow;
+
+      const practiceName = s(resolvedPractice?.name);
+      const currentStatus = s(resolvedPractice?.status).toUpperCase();
+      const hasPracticeRow = Boolean(resolvedPractice);
+
+      const confirmed = window.confirm(
+        hasPracticeRow
+          ? [
+              `Practice をアーカイブして関連データを整理します。`,
+              `${normalizedPracticeCode}${practiceName ? ` / ${practiceName}` : ""}`,
+              ``,
+              `- PracticeCode.status を ARCHIVED に変更`,
+              `- AbilityPracticeLink を削除`,
+              `- AbilityPracticeAgg を削除`,
+              `- PracticeLinkSuggestion を削除`,
+              ``,
+              `過去の ObservationRecord / ObservationAbilityLink / Schedule は削除しません。`,
+              `実行してよろしいですか？`,
+            ].join("\n")
+          : [
+              `PracticeCode が見つからないため、孤児データを整理します。`,
+              `${normalizedPracticeCode}`,
+              ``,
+              `- AbilityPracticeLink を削除`,
+              `- AbilityPracticeAgg を削除`,
+              `- PracticeLinkSuggestion を削除`,
+              ``,
+              `PracticeCode 本体は存在しないため更新しません。`,
+              `実行してよろしいですか？`,
+            ].join("\n"),
+      );
+
+      if (!confirmed) return;
+
+      const [abilityLinks, abilityAggs, suggestionRows] = await Promise.all([
+        listAbilityPracticeLinks({
+          practiceCode: { eq: normalizedPracticeCode },
+        }),
+        listAbilityPracticeAggs({
+          practiceCode: { eq: normalizedPracticeCode },
+        }),
+        listPracticeLinkSuggestions({
+          practiceCode: { eq: normalizedPracticeCode },
+        }),
+      ]);
+
+      if (resolvedPractice && currentStatus !== "ARCHIVED") {
+        const updatePayload = {
+          id: resolvedPractice.id ?? undefined,
+          practice_code:
+            resolvedPractice.practice_code ?? normalizedPracticeCode,
+          category_code: resolvedPractice.category_code ?? undefined,
+          category_name: resolvedPractice.category_name ?? undefined,
+          name: resolvedPractice.name ?? "",
+          memo: resolvedPractice.memo ?? undefined,
+          source_type: resolvedPractice.source_type ?? undefined,
+          source_ref: resolvedPractice.source_ref ?? undefined,
+          source_url: resolvedPractice.source_url ?? undefined,
+          status: "ARCHIVED",
+          version: n(resolvedPractice.version, 1),
+          tenantId: resolvedPractice.tenantId ?? undefined,
+          createdBy: resolvedPractice.createdBy ?? undefined,
+          updatedBy: "practice-search-panel",
+          visibility: resolvedPractice.visibility ?? undefined,
+          publishScope: resolvedPractice.publishScope ?? undefined,
+          ownerType: resolvedPractice.ownerType ?? undefined,
+          owner: resolvedPractice.owner ?? undefined,
+          practiceCategory: resolvedPractice.practiceCategory ?? undefined,
+          practiceSourceType: resolvedPractice.practiceSourceType ?? undefined,
+          audioKey: resolvedPractice.audioKey ?? undefined,
+          recordedAt: resolvedPractice.recordedAt ?? undefined,
+          transcriptKey: resolvedPractice.transcriptKey ?? undefined,
+          transcriptText: resolvedPractice.transcriptText ?? undefined,
+          transcribeJobName: resolvedPractice.transcribeJobName ?? undefined,
+          transcribeStatus: resolvedPractice.transcribeStatus ?? undefined,
+          aiStatus: resolvedPractice.aiStatus ?? undefined,
+          aiModel: resolvedPractice.aiModel ?? undefined,
+          aiRawJson: resolvedPractice.aiRawJson ?? undefined,
+          errorMessage: resolvedPractice.errorMessage ?? undefined,
+          reviewedAt: resolvedPractice.reviewedAt ?? undefined,
+          completedAt: resolvedPractice.completedAt ?? undefined,
+        };
+
+        const updateResult = await client.models.PracticeCode.update(
+          updatePayload as unknown as Parameters<
+            typeof client.models.PracticeCode.update
+          >[0],
+        );
+
+        if (updateResult.errors?.length) {
+          throw new Error(errorText(updateResult.errors));
+        }
+      }
+
+      for (const row of abilityLinks) {
+        const result = await client.models.AbilityPracticeLink.delete({
+          abilityCode: row.abilityCode ?? "",
+          practiceCode: row.practiceCode ?? "",
+        } as unknown as Parameters<
+          typeof client.models.AbilityPracticeLink.delete
+        >[0]);
+
+        if (result.errors?.length) {
+          throw new Error(errorText(result.errors));
+        }
+      }
+
+      for (const row of abilityAggs) {
+        const result = await client.models.AbilityPracticeAgg.delete({
+          id: row.id ?? "",
+        } as unknown as Parameters<
+          typeof client.models.AbilityPracticeAgg.delete
+        >[0]);
+
+        if (result.errors?.length) {
+          throw new Error(errorText(result.errors));
+        }
+      }
+
+      for (const row of suggestionRows) {
+        const result = await client.models.PracticeLinkSuggestion.delete({
+          id: row.id,
+        } as unknown as Parameters<
+          typeof client.models.PracticeLinkSuggestion.delete
+        >[0]);
+
+        if (result.errors?.length) {
+          throw new Error(errorText(result.errors));
+        }
+      }
+
+      if (selectedPracticeCode === normalizedPracticeCode) {
+        setSelectedPracticeCode("");
+        setSuggestions([]);
+      }
+
+      setArchiveMessage(
+        [
+          hasPracticeRow
+            ? currentStatus === "ARCHIVED"
+              ? `整理完了: ${normalizedPracticeCode}（PracticeCode は既に ARCHIVED）`
+              : `アーカイブ完了: ${normalizedPracticeCode}`
+            : `孤児データ掃除完了: ${normalizedPracticeCode}`,
+          `AbilityPracticeLink 削除: ${abilityLinks.length}件`,
+          `AbilityPracticeAgg 削除: ${abilityAggs.length}件`,
+          `PracticeLinkSuggestion 削除: ${suggestionRows.length}件`,
+          hasPracticeRow
+            ? currentStatus === "ARCHIVED"
+              ? `PracticeCode 更新: 0件（既に ARCHIVED）`
+              : `PracticeCode 更新: 1件`
+            : `PracticeCode 更新: 0件（本体なし）`,
+        ].join("\n"),
+      );
+
+      setPracticeByCode((prev) => {
+        const current = prev[normalizedPracticeCode];
+        if (!current) return prev;
+
+        return {
+          ...prev,
+          [normalizedPracticeCode]: {
+            ...current,
+            status: "ARCHIVED",
+            updatedBy: "practice-search-panel",
+          },
+        };
+      });
+
+      setPracticeReloadKey((k) => k + 1);
+    } catch (e) {
+      setError(
+        e instanceof Error
+          ? e.message
+          : `整理に失敗しました: ${normalizedPracticeCode}`,
+      );
+    } finally {
+      setArchivingPracticeCode("");
+    }
+  }
+
+  async function handleArchivePractice(practice: PracticeCodeRow) {
+    await handleCleanupPracticeByCode(s(practice.practice_code), practice);
+  }
+
+  async function handleCleanupFromAbilityRow(practiceCode: string) {
+    await handleCleanupPracticeByCode(practiceCode);
+  }
 
   return (
     <div style={{ display: "grid", gap: 12 }}>
@@ -660,6 +1163,7 @@ export default function PracticeSearchPanel(_props: { owner?: string }) {
         >
           Ability起点
         </button>
+
         <button
           onClick={() => {
             setViewMode("debug");
@@ -669,6 +1173,7 @@ export default function PracticeSearchPanel(_props: { owner?: string }) {
         >
           Practice一覧（確認用）
         </button>
+
         <button
           onClick={() => {
             setPracticeByCode({});
@@ -702,32 +1207,26 @@ export default function PracticeSearchPanel(_props: { owner?: string }) {
                 {abilityOptions.length === 0 ? (
                   <option value="">（AbilityCodeが取得できていません）</option>
                 ) : (
-                  <>
-                    {abilityGroups.parents.map((p) => {
-                      const pCode = s((p as any).code);
-                      const label = `【大】${s((p as any).name)}（${pCode}）`;
-                      const kids = abilityGroups.childrenByParent.get(pCode) ?? [];
+                  abilityGroups.parents.map((parent) => {
+                    const parentCode = s(parent.code);
+                    const label = `【大】${s(parent.name)}（${parentCode}）`;
+                    const kids =
+                      abilityGroups.childrenByParent.get(parentCode) ?? [];
 
-                      return (
-                        <optgroup key={pCode} label={label}>
-                          {kids.length === 0 ? (
-                            <option value={pCode}>{label}</option>
-                          ) : (
-                            kids.map((c) => (
-                              <option
-                                key={s((c as any).code)}
-                                value={s((c as any).code)}
-                              >
-                                {`【中】${s((c as any).name)}（${s(
-                                  (c as any).code,
-                                )}）`}
-                              </option>
-                            ))
-                          )}
-                        </optgroup>
-                      );
-                    })}
-                  </>
+                    return (
+                      <optgroup key={parentCode} label={label}>
+                        {kids.length === 0 ? (
+                          <option value={parentCode}>{label}</option>
+                        ) : (
+                          kids.map((child) => (
+                            <option key={s(child.code)} value={s(child.code)}>
+                              {`【中】${s(child.name)}（${s(child.code)}）`}
+                            </option>
+                          ))
+                        )}
+                      </optgroup>
+                    );
+                  })
                 )}
               </select>
             </label>
@@ -753,23 +1252,25 @@ export default function PracticeSearchPanel(_props: { owner?: string }) {
                   setPage(0);
                 }}
               >
-                <option value={4}>4件</option>
                 <option value={5}>5件</option>
                 <option value={10}>10件</option>
                 <option value={20}>20件</option>
+                <option value={50}>50件</option>
               </select>
             </label>
           </div>
 
           <div style={{ fontSize: 12, opacity: 0.85 }}>
-            AbilityCode取得件数（raw）：{abilityRawCount} /
-            プルダウン表示件数（level1/2 & active）：{abilityOptions.length}
+            AbilityCode取得件数（raw）：{abilityRawCount} / プルダウン表示件数
+            （level1/2 & active）：{abilityOptions.length}
             <br />
             選択中：{selectedAbilityLabel || "（未選択）"} / 結果件数：
             {rows.length} / scoreSum合計：{totalScoreSum}
             <br />
             表示範囲：{from}〜{to} / {totalRows}（ページ {clampedPage + 1} /{" "}
             {totalPages}）
+            <br />※ Ability起点では、PracticeCode
+            本体が無い孤児レコードも「整理」で掃除できます。
           </div>
         </>
       ) : (
@@ -810,6 +1311,7 @@ export default function PracticeSearchPanel(_props: { owner?: string }) {
                 <option value="AI_ANALYZING">AI_ANALYZING</option>
                 <option value="REVIEW">REVIEW</option>
                 <option value="COMPLETED">COMPLETED</option>
+                <option value="ARCHIVED">ARCHIVED</option>
                 <option value="ERROR">ERROR</option>
               </select>
             </label>
@@ -837,88 +1339,88 @@ export default function PracticeSearchPanel(_props: { owner?: string }) {
             <br />
             表示範囲：{from}〜{to} / {totalRows}（ページ {clampedPage + 1} /{" "}
             {totalPages}）
+            <br />※ アーカイブは PracticeCode を ARCHIVED にし、関連する
+            AbilityPracticeLink / AbilityPracticeAgg / PracticeLinkSuggestion
+            を掃除します。
           </div>
         </>
       )}
 
-      {analyzeMessage && (
-        <div
+      {analyzeMessage ? (
+        <pre
           style={{
+            margin: 0,
             padding: 10,
-            background: "#f4fbf4",
-            border: "1px solid #cde8cd",
-            borderRadius: 6,
-            color: "#1d5e20",
+            background: "#ecfdf5",
+            border: "1px solid #bbf7d0",
+            borderRadius: 8,
+            whiteSpace: "pre-wrap",
           }}
         >
           {analyzeMessage}
-        </div>
-      )}
+        </pre>
+      ) : null}
 
-      {suggestMessage && (
-        <div
+      {suggestMessage ? (
+        <pre
           style={{
+            margin: 0,
             padding: 10,
-            background: "#f4f8ff",
-            border: "1px solid #cddcf7",
-            borderRadius: 6,
-            color: "#1b4d8a",
+            background: "#eff6ff",
+            border: "1px solid #bfdbfe",
+            borderRadius: 8,
+            whiteSpace: "pre-wrap",
           }}
         >
           {suggestMessage}
-        </div>
-      )}
+        </pre>
+      ) : null}
 
-      {registerMessage && (
-        <div
+      {registerMessage ? (
+        <pre
           style={{
+            margin: 0,
             padding: 10,
-            background: "#fff8e8",
-            border: "1px solid #ead8a2",
-            borderRadius: 6,
-            color: "#7a5a00",
+            background: "#f0fdf4",
+            border: "1px solid #bbf7d0",
+            borderRadius: 8,
+            whiteSpace: "pre-wrap",
           }}
         >
           {registerMessage}
-        </div>
-      )}
+        </pre>
+      ) : null}
 
-      {error && (
-        <div style={{ color: "crimson", whiteSpace: "pre-wrap" }}>
-          Error: {error}
-        </div>
-      )}
-      {loading && <div>Loading...</div>}
+      {archiveMessage ? (
+        <pre
+          style={{
+            margin: 0,
+            padding: 10,
+            background: "#fff7ed",
+            border: "1px solid #fed7aa",
+            borderRadius: 8,
+            whiteSpace: "pre-wrap",
+          }}
+        >
+          {archiveMessage}
+        </pre>
+      ) : null}
 
-      <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
-        <button
-          onClick={() => setPage(0)}
-          disabled={clampedPage === 0 || totalRows === 0}
+      {error ? (
+        <pre
+          style={{
+            margin: 0,
+            padding: 10,
+            background: "#fef2f2",
+            border: "1px solid #fecaca",
+            borderRadius: 8,
+            whiteSpace: "pre-wrap",
+            color: "#991b1b",
+          }}
         >
-          ⏮ 最初
-        </button>
-        <button
-          onClick={() => setPage((p) => Math.max(0, p - 1))}
-          disabled={clampedPage === 0 || totalRows === 0}
-        >
-          ◀ 前へ
-        </button>
-        <div style={{ fontSize: 12, opacity: 0.85 }}>
-          {clampedPage + 1} / {totalPages}
-        </div>
-        <button
-          onClick={() => setPage((p) => Math.min(totalPages - 1, p + 1))}
-          disabled={clampedPage >= totalPages - 1 || totalRows === 0}
-        >
-          次へ ▶
-        </button>
-        <button
-          onClick={() => setPage(totalPages - 1)}
-          disabled={clampedPage >= totalPages - 1 || totalRows === 0}
-        >
-          最後 ⏭
-        </button>
-      </div>
+          {error}
+        </pre>
+      ) : null}
 
       <div
         style={{
@@ -927,226 +1429,99 @@ export default function PracticeSearchPanel(_props: { owner?: string }) {
           overflow: "hidden",
         }}
       >
-        <div
-          style={{
-            padding: 12,
-            background: "#fafafa",
-            borderBottom: "1px solid #eee",
-          }}
-        >
-          {viewMode === "ability"
-            ? "結果一覧（Ability起点）"
-            : "Practice一覧（確認用）"}
-        </div>
-
-        {totalRows === 0 ? (
-          <div style={{ padding: 12 }}>データがありません。</div>
-        ) : (
-          <div style={{ overflowX: "auto" }}>
-            {viewMode === "ability" ? (
+        {viewMode === "ability" ? (
+          loadingAgg || loadingPractice ? (
+            <div style={{ padding: 12 }}>Loading...</div>
+          ) : rows.length === 0 ? (
+            <div style={{ padding: 12 }}>該当するPracticeがありません。</div>
+          ) : (
+            <div style={{ overflowX: "auto" }}>
               <table
                 style={{
                   width: "100%",
-                  minWidth: 900,
+                  minWidth: 980,
                   borderCollapse: "collapse",
                 }}
               >
                 <thead>
-                  <tr style={{ textAlign: "left" }}>
-                    <th style={{ padding: 8, borderBottom: "1px solid #eee" }}>
-                      practice
-                    </th>
-                    <th style={{ padding: 8, borderBottom: "1px solid #eee" }}>
-                      scoreSum
-                    </th>
-                    <th style={{ padding: 8, borderBottom: "1px solid #eee" }}>
-                      scoreMax
-                    </th>
-                    <th style={{ padding: 8, borderBottom: "1px solid #eee" }}>
-                      linkCount
-                    </th>
-                    <th style={{ padding: 8, borderBottom: "1px solid #eee" }}>
-                      abilityLevel
-                    </th>
+                  <tr style={{ textAlign: "left", background: "#fafafa" }}>
+                    <th style={{ padding: 8 }}>Practice</th>
+                    <th style={{ padding: 8 }}>分類</th>
+                    <th style={{ padding: 8 }}>scoreSum</th>
+                    <th style={{ padding: 8 }}>scoreMax</th>
+                    <th style={{ padding: 8 }}>linkCount</th>
+                    <th style={{ padding: 8 }}>status</th>
+                    <th style={{ padding: 8 }}>メモ</th>
+                    <th style={{ padding: 8 }}>操作</th>
                   </tr>
                 </thead>
                 <tbody>
-                  {pageRows.map((r) => {
-                    const pc = s((r as any).practiceCode);
-                    const pm = practiceByCode[pc];
-
-                    const title = pm?.name ? pm.name : pc;
-                    const memo = pm?.memo ?? "";
-                    const url = pm?.source_url ?? "";
-                    const status = pm?.status ?? "";
-                    const sourceType = pm?.source_type ?? "";
-                    const category = pm?.category_name ?? "";
-
-                    return (
-                      <tr key={`${s((r as any).abilityCode)}|${pc}`}>
-                        <td
-                          style={{ padding: 8, borderBottom: "1px solid #f0f0f0" }}
-                        >
-                          <div style={{ fontWeight: 600 }}>{title}</div>
-                          <div style={{ fontSize: 12, opacity: 0.85 }}>
-                            {pc}
-                            {category ? ` / ${category}` : ""}
-                          </div>
-                          {(sourceType || status) && (
-                            <div style={{ fontSize: 12, opacity: 0.75 }}>
-                              {sourceType ? `source=${sourceType}` : ""}
-                              {sourceType && status ? " / " : ""}
-                              {status ? `status=${status}` : ""}
-                            </div>
-                          )}
-                          {memo && (
-                            <div
-                              style={{
-                                marginTop: 4,
-                                fontSize: 12,
-                                opacity: 0.9,
-                                whiteSpace: "pre-wrap",
-                              }}
-                            >
-                              {memo}
-                            </div>
-                          )}
-                          {url && (
-                            <div style={{ marginTop: 4, fontSize: 12 }}>
-                              <a href={url} target="_blank" rel="noreferrer">
-                                {url}
-                              </a>
-                            </div>
-                          )}
-                        </td>
-                        <td
-                          style={{ padding: 8, borderBottom: "1px solid #f0f0f0" }}
-                        >
-                          {(r as any).scoreSum}
-                        </td>
-                        <td
-                          style={{ padding: 8, borderBottom: "1px solid #f0f0f0" }}
-                        >
-                          {(r as any).scoreMax}
-                        </td>
-                        <td
-                          style={{ padding: 8, borderBottom: "1px solid #f0f0f0" }}
-                        >
-                          {(r as any).linkCount}
-                        </td>
-                        <td
-                          style={{ padding: 8, borderBottom: "1px solid #f0f0f0" }}
-                        >
-                          {(r as any).level}
-                        </td>
-                      </tr>
-                    );
-                  })}
-                </tbody>
-              </table>
-            ) : (
-              <table
-                style={{
-                  width: "100%",
-                  minWidth: 1750,
-                  borderCollapse: "collapse",
-                }}
-              >
-                <thead>
-                  <tr style={{ textAlign: "left" }}>
-                    <th style={{ padding: 8, borderBottom: "1px solid #eee" }}>
-                      practice_code / name
-                    </th>
-                    <th style={{ padding: 8, borderBottom: "1px solid #eee" }}>
-                      status
-                    </th>
-                    <th style={{ padding: 8, borderBottom: "1px solid #eee" }}>
-                      transcribe
-                    </th>
-                    <th style={{ padding: 8, borderBottom: "1px solid #eee" }}>
-                      category
-                    </th>
-                    <th style={{ padding: 8, borderBottom: "1px solid #eee" }}>
-                      visibility
-                    </th>
-                    <th style={{ padding: 8, borderBottom: "1px solid #eee" }}>
-                      recordedAt
-                    </th>
-                    <th style={{ padding: 8, borderBottom: "1px solid #eee" }}>
-                      transcript preview
-                    </th>
-                    <th style={{ padding: 8, borderBottom: "1px solid #eee" }}>
-                      memo preview
-                    </th>
-                    <th style={{ padding: 8, borderBottom: "1px solid #eee" }}>
-                      action
-                    </th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {pageRows.map((r) => {
-                    const practice = r as Schema["PracticeCode"]["type"];
-                    const practiceCode = s((practice as any).practice_code);
-                    const name = s((practice as any).name);
-                    const status = s((practice as any).status);
-                    const transcribeStatus = s(
-                      (practice as any).transcribeStatus,
-                    );
-                    const practiceCategory = s(
-                      (practice as any).practiceCategory,
-                    );
-                    const visibility = s((practice as any).visibility);
-                    const recordedAt = s((practice as any).recordedAt);
-                    const transcriptPreview = previewText(
-                      (practice as any).transcriptText,
-                      160,
-                    );
-                    const memoPreview = previewText((practice as any).memo, 120);
-                    const canAnalyze =
-                      status === "REVIEW" &&
-                      transcribeStatus === "COMPLETED" &&
-                      s((practice as any).transcriptText) !== "";
-                    const canSuggest =
-                      status === "REVIEW" &&
-                      s((practice as any).name) !== "" &&
-                      s((practice as any).memo) !== "";
+                  {pageRowsAbility.map((row) => {
+                    const practiceCode = s(row.practiceCode);
+                    const practice = practiceByCode[practiceCode];
+                    const practiceId = s(practice?.id);
+                    const isArchived =
+                      s(practice?.status).toUpperCase() === "ARCHIVED";
+                    const isArchiving = archivingPracticeCode === practiceCode;
+                    const canAnalyze = Boolean(practiceId);
+                    const canSuggest = Boolean(practiceId);
+                    const isSelected = selectedPracticeCode === practiceCode;
 
                     return (
-                      <tr key={practice.id}>
+                      <tr key={`${s(row.abilityCode)}-${practiceCode}`}>
                         <td
-                          style={{ padding: 8, borderBottom: "1px solid #f0f0f0" }}
+                          style={{
+                            padding: 8,
+                            borderBottom: "1px solid #f0f0f0",
+                            minWidth: 260,
+                          }}
                         >
-                          <div style={{ fontWeight: 600 }}>
-                            {name || "(no name)"}
+                          <div style={{ fontWeight: 700 }}>{practiceCode}</div>
+                          <div>
+                            {s(practice?.name) || "（PracticeCode未取得）"}
                           </div>
-                          <div style={{ fontSize: 12, opacity: 0.8 }}>
-                            {practiceCode}
-                          </div>
                         </td>
                         <td
-                          style={{ padding: 8, borderBottom: "1px solid #f0f0f0" }}
+                          style={{
+                            padding: 8,
+                            borderBottom: "1px solid #f0f0f0",
+                          }}
                         >
-                          {status || "-"}
+                          {s(practice?.category_name) ||
+                            s(practice?.practiceCategory) ||
+                            "-"}
                         </td>
                         <td
-                          style={{ padding: 8, borderBottom: "1px solid #f0f0f0" }}
+                          style={{
+                            padding: 8,
+                            borderBottom: "1px solid #f0f0f0",
+                          }}
                         >
-                          {transcribeStatus || "-"}
+                          {n(row.scoreSum)}
                         </td>
                         <td
-                          style={{ padding: 8, borderBottom: "1px solid #f0f0f0" }}
+                          style={{
+                            padding: 8,
+                            borderBottom: "1px solid #f0f0f0",
+                          }}
                         >
-                          {practiceCategory || "-"}
+                          {n(row.scoreMax)}
                         </td>
                         <td
-                          style={{ padding: 8, borderBottom: "1px solid #f0f0f0" }}
+                          style={{
+                            padding: 8,
+                            borderBottom: "1px solid #f0f0f0",
+                          }}
                         >
-                          {visibility || "-"}
+                          {n(row.linkCount)}
                         </td>
                         <td
-                          style={{ padding: 8, borderBottom: "1px solid #f0f0f0" }}
+                          style={{
+                            padding: 8,
+                            borderBottom: "1px solid #f0f0f0",
+                          }}
                         >
-                          {recordedAt || "-"}
+                          {s(practice?.status) || "-"}
                         </td>
                         <td
                           style={{
@@ -1156,53 +1531,102 @@ export default function PracticeSearchPanel(_props: { owner?: string }) {
                             whiteSpace: "pre-wrap",
                           }}
                         >
-                          {transcriptPreview || "-"}
+                          {previewText(
+                            practice?.memo || practice?.transcriptText,
+                          ) || "-"}
                         </td>
                         <td
                           style={{
                             padding: 8,
                             borderBottom: "1px solid #f0f0f0",
-                            fontSize: 12,
-                            whiteSpace: "pre-wrap",
                           }}
-                        >
-                          {memoPreview || "-"}
-                        </td>
-                        <td
-                          style={{ padding: 8, borderBottom: "1px solid #f0f0f0" }}
                         >
                           <div style={{ display: "grid", gap: 6 }}>
                             <button
-                              onClick={() => handleAnalyzePractice(practice.id)}
+                              onClick={() => handleAnalyzePractice(practiceId)}
                               disabled={
                                 !canAnalyze ||
-                                analyzingPracticeId === practice.id
+                                analyzingPracticeId === practiceId ||
+                                isArchived
                               }
                             >
-                              {analyzingPracticeId === practice.id
+                              {analyzingPracticeId === practiceId
                                 ? "AI生成中..."
                                 : "AIで名前と要約を作る"}
                             </button>
 
                             <button
                               onClick={() =>
-                                handleSuggestLinks(practice.id, practiceCode)
+                                handleSuggestLinks(practiceId, practiceCode)
                               }
                               disabled={
                                 !canSuggest ||
-                                suggestingPracticeId === practice.id
+                                suggestingPracticeId === practiceId ||
+                                isArchived
                               }
                             >
-                              {suggestingPracticeId === practice.id
+                              {suggestingPracticeId === practiceId
                                 ? "候補生成中..."
-                                : "AIでAbility候補を作る"}
+                                : "Ability候補を生成"}
                             </button>
 
                             <button
-                              onClick={() => setSelectedPracticeCode(practiceCode)}
-                              disabled={!practiceCode}
+                              onClick={() =>
+                                setSelectedPracticeCode((current) =>
+                                  current === practiceCode ? "" : practiceCode,
+                                )
+                              }
+                              disabled={!practiceCode || isArchived}
                             >
-                              候補を見る
+                              {isSelected
+                                ? "候補一覧を閉じる"
+                                : "候補一覧を開く"}
+                            </button>
+
+                            <button
+                              onClick={() =>
+                                handleRegisterPracticeLinks(practiceCode)
+                              }
+                              disabled={
+                                registeringPracticeCode === practiceCode ||
+                                acceptedCount === 0 ||
+                                selectedPracticeCode !== practiceCode ||
+                                isArchived
+                              }
+                            >
+                              {registeringPracticeCode === practiceCode
+                                ? "本登録中..."
+                                : `本登録する${
+                                    selectedPracticeCode === practiceCode
+                                      ? `（${acceptedCount}件）`
+                                      : ""
+                                  }`}
+                            </button>
+
+                            <button
+                              onClick={() =>
+                                practice
+                                  ? handleCleanupPracticeByCode(
+                                      practiceCode,
+                                      practice as PracticeCodeRow,
+                                    )
+                                  : handleCleanupFromAbilityRow(practiceCode)
+                              }
+                              disabled={isArchiving}
+                              style={{
+                                border: "1px solid #fdba74",
+                                background: isArchived ? "#fef3c7" : "#fff7ed",
+                                color: "#9a3412",
+                                borderRadius: 6,
+                                padding: "6px 10px",
+                                cursor: isArchiving ? "default" : "pointer",
+                              }}
+                            >
+                              {isArchiving
+                                ? "処理中..."
+                                : isArchived
+                                  ? "整理"
+                                  : "アーカイブ"}
                             </button>
                           </div>
                         </td>
@@ -1211,12 +1635,249 @@ export default function PracticeSearchPanel(_props: { owner?: string }) {
                   })}
                 </tbody>
               </table>
-            )}
+            </div>
+          )
+        ) : loadingDebug ? (
+          <div style={{ padding: 12 }}>Loading practices...</div>
+        ) : filteredDebugRows.length === 0 ? (
+          <div style={{ padding: 12 }}>該当するPracticeがありません。</div>
+        ) : (
+          <div style={{ overflowX: "auto" }}>
+            <table
+              style={{
+                width: "100%",
+                minWidth: 1300,
+                borderCollapse: "collapse",
+              }}
+            >
+              <thead>
+                <tr style={{ textAlign: "left", background: "#fafafa" }}>
+                  <th style={{ padding: 8 }}>practice_code</th>
+                  <th style={{ padding: 8 }}>name</th>
+                  <th style={{ padding: 8 }}>status</th>
+                  <th style={{ padding: 8 }}>aiStatus</th>
+                  <th style={{ padding: 8 }}>transcribeStatus</th>
+                  <th style={{ padding: 8 }}>category</th>
+                  <th style={{ padding: 8 }}>visibility</th>
+                  <th style={{ padding: 8 }}>recordedAt</th>
+                  <th style={{ padding: 8 }}>transcript</th>
+                  <th style={{ padding: 8 }}>memo</th>
+                  <th style={{ padding: 8 }}>操作</th>
+                </tr>
+              </thead>
+              <tbody>
+                {pageRowsDebug.map((practice) => {
+                  const practiceId = s(practice.id);
+                  const practiceCode = s(practice.practice_code);
+                  const isArchived =
+                    s(practice.status).toUpperCase() === "ARCHIVED";
+                  const isArchiving = archivingPracticeCode === practiceCode;
+                  const isSelected = selectedPracticeCode === practiceCode;
+                  const canAnalyze = Boolean(practiceId);
+                  const canSuggest = Boolean(practiceId);
+
+                  return (
+                    <tr key={practiceId || practiceCode}>
+                      <td
+                        style={{
+                          padding: 8,
+                          borderBottom: "1px solid #f0f0f0",
+                        }}
+                      >
+                        {practiceCode || "-"}
+                      </td>
+                      <td
+                        style={{
+                          padding: 8,
+                          borderBottom: "1px solid #f0f0f0",
+                        }}
+                      >
+                        {s(practice.name) || "-"}
+                      </td>
+                      <td
+                        style={{
+                          padding: 8,
+                          borderBottom: "1px solid #f0f0f0",
+                        }}
+                      >
+                        {s(practice.status) || "-"}
+                      </td>
+                      <td
+                        style={{
+                          padding: 8,
+                          borderBottom: "1px solid #f0f0f0",
+                        }}
+                      >
+                        {s(practice.aiStatus) || "-"}
+                      </td>
+                      <td
+                        style={{
+                          padding: 8,
+                          borderBottom: "1px solid #f0f0f0",
+                        }}
+                      >
+                        {s(practice.transcribeStatus) || "-"}
+                      </td>
+                      <td
+                        style={{
+                          padding: 8,
+                          borderBottom: "1px solid #f0f0f0",
+                        }}
+                      >
+                        {s(practice.practiceCategory) ||
+                          s(practice.category_name) ||
+                          "-"}
+                      </td>
+                      <td
+                        style={{
+                          padding: 8,
+                          borderBottom: "1px solid #f0f0f0",
+                        }}
+                      >
+                        {s(practice.visibility) || "-"}
+                      </td>
+                      <td
+                        style={{
+                          padding: 8,
+                          borderBottom: "1px solid #f0f0f0",
+                        }}
+                      >
+                        {s(practice.recordedAt) || "-"}
+                      </td>
+                      <td
+                        style={{
+                          padding: 8,
+                          borderBottom: "1px solid #f0f0f0",
+                          fontSize: 12,
+                          whiteSpace: "pre-wrap",
+                        }}
+                      >
+                        {previewText(practice.transcriptText) || "-"}
+                      </td>
+                      <td
+                        style={{
+                          padding: 8,
+                          borderBottom: "1px solid #f0f0f0",
+                          fontSize: 12,
+                          whiteSpace: "pre-wrap",
+                        }}
+                      >
+                        {previewText(practice.memo) || "-"}
+                      </td>
+                      <td
+                        style={{
+                          padding: 8,
+                          borderBottom: "1px solid #f0f0f0",
+                        }}
+                      >
+                        <div style={{ display: "grid", gap: 6 }}>
+                          <button
+                            onClick={() => handleAnalyzePractice(practiceId)}
+                            disabled={
+                              !canAnalyze ||
+                              analyzingPracticeId === practiceId ||
+                              isArchived
+                            }
+                          >
+                            {analyzingPracticeId === practiceId
+                              ? "AI生成中..."
+                              : "AIで名前と要約を作る"}
+                          </button>
+
+                          <button
+                            onClick={() =>
+                              handleSuggestLinks(practiceId, practiceCode)
+                            }
+                            disabled={
+                              !canSuggest ||
+                              suggestingPracticeId === practiceId ||
+                              isArchived
+                            }
+                          >
+                            {suggestingPracticeId === practiceId
+                              ? "候補生成中..."
+                              : "Ability候補を生成"}
+                          </button>
+
+                          <button
+                            onClick={() =>
+                              setSelectedPracticeCode((current) =>
+                                current === practiceCode ? "" : practiceCode,
+                              )
+                            }
+                            disabled={isArchived}
+                          >
+                            {isSelected ? "候補一覧を閉じる" : "候補一覧を開く"}
+                          </button>
+
+                          <button
+                            onClick={() =>
+                              handleRegisterPracticeLinks(practiceCode)
+                            }
+                            disabled={
+                              registeringPracticeCode === practiceCode ||
+                              acceptedCount === 0 ||
+                              selectedPracticeCode !== practiceCode ||
+                              isArchived
+                            }
+                          >
+                            {registeringPracticeCode === practiceCode
+                              ? "本登録中..."
+                              : `本登録する${
+                                  selectedPracticeCode === practiceCode
+                                    ? `（${acceptedCount}件）`
+                                    : ""
+                                }`}
+                          </button>
+
+                          <button
+                            onClick={() => handleArchivePractice(practice)}
+                            disabled={isArchiving}
+                            style={{
+                              border: "1px solid #fdba74",
+                              background: isArchived ? "#fef3c7" : "#fff7ed",
+                              color: "#9a3412",
+                              borderRadius: 6,
+                              padding: "6px 10px",
+                              cursor: isArchiving ? "default" : "pointer",
+                            }}
+                          >
+                            {isArchiving
+                              ? "処理中..."
+                              : isArchived
+                                ? "整理"
+                                : "アーカイブ"}
+                          </button>
+                        </div>
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
           </div>
         )}
       </div>
 
-      {viewMode === "debug" && selectedPracticeCode ? (
+      <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+        <button
+          onClick={() => setPage((p) => Math.max(0, p - 1))}
+          disabled={clampedPage <= 0}
+        >
+          前へ
+        </button>
+        <span style={{ fontSize: 12 }}>
+          {clampedPage + 1} / {totalPages}
+        </span>
+        <button
+          onClick={() => setPage((p) => Math.min(totalPages - 1, p + 1))}
+          disabled={clampedPage >= totalPages - 1}
+        >
+          次へ
+        </button>
+      </div>
+
+      {selectedPracticeCode ? (
         <div
           style={{
             border: "1px solid #ddd",
@@ -1229,98 +1890,49 @@ export default function PracticeSearchPanel(_props: { owner?: string }) {
               padding: 12,
               background: "#fafafa",
               borderBottom: "1px solid #eee",
-              display: "flex",
-              justifyContent: "space-between",
-              alignItems: "center",
-              flexWrap: "wrap",
-              gap: 8,
             }}
           >
-            <div>Ability候補（階層表示）: {selectedPracticeCode}</div>
-            <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
-              <label
-                style={{
-                  display: "flex",
-                  gap: 8,
-                  alignItems: "center",
-                  fontSize: 12,
-                }}
-              >
-                1ページ表示
-                <select
-                  value={suggestionPageSize}
-                  onChange={(e) => {
-                    setSuggestionPageSize(Number(e.target.value));
-                    setSuggestionPage(0);
-                  }}
-                >
-                  <option value={5}>5件</option>
-                  <option value={10}>10件</option>
-                  <option value={20}>20件</option>
-                </select>
-              </label>
-              <div style={{ fontSize: 12, opacity: 0.8 }}>
-                {suggestionFrom}〜{suggestionTo} / {suggestionTotalRows}
-              </div>
-              <button
-                onClick={() => handleRegisterPracticeLinks(selectedPracticeCode)}
-                disabled={
-                  !selectedPracticeCode ||
-                  acceptedCount === 0 ||
-                  registeringPracticeCode === selectedPracticeCode
-                }
-              >
-                {registeringPracticeCode === selectedPracticeCode
-                  ? "本登録中..."
-                  : `本登録する（${acceptedCount}件）`}
-              </button>
-            </div>
+            Ability候補（{selectedPracticeCode}）
+          </div>
+
+          <div style={{ padding: 12, fontSize: 12, opacity: 0.85 }}>
+            候補件数：{suggestionTotalRows} / accepted + edited：
+            {acceptedCount}
+            <br />
+            表示範囲：{suggestionFrom}〜{suggestionTo} / {suggestionTotalRows}
           </div>
 
           {loadingSuggestions ? (
-            <div style={{ padding: 12 }}>候補を読み込み中...</div>
-          ) : suggestions.length === 0 ? (
-            <div style={{ padding: 12 }}>候補はまだありません。</div>
+            <div style={{ padding: 12 }}>Loading suggestions...</div>
+          ) : suggestionTotalRows === 0 ? (
+            <div style={{ padding: 12 }}>候補データがありません。</div>
           ) : (
             <>
               <div style={{ overflowX: "auto" }}>
                 <table
                   style={{
                     width: "100%",
-                    minWidth: 1100,
+                    minWidth: 900,
                     borderCollapse: "collapse",
                   }}
                 >
                   <thead>
-                    <tr style={{ textAlign: "left" }}>
-                      <th style={{ padding: 8, borderBottom: "1px solid #eee" }}>
-                        採用
-                      </th>
-                      <th style={{ padding: 8, borderBottom: "1px solid #eee" }}>
-                        階層
-                      </th>
-                      <th style={{ padding: 8, borderBottom: "1px solid #eee" }}>
-                        コード
-                      </th>
-                      <th style={{ padding: 8, borderBottom: "1px solid #eee" }}>
-                        score
-                      </th>
-                      <th style={{ padding: 8, borderBottom: "1px solid #eee" }}>
-                        reason
-                      </th>
-                      <th style={{ padding: 8, borderBottom: "1px solid #eee" }}>
-                        status
-                      </th>
+                    <tr style={{ textAlign: "left", background: "#fafafa" }}>
+                      <th style={{ padding: 8 }}>採用</th>
+                      <th style={{ padding: 8 }}>Ability</th>
+                      <th style={{ padding: 8 }}>親分類</th>
+                      <th style={{ padding: 8 }}>score</th>
+                      <th style={{ padding: 8 }}>status</th>
+                      <th style={{ padding: 8 }}>reason</th>
                     </tr>
                   </thead>
                   <tbody>
                     {pagedSuggestions.map((row) => {
-                      const abilityCode = s((row as any).abilityCode);
-                      const parentLabel = buildParentLabel(abilityCode);
-                      const selfLabel = buildCodeName(abilityCode);
-                      const rowStatus = s((row as any).status).toLowerCase();
+                      const abilityCode = s(row.abilityCode);
+                      const status = s(row.status).toLowerCase();
                       const checked =
-                        rowStatus === "accepted" || rowStatus === "edited";
+                        status === "accepted" || status === "edited";
+                      const saving = savingSuggestionId === row.id;
 
                       return (
                         <tr key={row.id}>
@@ -1333,7 +1945,7 @@ export default function PracticeSearchPanel(_props: { owner?: string }) {
                             <input
                               type="checkbox"
                               checked={checked}
-                              disabled={savingSuggestionId === row.id}
+                              disabled={saving}
                               onChange={(e) =>
                                 updateSuggestionStatus(row, e.target.checked)
                               }
@@ -1345,7 +1957,7 @@ export default function PracticeSearchPanel(_props: { owner?: string }) {
                               borderBottom: "1px solid #f0f0f0",
                             }}
                           >
-                            {parentLabel}
+                            {buildCodeName(abilityCode)}
                           </td>
                           <td
                             style={{
@@ -1353,7 +1965,7 @@ export default function PracticeSearchPanel(_props: { owner?: string }) {
                               borderBottom: "1px solid #f0f0f0",
                             }}
                           >
-                            {selfLabel}
+                            {buildParentLabel(abilityCode)}
                           </td>
                           <td
                             style={{
@@ -1362,8 +1974,8 @@ export default function PracticeSearchPanel(_props: { owner?: string }) {
                             }}
                           >
                             <select
-                              value={Number((row as any).score ?? 1)}
-                              disabled={savingSuggestionId === row.id}
+                              value={n(row.score, 1)}
+                              disabled={saving}
                               onChange={(e) =>
                                 updateSuggestionScore(
                                   row,
@@ -1371,27 +1983,28 @@ export default function PracticeSearchPanel(_props: { owner?: string }) {
                                 )
                               }
                             >
-                              <option value={1}>1</option>
-                              <option value={2}>2</option>
-                              <option value={3}>3</option>
+                              <option value={1}>1 弱</option>
+                              <option value={2}>2 中</option>
+                              <option value={3}>3 強</option>
                             </select>
                           </td>
                           <td
                             style={{
                               padding: 8,
                               borderBottom: "1px solid #f0f0f0",
-                              whiteSpace: "pre-wrap",
                             }}
                           >
-                            {s((row as any).reason) || "-"}
+                            {s(row.status) || "-"}
                           </td>
                           <td
                             style={{
                               padding: 8,
                               borderBottom: "1px solid #f0f0f0",
+                              fontSize: 12,
+                              whiteSpace: "pre-wrap",
                             }}
                           >
-                            {s((row as any).status) || "-"}
+                            {s(row.reason) || "-"}
                           </td>
                         </tr>
                       );
@@ -1406,24 +2019,17 @@ export default function PracticeSearchPanel(_props: { owner?: string }) {
                   gap: 8,
                   alignItems: "center",
                   padding: 12,
-                  borderTop: "1px solid #eee",
                 }}
               >
                 <button
-                  onClick={() => setSuggestionPage(0)}
-                  disabled={suggestionClampedPage === 0}
-                >
-                  ⏮ 最初
-                </button>
-                <button
                   onClick={() => setSuggestionPage((p) => Math.max(0, p - 1))}
-                  disabled={suggestionClampedPage === 0}
+                  disabled={suggestionClampedPage <= 0}
                 >
-                  ◀ 前へ
+                  前へ
                 </button>
-                <div style={{ fontSize: 12, opacity: 0.85 }}>
+                <span style={{ fontSize: 12 }}>
                   {suggestionClampedPage + 1} / {suggestionTotalPages}
-                </div>
+                </span>
                 <button
                   onClick={() =>
                     setSuggestionPage((p) =>
@@ -1432,25 +2038,13 @@ export default function PracticeSearchPanel(_props: { owner?: string }) {
                   }
                   disabled={suggestionClampedPage >= suggestionTotalPages - 1}
                 >
-                  次へ ▶
-                </button>
-                <button
-                  onClick={() => setSuggestionPage(suggestionTotalPages - 1)}
-                  disabled={suggestionClampedPage >= suggestionTotalPages - 1}
-                >
-                  最後 ⏭
+                  次へ
                 </button>
               </div>
             </>
           )}
         </div>
       ) : null}
-
-      <div style={{ fontSize: 12, opacity: 0.8 }}>
-        ※ Ability起点は AbilityPracticeAgg に存在する Practice だけが表示されます。
-        <br />
-        新規登録した Practice の確認と AI 実行は「Practice一覧（確認用）」を使います。
-      </div>
     </div>
   );
 }

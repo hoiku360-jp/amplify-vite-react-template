@@ -5214,6 +5214,411 @@
             "sortKeyFieldNames": []
           }
         },
+        "PlanPhrase": {
+          "name": "PlanPhrase",
+          "fields": {
+            "planPhraseId": {
+              "name": "planPhraseId",
+              "isArray": false,
+              "type": "String",
+              "isRequired": true,
+              "attributes": []
+            },
+            "planPeriodType": {
+              "name": "planPeriodType",
+              "isArray": false,
+              "type": "String",
+              "isRequired": true,
+              "attributes": []
+            },
+            "domainCode": {
+              "name": "domainCode",
+              "isArray": false,
+              "type": "String",
+              "isRequired": true,
+              "attributes": []
+            },
+            "domain": {
+              "name": "domain",
+              "isArray": false,
+              "type": "String",
+              "isRequired": true,
+              "attributes": []
+            },
+            "ageYears": {
+              "name": "ageYears",
+              "isArray": false,
+              "type": "Int",
+              "isRequired": true,
+              "attributes": []
+            },
+            "phraseNo": {
+              "name": "phraseNo",
+              "isArray": false,
+              "type": "Int",
+              "isRequired": false,
+              "attributes": []
+            },
+            "phraseType": {
+              "name": "phraseType",
+              "isArray": false,
+              "type": "String",
+              "isRequired": false,
+              "attributes": []
+            },
+            "phraseText": {
+              "name": "phraseText",
+              "isArray": false,
+              "type": "String",
+              "isRequired": true,
+              "attributes": []
+            },
+            "source": {
+              "name": "source",
+              "isArray": false,
+              "type": "String",
+              "isRequired": false,
+              "attributes": []
+            },
+            "status": {
+              "name": "status",
+              "isArray": false,
+              "type": "String",
+              "isRequired": true,
+              "attributes": []
+            },
+            "sortOrder": {
+              "name": "sortOrder",
+              "isArray": false,
+              "type": "Int",
+              "isRequired": false,
+              "attributes": []
+            },
+            "note": {
+              "name": "note",
+              "isArray": false,
+              "type": "String",
+              "isRequired": false,
+              "attributes": []
+            },
+            "createdAt": {
+              "name": "createdAt",
+              "isArray": false,
+              "type": "AWSDateTime",
+              "isRequired": false,
+              "attributes": [],
+              "isReadOnly": true
+            },
+            "updatedAt": {
+              "name": "updatedAt",
+              "isArray": false,
+              "type": "AWSDateTime",
+              "isRequired": false,
+              "attributes": [],
+              "isReadOnly": true
+            }
+          },
+          "syncable": true,
+          "pluralName": "PlanPhrases",
+          "attributes": [
+            {
+              "type": "model",
+              "properties": {}
+            },
+            {
+              "type": "key",
+              "properties": {
+                "fields": [
+                  "planPhraseId"
+                ]
+              }
+            },
+            {
+              "type": "key",
+              "properties": {
+                "name": "planPhrasesByPlanPeriodTypeAndDomainCodeAndAgeYearsAndSortOrder",
+                "queryField": "listPlanPhrasesByPeriodDomainAge",
+                "fields": [
+                  "planPeriodType",
+                  "domainCode",
+                  "ageYears",
+                  "sortOrder"
+                ]
+              }
+            },
+            {
+              "type": "key",
+              "properties": {
+                "name": "planPhrasesByDomainCodeAndAgeYearsAndSortOrder",
+                "queryField": "listPlanPhrasesByDomainAge",
+                "fields": [
+                  "domainCode",
+                  "ageYears",
+                  "sortOrder"
+                ]
+              }
+            },
+            {
+              "type": "key",
+              "properties": {
+                "name": "planPhrasesByStatusAndPlanPeriodTypeAndDomainCodeAndAgeYears",
+                "queryField": "listPlanPhrasesByStatusPeriodDomainAge",
+                "fields": [
+                  "status",
+                  "planPeriodType",
+                  "domainCode",
+                  "ageYears"
+                ]
+              }
+            },
+            {
+              "type": "auth",
+              "properties": {
+                "rules": [
+                  {
+                    "allow": "private",
+                    "operations": [
+                      "create",
+                      "read",
+                      "update",
+                      "delete"
+                    ]
+                  }
+                ]
+              }
+            }
+          ],
+          "primaryKeyInfo": {
+            "isCustomPrimaryKey": true,
+            "primaryKeyFieldName": "planPhraseId",
+            "sortKeyFieldNames": []
+          }
+        },
+        "PlanPhraseAbilityLink": {
+          "name": "PlanPhraseAbilityLink",
+          "fields": {
+            "linkId": {
+              "name": "linkId",
+              "isArray": false,
+              "type": "String",
+              "isRequired": true,
+              "attributes": []
+            },
+            "planPhraseId": {
+              "name": "planPhraseId",
+              "isArray": false,
+              "type": "String",
+              "isRequired": true,
+              "attributes": []
+            },
+            "planPeriodType": {
+              "name": "planPeriodType",
+              "isArray": false,
+              "type": "String",
+              "isRequired": true,
+              "attributes": []
+            },
+            "phraseDomainCode": {
+              "name": "phraseDomainCode",
+              "isArray": false,
+              "type": "String",
+              "isRequired": false,
+              "attributes": []
+            },
+            "phraseDomain": {
+              "name": "phraseDomain",
+              "isArray": false,
+              "type": "String",
+              "isRequired": false,
+              "attributes": []
+            },
+            "ageYears": {
+              "name": "ageYears",
+              "isArray": false,
+              "type": "Int",
+              "isRequired": false,
+              "attributes": []
+            },
+            "phraseNo": {
+              "name": "phraseNo",
+              "isArray": false,
+              "type": "Int",
+              "isRequired": false,
+              "attributes": []
+            },
+            "abilityCode": {
+              "name": "abilityCode",
+              "isArray": false,
+              "type": "String",
+              "isRequired": true,
+              "attributes": []
+            },
+            "abilityDomain": {
+              "name": "abilityDomain",
+              "isArray": false,
+              "type": "String",
+              "isRequired": true,
+              "attributes": []
+            },
+            "categoryCode": {
+              "name": "categoryCode",
+              "isArray": false,
+              "type": "String",
+              "isRequired": false,
+              "attributes": []
+            },
+            "categoryName": {
+              "name": "categoryName",
+              "isArray": false,
+              "type": "String",
+              "isRequired": false,
+              "attributes": []
+            },
+            "abilityName": {
+              "name": "abilityName",
+              "isArray": false,
+              "type": "String",
+              "isRequired": false,
+              "attributes": []
+            },
+            "relationType": {
+              "name": "relationType",
+              "isArray": false,
+              "type": "String",
+              "isRequired": false,
+              "attributes": []
+            },
+            "weight": {
+              "name": "weight",
+              "isArray": false,
+              "type": "Int",
+              "isRequired": true,
+              "attributes": []
+            },
+            "status": {
+              "name": "status",
+              "isArray": false,
+              "type": "String",
+              "isRequired": true,
+              "attributes": []
+            },
+            "sortOrder": {
+              "name": "sortOrder",
+              "isArray": false,
+              "type": "Int",
+              "isRequired": false,
+              "attributes": []
+            },
+            "note": {
+              "name": "note",
+              "isArray": false,
+              "type": "String",
+              "isRequired": false,
+              "attributes": []
+            },
+            "createdAt": {
+              "name": "createdAt",
+              "isArray": false,
+              "type": "AWSDateTime",
+              "isRequired": false,
+              "attributes": [],
+              "isReadOnly": true
+            },
+            "updatedAt": {
+              "name": "updatedAt",
+              "isArray": false,
+              "type": "AWSDateTime",
+              "isRequired": false,
+              "attributes": [],
+              "isReadOnly": true
+            }
+          },
+          "syncable": true,
+          "pluralName": "PlanPhraseAbilityLinks",
+          "attributes": [
+            {
+              "type": "model",
+              "properties": {}
+            },
+            {
+              "type": "key",
+              "properties": {
+                "fields": [
+                  "linkId"
+                ]
+              }
+            },
+            {
+              "type": "key",
+              "properties": {
+                "name": "planPhraseAbilityLinksByPlanPhraseIdAndSortOrder",
+                "queryField": "listPlanPhraseAbilityLinksByPhrase",
+                "fields": [
+                  "planPhraseId",
+                  "sortOrder"
+                ]
+              }
+            },
+            {
+              "type": "key",
+              "properties": {
+                "name": "planPhraseAbilityLinksByPlanPeriodTypeAndPhraseDomainCodeAndAgeYearsAndSortOrder",
+                "queryField": "listPlanPhraseAbilityLinksByPeriodDomainAge",
+                "fields": [
+                  "planPeriodType",
+                  "phraseDomainCode",
+                  "ageYears",
+                  "sortOrder"
+                ]
+              }
+            },
+            {
+              "type": "key",
+              "properties": {
+                "name": "planPhraseAbilityLinksByAbilityCodeAndPlanPhraseId",
+                "queryField": "listPlanPhraseAbilityLinksByAbility",
+                "fields": [
+                  "abilityCode",
+                  "planPhraseId"
+                ]
+              }
+            },
+            {
+              "type": "key",
+              "properties": {
+                "name": "planPhraseAbilityLinksByStatusAndPlanPeriodTypeAndPhraseDomainCodeAndAgeYears",
+                "queryField": "listPlanPhraseAbilityLinksByStatusPeriodDomainAge",
+                "fields": [
+                  "status",
+                  "planPeriodType",
+                  "phraseDomainCode",
+                  "ageYears"
+                ]
+              }
+            },
+            {
+              "type": "auth",
+              "properties": {
+                "rules": [
+                  {
+                    "allow": "private",
+                    "operations": [
+                      "create",
+                      "read",
+                      "update",
+                      "delete"
+                    ]
+                  }
+                ]
+              }
+            }
+          ],
+          "primaryKeyInfo": {
+            "isCustomPrimaryKey": true,
+            "primaryKeyFieldName": "linkId",
+            "sortKeyFieldNames": []
+          }
+        },
         "SchoolAnnualPlan": {
           "name": "SchoolAnnualPlan",
           "fields": {
@@ -6410,6 +6815,22 @@
                 ]
               }
             },
+            "phraseSelections": {
+              "name": "phraseSelections",
+              "isArray": true,
+              "type": {
+                "model": "ClassMonthPlanPhraseSelection"
+              },
+              "isRequired": false,
+              "attributes": [],
+              "isArrayNullable": true,
+              "association": {
+                "connectionType": "HAS_MANY",
+                "associatedWith": [
+                  "classMonthPlanId"
+                ]
+              }
+            },
             "weekPlans": {
               "name": "weekPlans",
               "isArray": true,
@@ -6469,6 +6890,262 @@
                 "fields": [
                   "classQuarterPlanId",
                   "monthKey"
+                ]
+              }
+            },
+            {
+              "type": "auth",
+              "properties": {
+                "rules": [
+                  {
+                    "allow": "private",
+                    "operations": [
+                      "create",
+                      "read",
+                      "update",
+                      "delete"
+                    ]
+                  }
+                ]
+              }
+            }
+          ],
+          "primaryKeyInfo": {
+            "isCustomPrimaryKey": false,
+            "primaryKeyFieldName": "id",
+            "sortKeyFieldNames": []
+          }
+        },
+        "ClassMonthPlanPhraseSelection": {
+          "name": "ClassMonthPlanPhraseSelection",
+          "fields": {
+            "id": {
+              "name": "id",
+              "isArray": false,
+              "type": "ID",
+              "isRequired": true,
+              "attributes": []
+            },
+            "tenantId": {
+              "name": "tenantId",
+              "isArray": false,
+              "type": "String",
+              "isRequired": true,
+              "attributes": []
+            },
+            "classMonthPlanId": {
+              "name": "classMonthPlanId",
+              "isArray": false,
+              "type": "ID",
+              "isRequired": true,
+              "attributes": []
+            },
+            "classMonthPlan": {
+              "name": "classMonthPlan",
+              "isArray": false,
+              "type": {
+                "model": "ClassMonthPlan"
+              },
+              "isRequired": false,
+              "attributes": [],
+              "association": {
+                "connectionType": "BELONGS_TO",
+                "targetNames": [
+                  "classMonthPlanId"
+                ]
+              }
+            },
+            "classQuarterPlanId": {
+              "name": "classQuarterPlanId",
+              "isArray": false,
+              "type": "ID",
+              "isRequired": false,
+              "attributes": []
+            },
+            "fiscalYear": {
+              "name": "fiscalYear",
+              "isArray": false,
+              "type": "Int",
+              "isRequired": false,
+              "attributes": []
+            },
+            "monthKey": {
+              "name": "monthKey",
+              "isArray": false,
+              "type": "String",
+              "isRequired": false,
+              "attributes": []
+            },
+            "planPhraseId": {
+              "name": "planPhraseId",
+              "isArray": false,
+              "type": "String",
+              "isRequired": true,
+              "attributes": []
+            },
+            "phraseTextSnapshot": {
+              "name": "phraseTextSnapshot",
+              "isArray": false,
+              "type": "String",
+              "isRequired": true,
+              "attributes": []
+            },
+            "selectedDomainCode": {
+              "name": "selectedDomainCode",
+              "isArray": false,
+              "type": "String",
+              "isRequired": false,
+              "attributes": []
+            },
+            "selectedDomain": {
+              "name": "selectedDomain",
+              "isArray": false,
+              "type": "String",
+              "isRequired": false,
+              "attributes": []
+            },
+            "ageYears": {
+              "name": "ageYears",
+              "isArray": false,
+              "type": "Int",
+              "isRequired": false,
+              "attributes": []
+            },
+            "phraseNo": {
+              "name": "phraseNo",
+              "isArray": false,
+              "type": "Int",
+              "isRequired": false,
+              "attributes": []
+            },
+            "abilityCodes": {
+              "name": "abilityCodes",
+              "isArray": true,
+              "type": "String",
+              "isRequired": false,
+              "attributes": [],
+              "isArrayNullable": true
+            },
+            "abilitySummaryJson": {
+              "name": "abilitySummaryJson",
+              "isArray": false,
+              "type": "String",
+              "isRequired": false,
+              "attributes": []
+            },
+            "scoreHealth": {
+              "name": "scoreHealth",
+              "isArray": false,
+              "type": "Int",
+              "isRequired": false,
+              "attributes": []
+            },
+            "scoreHumanRelations": {
+              "name": "scoreHumanRelations",
+              "isArray": false,
+              "type": "Int",
+              "isRequired": false,
+              "attributes": []
+            },
+            "scoreEnvironment": {
+              "name": "scoreEnvironment",
+              "isArray": false,
+              "type": "Int",
+              "isRequired": false,
+              "attributes": []
+            },
+            "scoreLanguage": {
+              "name": "scoreLanguage",
+              "isArray": false,
+              "type": "Int",
+              "isRequired": false,
+              "attributes": []
+            },
+            "scoreExpression": {
+              "name": "scoreExpression",
+              "isArray": false,
+              "type": "Int",
+              "isRequired": false,
+              "attributes": []
+            },
+            "status": {
+              "name": "status",
+              "isArray": false,
+              "type": "String",
+              "isRequired": true,
+              "attributes": []
+            },
+            "sortOrder": {
+              "name": "sortOrder",
+              "isArray": false,
+              "type": "Int",
+              "isRequired": false,
+              "attributes": []
+            },
+            "selectedAt": {
+              "name": "selectedAt",
+              "isArray": false,
+              "type": "AWSDateTime",
+              "isRequired": false,
+              "attributes": []
+            },
+            "createdAt": {
+              "name": "createdAt",
+              "isArray": false,
+              "type": "AWSDateTime",
+              "isRequired": false,
+              "attributes": [],
+              "isReadOnly": true
+            },
+            "updatedAt": {
+              "name": "updatedAt",
+              "isArray": false,
+              "type": "AWSDateTime",
+              "isRequired": false,
+              "attributes": [],
+              "isReadOnly": true
+            }
+          },
+          "syncable": true,
+          "pluralName": "ClassMonthPlanPhraseSelections",
+          "attributes": [
+            {
+              "type": "model",
+              "properties": {}
+            },
+            {
+              "type": "key",
+              "properties": {
+                "name": "classMonthPlanPhraseSelectionsByTenantIdAndFiscalYearAndMonthKeyAndSortOrder",
+                "queryField": "listClassMonthPlanPhraseSelectionsByTenantMonth",
+                "fields": [
+                  "tenantId",
+                  "fiscalYear",
+                  "monthKey",
+                  "sortOrder"
+                ]
+              }
+            },
+            {
+              "type": "key",
+              "properties": {
+                "name": "classMonthPlanPhraseSelectionsByClassMonthPlanIdAndStatusAndSortOrder",
+                "queryField": "listClassMonthPlanPhraseSelectionsByMonthPlan",
+                "fields": [
+                  "classMonthPlanId",
+                  "status",
+                  "sortOrder"
+                ]
+              }
+            },
+            {
+              "type": "key",
+              "properties": {
+                "name": "classMonthPlanPhraseSelectionsByPlanPhraseIdAndClassMonthPlanId",
+                "queryField": "listClassMonthPlanPhraseSelectionsByPhrase",
+                "fields": [
+                  "planPhraseId",
+                  "classMonthPlanId"
                 ]
               }
             },
@@ -7173,11 +7850,10 @@
             {
               "type": "key",
               "properties": {
-                "name": "scheduleMonthsBySourceClassMonthPlanIdAndMonthKey",
+                "name": "scheduleMonthsBySourceClassMonthPlanId",
                 "queryField": "listScheduleMonthsBySourceClassMonthPlan",
                 "fields": [
-                  "sourceClassMonthPlanId",
-                  "monthKey"
+                  "sourceClassMonthPlanId"
                 ]
               }
             },
@@ -7261,15 +7937,43 @@
                 ]
               }
             },
-            "weekNoInMonth": {
-              "name": "weekNoInMonth",
+            "sourceClassMonthPlanId": {
+              "name": "sourceClassMonthPlanId",
               "isArray": false,
-              "type": "Int",
+              "type": "ID",
+              "isRequired": false,
+              "attributes": []
+            },
+            "sourceClassWeekPracticeAssignmentId": {
+              "name": "sourceClassWeekPracticeAssignmentId",
+              "isArray": false,
+              "type": "ID",
+              "isRequired": false,
+              "attributes": []
+            },
+            "targetDate": {
+              "name": "targetDate",
+              "isArray": false,
+              "type": "AWSDate",
               "isRequired": true,
               "attributes": []
             },
             "dayOfWeek": {
               "name": "dayOfWeek",
+              "isArray": false,
+              "type": "Int",
+              "isRequired": true,
+              "attributes": []
+            },
+            "weekNo": {
+              "name": "weekNo",
+              "isArray": false,
+              "type": "Int",
+              "isRequired": false,
+              "attributes": []
+            },
+            "weekNoInMonth": {
+              "name": "weekNoInMonth",
               "isArray": false,
               "type": "Int",
               "isRequired": true,
@@ -7289,6 +7993,13 @@
               "isArray": false,
               "type": "String",
               "isRequired": true,
+              "attributes": []
+            },
+            "eventLabel": {
+              "name": "eventLabel",
+              "isArray": false,
+              "type": "String",
+              "isRequired": false,
               "attributes": []
             },
             "description": {
@@ -7368,8 +8079,8 @@
               "isRequired": false,
               "attributes": []
             },
-            "weekItems": {
-              "name": "weekItems",
+            "sourceWeekItems": {
+              "name": "sourceWeekItems",
               "isArray": true,
               "type": {
                 "model": "ScheduleWeekItem"
@@ -7411,6 +8122,18 @@
             {
               "type": "key",
               "properties": {
+                "name": "scheduleMonthItemsByScheduleMonthIdAndTargetDateAndSortOrder",
+                "queryField": "listScheduleMonthItemsByMonthDateSort",
+                "fields": [
+                  "scheduleMonthId",
+                  "targetDate",
+                  "sortOrder"
+                ]
+              }
+            },
+            {
+              "type": "key",
+              "properties": {
                 "name": "scheduleMonthItemsByScheduleMonthIdAndWeekNoInMonthAndDayOfWeekAndSortOrder",
                 "queryField": "listScheduleMonthItemsByMonthWeekDaySort",
                 "fields": [
@@ -7418,6 +8141,16 @@
                   "weekNoInMonth",
                   "dayOfWeek",
                   "sortOrder"
+                ]
+              }
+            },
+            {
+              "type": "key",
+              "properties": {
+                "name": "scheduleMonthItemsBySourceClassWeekPracticeAssignmentId",
+                "queryField": "listScheduleMonthItemsBySourceAssignment",
+                "fields": [
+                  "sourceClassWeekPracticeAssignmentId"
                 ]
               }
             },
@@ -7511,20 +8244,6 @@
               "isRequired": true,
               "attributes": []
             },
-            "periodStart": {
-              "name": "periodStart",
-              "isArray": false,
-              "type": "AWSDate",
-              "isRequired": false,
-              "attributes": []
-            },
-            "periodEnd": {
-              "name": "periodEnd",
-              "isArray": false,
-              "type": "AWSDate",
-              "isRequired": false,
-              "attributes": []
-            },
             "ageBand": {
               "name": "ageBand",
               "isArray": false,
@@ -7536,41 +8255,6 @@
               "name": "goalTextC",
               "isArray": false,
               "type": "String",
-              "isRequired": false,
-              "attributes": []
-            },
-            "abilityHealthC": {
-              "name": "abilityHealthC",
-              "isArray": false,
-              "type": "Int",
-              "isRequired": false,
-              "attributes": []
-            },
-            "abilityHumanRelationsC": {
-              "name": "abilityHumanRelationsC",
-              "isArray": false,
-              "type": "Int",
-              "isRequired": false,
-              "attributes": []
-            },
-            "abilityEnvironmentC": {
-              "name": "abilityEnvironmentC",
-              "isArray": false,
-              "type": "Int",
-              "isRequired": false,
-              "attributes": []
-            },
-            "abilityLanguageC": {
-              "name": "abilityLanguageC",
-              "isArray": false,
-              "type": "Int",
-              "isRequired": false,
-              "attributes": []
-            },
-            "abilityExpressionC": {
-              "name": "abilityExpressionC",
-              "isArray": false,
-              "type": "Int",
               "isRequired": false,
               "attributes": []
             },

@@ -12,12 +12,9 @@ import {
   todayYYYYMMDD,
   daysAgoYYYYMMDD,
   truncateText,
-  type AbilityAggregateRow,
+  type AbilityDomainGroup,
   type CheckActionReportBundle,
-  type ChildAggregateRow,
   type DomainCounts,
-  type EvidenceRow,
-  type PracticeImpactRow,
 } from "./reporting";
 
 type Props = {
@@ -42,13 +39,6 @@ export default function AbilityDashboardPanel(props: Props) {
   const [toDate, setToDate] = useState(() => todayYYYYMMDD());
 
   const [bundle, setBundle] = useState<CheckActionReportBundle | null>(null);
-
-  const [domainCounts, setDomainCounts] =
-    useState<DomainCounts>(emptyDomainCounts());
-  const [abilityRows, setAbilityRows] = useState<AbilityAggregateRow[]>([]);
-  const [childRows, setChildRows] = useState<ChildAggregateRow[]>([]);
-  const [evidenceRows, setEvidenceRows] = useState<EvidenceRow[]>([]);
-  const [practiceRows, setPracticeRows] = useState<PracticeImpactRow[]>([]);
 
   async function reloadClassrooms() {
     setLoadingClassrooms(true);
@@ -103,12 +93,6 @@ export default function AbilityDashboardPanel(props: Props) {
       );
 
       setBundle(nextBundle);
-      setDomainCounts(nextBundle.observation.domainCounts);
-      setAbilityRows(nextBundle.observation.abilityRows);
-      setChildRows(nextBundle.observation.childRows);
-      setEvidenceRows(nextBundle.observation.evidenceRows.slice(0, 50));
-      setPracticeRows(nextBundle.observation.practiceRows);
-
       setMessage(
         `読込完了: ObservationAbilityLink=${nextBundle.observation.abilityLinks.length}件 / ObservationRecord=${nextBundle.observation.observations.length}件`,
       );
@@ -127,6 +111,14 @@ export default function AbilityDashboardPanel(props: Props) {
   const selectedClassroom = classrooms.find(
     (x) => x.id === selectedClassroomId,
   );
+
+  const observation = bundle?.observation ?? null;
+  const domainCounts: DomainCounts =
+    observation?.domainCounts ?? emptyDomainCounts();
+  const abilityGroups = observation?.abilityGroups ?? [];
+  const childRows = observation?.childRows ?? [];
+  const evidenceRows = observation?.evidenceRows.slice(0, 50) ?? [];
+  const practiceRows = observation?.practiceRows ?? [];
 
   return (
     <div style={{ display: "grid", gap: 16 }}>
@@ -388,49 +380,10 @@ export default function AbilityDashboardPanel(props: Props) {
               gridTemplateColumns: "minmax(340px, 1fr) minmax(280px, 360px)",
             }}
           >
-            <div
-              style={{
-                padding: 16,
-                border: "1px solid #d0d7de",
-                borderRadius: 8,
-                background: "#fff",
-              }}
-            >
-              <h3 style={{ marginTop: 0, marginBottom: 12 }}>ability別件数</h3>
-
-              {abilityRows.length === 0 ? (
-                <div style={{ color: "#666" }}>データがありません。</div>
-              ) : (
-                <div style={{ overflowX: "auto" }}>
-                  <table
-                    style={{
-                      width: "100%",
-                      borderCollapse: "collapse",
-                      minWidth: 520,
-                    }}
-                  >
-                    <thead>
-                      <tr>
-                        <th style={thStyle}>abilityCode</th>
-                        <th style={thStyle}>abilityName</th>
-                        <th style={thStyle}>domain</th>
-                        <th style={thStyle}>count</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {abilityRows.map((row) => (
-                        <tr key={`${row.abilityCode}_${row.abilityName}`}>
-                          <td style={tdStyle}>{row.abilityCode}</td>
-                          <td style={tdStyle}>{row.abilityName}</td>
-                          <td style={tdStyle}>{row.domain}</td>
-                          <td style={tdStyle}>{row.count}</td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                </div>
-              )}
-            </div>
+            <AbilityHierarchySection
+              title="ability別件数（階層）"
+              groups={abilityGroups}
+            />
 
             <div
               style={{
@@ -577,6 +530,183 @@ function StatCard(props: { label: string; value: number }) {
     <div style={{ padding: 12, borderRadius: 8, background: "#fff" }}>
       <div>{props.label}</div>
       <b style={{ fontSize: 20 }}>{props.value}</b>
+    </div>
+  );
+}
+
+function AbilityHierarchySection(props: {
+  title: string;
+  groups: AbilityDomainGroup[];
+}) {
+  return (
+    <div
+      style={{
+        padding: 16,
+        border: "1px solid #d0d7de",
+        borderRadius: 8,
+        background: "#fff",
+      }}
+    >
+      <h3 style={{ marginTop: 0, marginBottom: 12 }}>{props.title}</h3>
+
+      {props.groups.length === 0 ? (
+        <div style={{ color: "#666" }}>データがありません。</div>
+      ) : (
+        <div style={{ display: "grid", gap: 14 }}>
+          {props.groups.map((domainGroup) => (
+            <section
+              key={domainGroup.domain}
+              style={{
+                border: "1px solid #d8dee4",
+                borderRadius: 10,
+                background: "#f8fafc",
+                padding: 12,
+              }}
+            >
+              {/* 第1階層: domain */}
+              <div
+                style={{
+                  display: "flex",
+                  alignItems: "center",
+                  gap: 8,
+                  marginBottom: 10,
+                }}
+              >
+                <span
+                  style={{
+                    fontSize: 11,
+                    color: "#666",
+                    background: "#eef2f7",
+                    border: "1px solid #d8dee4",
+                    borderRadius: 999,
+                    padding: "2px 8px",
+                    flexShrink: 0,
+                  }}
+                >
+                  領域
+                </span>
+                <div style={{ fontWeight: 800, fontSize: 16 }}>
+                  {domainGroup.domain}
+                </div>
+                <span style={{ color: "#666", fontSize: 13 }}>
+                  {domainGroup.totalCount}件
+                </span>
+              </div>
+
+              <div style={{ display: "grid", gap: 10 }}>
+                {domainGroup.categories.map((categoryGroup) => (
+                  <section
+                    key={`${domainGroup.domain}_${categoryGroup.category}`}
+                    style={{
+                      marginLeft: 16,
+                      padding: 10,
+                      borderLeft: "4px solid #d8dee4",
+                      borderRadius: 8,
+                      background: "#fff",
+                    }}
+                  >
+                    {/* 第2階層: category */}
+                    <div
+                      style={{
+                        display: "flex",
+                        alignItems: "center",
+                        gap: 8,
+                        marginBottom: 8,
+                      }}
+                    >
+                      <span
+                        style={{
+                          fontSize: 11,
+                          color: "#666",
+                          background: "#f3f4f6",
+                          border: "1px solid #e5e7eb",
+                          borderRadius: 999,
+                          padding: "2px 8px",
+                          flexShrink: 0,
+                        }}
+                      >
+                        カテゴリ
+                      </span>
+                      <div style={{ fontWeight: 700, fontSize: 14 }}>
+                        {categoryGroup.category}
+                      </div>
+                      <span style={{ color: "#666", fontSize: 12 }}>
+                        {categoryGroup.totalCount}件
+                      </span>
+                    </div>
+
+                    {/* 第3階層: ability */}
+                    <div style={{ display: "grid", gap: 4, marginLeft: 12 }}>
+                      {categoryGroup.rows.map((row) => (
+                        <div
+                          key={`${row.abilityCode}_${row.abilityName}`}
+                          style={{
+                            display: "grid",
+                            gridTemplateColumns: "1fr auto",
+                            alignItems: "center",
+                            columnGap: 8,
+                            padding: "4px 0",
+                            borderBottom: "1px solid #f3f4f6",
+                          }}
+                        >
+                          <div
+                            style={{
+                              display: "flex",
+                              alignItems: "center",
+                              gap: 8,
+                              minWidth: 0,
+                            }}
+                          >
+                            <span
+                              style={{
+                                fontSize: 11,
+                                color: "#666",
+                                background: "#fafafa",
+                                border: "1px solid #ececec",
+                                borderRadius: 999,
+                                padding: "1px 6px",
+                                flexShrink: 0,
+                              }}
+                            >
+                              育ち
+                            </span>
+                            <span
+                              style={{
+                                fontSize: 14,
+                                lineHeight: 1.5,
+                                wordBreak: "break-word",
+                              }}
+                            >
+                              {row.abilityName}
+                            </span>
+                          </div>
+
+                          <span
+                            style={{
+                              justifySelf: "end",
+                              minWidth: 40,
+                              textAlign: "center",
+                              fontSize: 12,
+                              fontWeight: 700,
+                              color: "#374151",
+                              background: "#f3f4f6",
+                              borderRadius: 999,
+                              padding: "2px 8px",
+                              flexShrink: 0,
+                            }}
+                          >
+                            {row.count}件
+                          </span>
+                        </div>
+                      ))}
+                    </div>
+                  </section>
+                ))}
+              </div>
+            </section>
+          ))}
+        </div>
+      )}
     </div>
   );
 }

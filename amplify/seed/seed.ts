@@ -1,5 +1,8 @@
 // amplify/seed/seed.ts
 import { readFile } from "node:fs/promises";
+import readline from "node:readline/promises";
+import { stdin as input, stdout as output } from "node:process";
+
 import Papa from "papaparse";
 
 import { Amplify } from "aws-amplify";
@@ -12,14 +15,17 @@ import {
 } from "aws-amplify/auth";
 
 import type { Schema } from "../data/resource";
-import readline from "node:readline/promises";
-import { stdin as input, stdout as output } from "node:process";
 
 const outputsUrl = new URL("../../amplify_outputs.json", import.meta.url);
 
 const abilityCsvUrl = new URL("./data/ability_codes_lang.csv", import.meta.url);
 const observationHintCsvUrl = new URL(
   "./data/AbilityObservationHint.csv",
+  import.meta.url,
+);
+const planPhraseCsvUrl = new URL("./data/PlanPhrase.csv", import.meta.url);
+const planPhraseAbilityLinkCsvUrl = new URL(
+  "./data/PlanPhraseAbilityLink.csv",
   import.meta.url,
 );
 
@@ -54,6 +60,95 @@ type AbilityObservationHintRow = {
   episode3?: string;
 };
 
+type PlanPhraseRow = {
+  index?: string | number;
+  planPhraseId: string;
+  planPeriodType: string;
+  domainCode: string | number;
+  domain: string;
+  ageYears: string | number;
+  phraseNo?: string | number;
+  phraseType?: string;
+  phraseText: string;
+  source?: string;
+  status?: string;
+  sortOrder?: string | number;
+  note?: string;
+};
+
+type PlanPhraseAbilityLinkRow = {
+  index?: string | number;
+  linkId: string;
+  planPhraseId: string;
+  planPeriodType: string;
+  phraseDomainCode?: string | number;
+  phraseDomain?: string;
+  ageYears?: string | number;
+  phraseNo?: string | number;
+  abilityCode: string | number;
+  abilityDomain: string;
+  categoryCode?: string | number;
+  categoryName?: string;
+  abilityName?: string;
+  relationType?: string;
+  weight: string | number;
+  status?: string;
+  sortOrder?: string | number;
+  note?: string;
+};
+
+type GraphqlErrorLike = {
+  message?: string | null;
+};
+
+type UserPoolAuthOptions = {
+  authMode: "userPool";
+};
+
+type ListOptions = UserPoolAuthOptions & {
+  limit?: number;
+  nextToken?: string | null;
+  filter?: Record<string, unknown>;
+};
+
+type ListResult<TItem> = {
+  data?: TItem[] | null;
+  nextToken?: string | null;
+  errors?: GraphqlErrorLike[] | null;
+};
+
+type MutationResult<TItem> = {
+  data?: TItem | null;
+  errors?: GraphqlErrorLike[] | null;
+};
+
+type SeedItem = Record<string, unknown>;
+
+type SeedModel<TItem extends SeedItem = SeedItem> = {
+  list(args?: ListOptions): Promise<ListResult<TItem>>;
+  create(
+    payload: Record<string, unknown>,
+    options?: UserPoolAuthOptions,
+  ): Promise<MutationResult<TItem>>;
+  update(
+    payload: Record<string, unknown>,
+    options?: UserPoolAuthOptions,
+  ): Promise<MutationResult<TItem>>;
+  delete(
+    payload: Record<string, unknown>,
+    options?: UserPoolAuthOptions,
+  ): Promise<MutationResult<TItem>>;
+};
+
+type SeedModels = {
+  AbilityCode: SeedModel;
+  AbilityObservationHint: SeedModel;
+  PlanPhrase: SeedModel;
+  PlanPhraseAbilityLink: SeedModel;
+};
+
+type UpsertResult = "created" | "updated" | false;
+
 function toInt(v: unknown): number | null {
   const s = String(v ?? "").trim();
   if (!s) return null;
@@ -72,6 +167,33 @@ function asStr(v: unknown): string {
 function asNullable(v: unknown): string | null {
   const s = asStr(v);
   return s || null;
+}
+
+function errorMessage(error: unknown): string {
+  if (error instanceof Error) {
+    return error.message || error.name;
+  }
+
+  if (typeof error === "object" && error !== null) {
+    const maybeError = error as {
+      message?: unknown;
+      name?: unknown;
+    };
+
+    const message = asStr(maybeError.message);
+    if (message) return message;
+
+    const name = asStr(maybeError.name);
+    if (name) return name;
+
+    try {
+      return JSON.stringify(error);
+    } catch {
+      return "Unknown object error.";
+    }
+  }
+
+  return asStr(error) || "Unknown error.";
 }
 
 async function parseCsv<T extends object>(url: URL): Promise<T[]> {
@@ -99,9 +221,7 @@ async function getPassword(): Promise<string> {
   const envPassword = process.env.SEED_PASSWORD?.trim();
   if (envPassword) return envPassword;
 
-  const password = await promptLine(
-    "Enter seed password (input is visible): ",
-  );
+  const password = await promptLine("Enter seed password (input is visible): ");
   if (!password) {
     throw new Error("Seed password is empty.");
   }
@@ -117,16 +237,20 @@ async function getTotpCode(): Promise<string> {
   return normalized;
 }
 
-async function listAll(model: any, limit = 1000): Promise<any[]> {
-  const out: any[] = [];
+async function listAll<TItem extends SeedItem>(
+  model: SeedModel<TItem>,
+  limit = 1000,
+): Promise<TItem[]> {
+  const out: TItem[] = [];
   let nextToken: string | null | undefined = undefined;
 
   for (;;) {
-    const res: any = await model.list({
+    const res = await model.list({
       limit,
       nextToken,
       authMode: "userPool",
     });
+
     if (res.errors?.length) throw res.errors;
 
     out.push(...(res.data ?? []));
@@ -137,23 +261,42 @@ async function listAll(model: any, limit = 1000): Promise<any[]> {
   return out;
 }
 
-async function wipeModelById(model: any, label: string) {
+async function wipeModelByKey<TItem extends SeedItem>(
+  model: SeedModel<TItem>,
+  label: string,
+  keyField: string,
+): Promise<void> {
   const items = await listAll(model, 1000);
   let deleted = 0;
+  let skipped = 0;
 
   for (const it of items) {
-    const id = it?.id;
-    if (!id) continue;
+    const keyValue = asStr(it[keyField]);
+    if (!keyValue) {
+      skipped += 1;
+      continue;
+    }
 
-    const res: any = await model.delete({ id }, { authMode: "userPool" });
+    const res = await model.delete(
+      { [keyField]: keyValue },
+      { authMode: "userPool" },
+    );
+
     if (res.errors?.length) throw res.errors;
     deleted += 1;
   }
 
-  console.log(`wiped ${label}: ${deleted}`);
+  console.log(`wiped ${label}: ${deleted} skipped=${skipped}`);
 }
 
-async function confirmTotpWithRetry(maxAttempts = 3) {
+async function wipeModelById<TItem extends SeedItem>(
+  model: SeedModel<TItem>,
+  label: string,
+): Promise<void> {
+  await wipeModelByKey(model, label, "id");
+}
+
+async function confirmTotpWithRetry(maxAttempts = 3): Promise<void> {
   let lastError: unknown = null;
 
   for (let i = 1; i <= maxAttempts; i += 1) {
@@ -186,16 +329,16 @@ async function confirmTotpWithRetry(maxAttempts = 3) {
   throw lastError ?? new Error("TOTP confirmation failed.");
 }
 
-async function signInWithTotp(username: string, password: string) {
-  let result;
+async function signInWithTotp(
+  username: string,
+  password: string,
+): Promise<void> {
+  let result: Awaited<ReturnType<typeof signIn>>;
 
   try {
     result = await signIn({ username, password });
-  } catch (error: any) {
-    const message =
-      error?.message ??
-      error?.name ??
-      "Unknown signIn error before TOTP step.";
+  } catch (error) {
+    const message = errorMessage(error);
     throw new Error(
       `Initial signIn failed before TOTP. username=${username} message=${message}`,
     );
@@ -233,17 +376,25 @@ async function signInWithTotp(username: string, password: string) {
   throw new Error("signIn loop exceeded guard limit.");
 }
 
-async function findFirstByField(model: any, field: string, value: string) {
-  const res: any = await model.list({
+async function findFirstByField<TItem extends SeedItem>(
+  model: SeedModel<TItem>,
+  field: string,
+  value: string,
+): Promise<TItem | null> {
+  const res = await model.list({
     authMode: "userPool",
     filter: { [field]: { eq: value } },
     limit: 1,
   });
+
   if (res.errors?.length) throw res.errors;
   return (res.data ?? [])[0] ?? null;
 }
 
-async function upsertAbilityCode(model: any, row: AbilityRow) {
+async function upsertAbilityCode(
+  model: SeedModel,
+  row: AbilityRow,
+): Promise<UpsertResult> {
   const code = asStr(row.code);
   if (!code) return false;
 
@@ -262,28 +413,30 @@ async function upsertAbilityCode(model: any, row: AbilityRow) {
   };
 
   const existing = await findFirstByField(model, "code", code);
+  const existingId = asStr(existing?.id);
 
-  if (existing?.id) {
-    const res: any = await model.update(
+  if (existingId) {
+    const res = await model.update(
       {
-        id: existing.id,
+        id: existingId,
         ...payload,
       },
       { authMode: "userPool" },
     );
+
     if (res.errors?.length) throw res.errors;
     return "updated";
   }
 
-  const res: any = await model.create(payload, { authMode: "userPool" });
+  const res = await model.create(payload, { authMode: "userPool" });
   if (res.errors?.length) throw res.errors;
   return "created";
 }
 
 async function upsertAbilityObservationHint(
-  model: any,
+  model: SeedModel,
   row: AbilityObservationHintRow,
-) {
+): Promise<UpsertResult> {
   const abilityCode = asStr(row.abilityCode);
   if (!abilityCode) return false;
 
@@ -298,29 +451,148 @@ async function upsertAbilityObservationHint(
   };
 
   const existing = await findFirstByField(model, "abilityCode", abilityCode);
+  const existingId = asStr(existing?.id);
 
-  if (existing?.id) {
-    const res: any = await model.update(
+  if (existingId) {
+    const res = await model.update(
       {
-        id: existing.id,
+        id: existingId,
         ...payload,
       },
       { authMode: "userPool" },
     );
+
     if (res.errors?.length) throw res.errors;
     return "updated";
   }
 
-  const res: any = await model.create(payload, { authMode: "userPool" });
+  const res = await model.create(payload, { authMode: "userPool" });
   if (res.errors?.length) throw res.errors;
   return "created";
+}
+
+async function upsertPlanPhrase(
+  model: SeedModel,
+  row: PlanPhraseRow,
+): Promise<UpsertResult> {
+  const planPhraseId = asStr(row.planPhraseId);
+  if (!planPhraseId) return false;
+
+  const phraseText = asStr(row.phraseText);
+  if (!phraseText) {
+    throw new Error(
+      `PlanPhrase phraseText is empty. planPhraseId=${planPhraseId}`,
+    );
+  }
+
+  const payload = {
+    planPhraseId,
+    planPeriodType: asStr(row.planPeriodType) || "MONTH",
+    domainCode: asStr(row.domainCode),
+    domain: asStr(row.domain),
+    ageYears: toInt(row.ageYears) ?? 0,
+    phraseNo: toInt(row.phraseNo),
+    phraseType: asNullable(row.phraseType),
+    phraseText,
+    source: asNullable(row.source),
+    status: asStr(row.status) || "active",
+    sortOrder: toInt(row.sortOrder),
+    note: asNullable(row.note),
+  };
+
+  const existing = await findFirstByField(model, "planPhraseId", planPhraseId);
+  const existingPlanPhraseId = asStr(existing?.planPhraseId);
+
+  if (existingPlanPhraseId) {
+    const res = await model.update(payload, { authMode: "userPool" });
+    if (res.errors?.length) throw res.errors;
+    return "updated";
+  }
+
+  const res = await model.create(payload, { authMode: "userPool" });
+  if (res.errors?.length) throw res.errors;
+  return "created";
+}
+
+async function upsertPlanPhraseAbilityLink(
+  model: SeedModel,
+  row: PlanPhraseAbilityLinkRow,
+): Promise<UpsertResult> {
+  const linkId = asStr(row.linkId);
+  if (!linkId) return false;
+
+  const planPhraseId = asStr(row.planPhraseId);
+  const abilityCode = asStr(row.abilityCode);
+  const abilityDomain = asStr(row.abilityDomain);
+
+  if (!planPhraseId || !abilityCode || !abilityDomain) {
+    throw new Error(
+      `PlanPhraseAbilityLink required value is empty. linkId=${linkId} planPhraseId=${planPhraseId} abilityCode=${abilityCode} abilityDomain=${abilityDomain}`,
+    );
+  }
+
+  const payload = {
+    linkId,
+    planPhraseId,
+    planPeriodType: asStr(row.planPeriodType) || "MONTH",
+    phraseDomainCode: asNullable(row.phraseDomainCode),
+    phraseDomain: asNullable(row.phraseDomain),
+    ageYears: toInt(row.ageYears),
+    phraseNo: toInt(row.phraseNo),
+    abilityCode,
+    abilityDomain,
+    categoryCode: asNullable(row.categoryCode),
+    categoryName: asNullable(row.categoryName),
+    abilityName: asNullable(row.abilityName),
+    relationType: asNullable(row.relationType),
+    weight: toInt(row.weight) ?? 0,
+    status: asStr(row.status) || "active",
+    sortOrder: toInt(row.sortOrder),
+    note: asNullable(row.note),
+  };
+
+  const existing = await findFirstByField(model, "linkId", linkId);
+  const existingLinkId = asStr(existing?.linkId);
+
+  if (existingLinkId) {
+    const res = await model.update(payload, { authMode: "userPool" });
+    if (res.errors?.length) throw res.errors;
+    return "updated";
+  }
+
+  const res = await model.create(payload, { authMode: "userPool" });
+  if (res.errors?.length) throw res.errors;
+  return "created";
+}
+
+async function seedRows<T extends object>(args: {
+  label: string;
+  rows: T[];
+  upsert: (row: T) => Promise<UpsertResult>;
+}): Promise<void> {
+  let created = 0;
+  let updated = 0;
+  let skipped = 0;
+
+  for (const row of args.rows) {
+    const result = await args.upsert(row);
+    if (result === "created") created += 1;
+    else if (result === "updated") updated += 1;
+    else skipped += 1;
+  }
+
+  console.log(
+    `seeded ${args.label}: created=${created} updated=${updated} skipped=${skipped}`,
+  );
 }
 
 (async () => {
   let signedIn = false;
 
   try {
-    const outputs = JSON.parse(await readFile(outputsUrl, { encoding: "utf8" }));
+    const outputs = JSON.parse(
+      await readFile(outputsUrl, { encoding: "utf8" }),
+    );
     Amplify.configure(outputs);
 
     const username = await getUsername();
@@ -342,56 +614,61 @@ async function upsertAbilityObservationHint(
     }
 
     const client = generateClient<Schema>();
+    const models = client.models as unknown as SeedModels;
 
     if (SHOULD_WIPE) {
+      await wipeModelByKey(
+        models.PlanPhraseAbilityLink,
+        "PlanPhraseAbilityLink",
+        "linkId",
+      );
+      await wipeModelByKey(models.PlanPhrase, "PlanPhrase", "planPhraseId");
       await wipeModelById(
-        (client.models as any).AbilityObservationHint,
+        models.AbilityObservationHint,
         "AbilityObservationHint",
       );
-      await wipeModelById((client.models as any).AbilityCode, "AbilityCode");
+      await wipeModelById(models.AbilityCode, "AbilityCode");
     } else {
       console.log("core master wipe skipped");
     }
 
     // 1) AbilityCode投入
     const abilityRows = await parseCsv<AbilityRow>(abilityCsvUrl);
-
-    let createdAbility = 0;
-    let updatedAbility = 0;
-
-    for (const r of abilityRows) {
-      const result = await upsertAbilityCode(
-        (client.models as any).AbilityCode,
-        r,
-      );
-      if (result === "created") createdAbility += 1;
-      if (result === "updated") updatedAbility += 1;
-    }
-
-    console.log(
-      `seeded AbilityCode: created=${createdAbility} updated=${updatedAbility}`,
-    );
+    await seedRows({
+      label: "AbilityCode",
+      rows: abilityRows,
+      upsert: (row) => upsertAbilityCode(models.AbilityCode, row),
+    });
 
     // 2) AbilityObservationHint投入
     const hintRows = await parseCsv<AbilityObservationHintRow>(
       observationHintCsvUrl,
     );
+    await seedRows({
+      label: "AbilityObservationHint",
+      rows: hintRows,
+      upsert: (row) =>
+        upsertAbilityObservationHint(models.AbilityObservationHint, row),
+    });
 
-    let createdHints = 0;
-    let updatedHints = 0;
+    // 3) PlanPhrase投入
+    const planPhraseRows = await parseCsv<PlanPhraseRow>(planPhraseCsvUrl);
+    await seedRows({
+      label: "PlanPhrase",
+      rows: planPhraseRows,
+      upsert: (row) => upsertPlanPhrase(models.PlanPhrase, row),
+    });
 
-    for (const r of hintRows) {
-      const result = await upsertAbilityObservationHint(
-        (client.models as any).AbilityObservationHint,
-        r,
-      );
-      if (result === "created") createdHints += 1;
-      if (result === "updated") updatedHints += 1;
-    }
-
-    console.log(
-      `seeded AbilityObservationHint: created=${createdHints} updated=${updatedHints}`,
+    // 4) PlanPhraseAbilityLink投入
+    const linkRows = await parseCsv<PlanPhraseAbilityLinkRow>(
+      planPhraseAbilityLinkCsvUrl,
     );
+    await seedRows({
+      label: "PlanPhraseAbilityLink",
+      rows: linkRows,
+      upsert: (row) =>
+        upsertPlanPhraseAbilityLink(models.PlanPhraseAbilityLink, row),
+    });
 
     console.log("seed done.");
   } finally {

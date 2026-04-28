@@ -188,6 +188,10 @@ function uniqueStrings(values: Array<string | null | undefined>): string[] {
   ];
 }
 
+function normalizeText(value?: string | null) {
+  return String(value ?? "").trim();
+}
+
 function buildChildKey(classroomId: string, childName?: string | null) {
   const normalized = String(childName ?? "").trim();
   if (!normalized) return undefined;
@@ -208,6 +212,11 @@ function normalizeAbilityCode(value?: string | number | null) {
   const digitsOnly = noDecimal.replace(/[^\d]/g, "");
 
   return digitsOnly || noDecimal;
+}
+
+function normalizeAbilityLevel(value: unknown): number | undefined {
+  const n = Number(value);
+  return Number.isFinite(n) ? n : undefined;
 }
 
 function domainFromAbilityPrefix(code?: string | null) {
@@ -233,6 +242,49 @@ function domainFromAbilityPrefix(code?: string | null) {
 function categoryFromAbilityPrefix(code?: string | null) {
   const normalized = normalizeAbilityCode(code);
   return normalized.slice(0, 4) || undefined;
+}
+
+function resolveDomainFromAbilityRow(row: AbilityCodeRow): string | undefined {
+  const explicitDomain = normalizeText(row.domain);
+  if (explicitDomain) return explicitDomain;
+
+  const level = normalizeAbilityLevel(row.level);
+  const name = normalizeText(row.name);
+
+  if (level === 1 && name) {
+    return name;
+  }
+
+  return undefined;
+}
+
+function resolveCategoryFromAbilityRow(
+  row: AbilityCodeRow,
+  startCode: string,
+): string | undefined {
+  const explicitCategory = normalizeText(row.category);
+  if (explicitCategory) return explicitCategory;
+
+  const rowCode = normalizeAbilityCode(row.code);
+  const rowName = normalizeText(row.name);
+  const level = normalizeAbilityLevel(row.level);
+
+  // 開始 ability 自身の name は category ではなく abilityName なので使わない
+  if (!rowCode || rowCode === startCode) {
+    return undefined;
+  }
+
+  // まず level=2 の name を category とみなす
+  if (level === 2 && rowName) {
+    return rowName;
+  }
+
+  // level 情報が期待どおりでなくても、4桁親コードの name は category とみなす
+  if (rowCode.length === 4 && rowName) {
+    return rowName;
+  }
+
+  return undefined;
 }
 
 function pickPracticeCode(
@@ -377,16 +429,18 @@ async function findAbilityMetaResolved(
     const row = await findAbilityCodeRow(client, currentCode);
     if (!row) break;
 
-    if (!abilityName && row.name) {
-      abilityName = String(row.name);
+    const rowName = normalizeText(row.name);
+
+    if (!abilityName && rowName) {
+      abilityName = rowName;
     }
 
-    if (!domain && row.domain) {
-      domain = String(row.domain);
+    if (!domain) {
+      domain = resolveDomainFromAbilityRow(row);
     }
 
-    if (!category && row.category) {
-      category = String(row.category);
+    if (!category) {
+      category = resolveCategoryFromAbilityRow(row, startCode);
     }
 
     if (domain && category) {

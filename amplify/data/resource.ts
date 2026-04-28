@@ -1,4 +1,4 @@
-﻿import {
+import {
   type ClientSchema,
   a,
   defineData,
@@ -30,7 +30,6 @@ export const suggestPracticeLinksFn = defineFunction({
   runtime: 22,
 });
 
-// ★追加: accepted 候補の本登録用
 export const registerPracticeLinksFn = defineFunction({
   name: "register-practice-links",
   entry: "./practice-link-register/handler.ts",
@@ -38,7 +37,6 @@ export const registerPracticeLinksFn = defineFunction({
   runtime: 22,
 });
 
-// ★現行 Legacy PLAN 用
 export const ensureFiscalYearTemplateFn = defineFunction({
   name: "ensure-fiscal-year-template",
   entry: "./plan-ensure-fiscal-year-template/handler.ts",
@@ -138,7 +136,6 @@ const schema = a
         tenantId: a.string().required(),
         owner: a.string().required(),
 
-        // 追加: 用途識別
         jobType: a.string(), // PRACTICE / DIGEST / SCHEDULE_TRANSCRIPT
         sourceEntityType: a.string(), // PracticeCode / DailyDigest / ScheduleDayItem
         sourceEntityId: a.string(),
@@ -220,14 +217,12 @@ const schema = a
       .authorization((allow) => [allow.authenticated()])
       .handler(a.handler.function(suggestPracticeLinksFn)),
 
-    // ★追加: accepted 候補の本登録結果
     RegisterPracticeLinksResponse: a.customType({
       practiceCode: a.string().required(),
       registeredCount: a.integer().required(),
       status: a.string().required(),
     }),
 
-    // ★追加: accepted 候補を AbilityPracticeLink へ反映
     registerPracticeLinks: a
       .mutation()
       .arguments({
@@ -583,7 +578,6 @@ const schema = a
         plans: a.hasMany("Plan", "classroomId"),
         classAnnualPlans: a.hasMany("ClassAnnualPlan", "classroomId"),
 
-        // SCHEDULE v1
         scheduleMonths: a.hasMany("ScheduleMonth", "classroomId"),
         scheduleWeeks: a.hasMany("ScheduleWeek", "classroomId"),
         scheduleDays: a.hasMany("ScheduleDay", "classroomId"),
@@ -804,7 +798,7 @@ const schema = a
         sourceClassMonthPlanId: a.id(),
         sourceClassWeekPlanId: a.id(),
 
-        monthKey: a.string(), // 例: 2026-04
+        monthKey: a.string(),
         weekNo: a.integer(),
 
         weekStartDate: a.date().required(),
@@ -858,7 +852,7 @@ const schema = a
 
         sourceClassWeekPracticeAssignmentId: a.id(),
 
-        dayOfWeek: a.integer().required(), // 0=Sun ... 6=Sat
+        dayOfWeek: a.integer().required(),
         targetDate: a.date(),
 
         sourceType: a.ref("ScheduleSourceType").required(),
@@ -900,7 +894,7 @@ const schema = a
     ScheduleDay: a
       .model({
         tenantId: a.string().required(),
-        owner: a.string().required(), // 担任sub
+        owner: a.string().required(),
 
         classroomId: a.id().required(),
         classroom: a.belongsTo("Classroom", "classroomId"),
@@ -1031,13 +1025,10 @@ const schema = a
         owner: a.string().required(),
 
         classroomId: a.id().required(),
-
         ageTargetId: a.id(),
 
         scheduleWeekId: a.id(),
-
         scheduleDayId: a.id().required(),
-
         scheduleDayItemId: a.id(),
 
         sourceScheduleRecordId: a.id(),
@@ -1058,7 +1049,7 @@ const schema = a
         body: a.string(),
         tags: a.string().array(),
 
-        status: a.string().required(), // ACTIVE / ARCHIVED
+        status: a.string().required(),
         createdBySub: a.string(),
 
         abilityLinks: a.hasMany(
@@ -1120,7 +1111,7 @@ const schema = a
         confidencePct: a.integer(),
         evidenceText: a.string(),
 
-        status: a.string().required(), // ACTIVE / ARCHIVED
+        status: a.string().required(),
       })
       .secondaryIndexes((index) => [
         index("observationRecordId")
@@ -1153,12 +1144,12 @@ const schema = a
         childKey: a.string(),
         childName: a.string(),
 
-        periodKey: a.string().required(), // 例: 2026-W15
+        periodKey: a.string().required(),
         periodStart: a.date().required(),
         periodEnd: a.date().required(),
 
         title: a.string(),
-        status: a.string().required(), // READY / ERROR
+        status: a.string().required(),
         payloadJson: a.string().required(),
         markdownText: a.string(),
         generatedAt: a.datetime().required(),
@@ -1174,6 +1165,81 @@ const schema = a
       .authorization((allow) => [
         allow.ownerDefinedIn("owner"),
         allow.authenticated().to(["read", "create", "update", "delete"]),
+      ]),
+
+    // =========================
+    // PLAN v2 文例マスター
+    // =========================
+
+    PlanPhrase: a
+      .model({
+        planPhraseId: a.string().required(),
+        planPeriodType: a.string().required(), // MONTH
+        domainCode: a.string().required(), // 11 / 21 / 31 / 41 / 51
+        domain: a.string().required(), // 健康 / 人間関係 / 環境 / 言葉 / 表現
+        ageYears: a.integer().required(), // 3 / 4 / 5
+        phraseNo: a.integer(),
+        phraseType: a.string(), // 月のねらい
+        phraseText: a.string().required(),
+        source: a.string(),
+        status: a.string().required(), // active / archived
+        sortOrder: a.integer(),
+        note: a.string(),
+      })
+      .identifier(["planPhraseId"])
+      .secondaryIndexes((index) => [
+        index("planPeriodType")
+          .sortKeys(["domainCode", "ageYears", "sortOrder"])
+          .queryField("listPlanPhrasesByPeriodDomainAge"),
+        index("domainCode")
+          .sortKeys(["ageYears", "sortOrder"])
+          .queryField("listPlanPhrasesByDomainAge"),
+        index("status")
+          .sortKeys(["planPeriodType", "domainCode", "ageYears"])
+          .queryField("listPlanPhrasesByStatusPeriodDomainAge"),
+      ])
+      .authorization((allow) => [
+        allow.authenticated().to(["create", "read", "update", "delete"]),
+      ]),
+
+    PlanPhraseAbilityLink: a
+      .model({
+        linkId: a.string().required(),
+        planPhraseId: a.string().required(),
+        planPeriodType: a.string().required(), // MONTH
+        phraseDomainCode: a.string(),
+        phraseDomain: a.string(),
+        ageYears: a.integer(),
+        phraseNo: a.integer(),
+
+        abilityCode: a.string().required(),
+        abilityDomain: a.string().required(),
+        categoryCode: a.string(),
+        categoryName: a.string(),
+        abilityName: a.string(),
+        relationType: a.string(), // PRIMARY / RELATED
+        weight: a.integer().required(),
+        status: a.string().required(), // active / archived
+        sortOrder: a.integer(),
+        note: a.string(),
+      })
+      .identifier(["linkId"])
+      .secondaryIndexes((index) => [
+        index("planPhraseId")
+          .sortKeys(["sortOrder"])
+          .queryField("listPlanPhraseAbilityLinksByPhrase"),
+        index("abilityCode")
+          .sortKeys(["planPhraseId"])
+          .queryField("listPlanPhraseAbilityLinksByAbility"),
+        index("planPeriodType")
+          .sortKeys(["phraseDomainCode", "ageYears", "sortOrder"])
+          .queryField("listPlanPhraseAbilityLinksByPeriodDomainAge"),
+        index("status")
+          .sortKeys(["planPeriodType", "phraseDomainCode", "ageYears"])
+          .queryField("listPlanPhraseAbilityLinksByStatusPeriodDomainAge"),
+      ])
+      .authorization((allow) => [
+        allow.authenticated().to(["create", "read", "update", "delete"]),
       ]),
 
     // =========================
@@ -1229,8 +1295,6 @@ const schema = a
           "ClassAnnualPlan",
           "schoolAnnualAgeTargetId",
         ),
-
-        // SCHEDULE v1
         scheduleMonths: a.hasMany("ScheduleMonth", "ageTargetId"),
         scheduleWeeks: a.hasMany("ScheduleWeek", "ageTargetId"),
         scheduleDays: a.hasMany("ScheduleDay", "ageTargetId"),
@@ -1362,7 +1426,7 @@ const schema = a
         classQuarterPlan: a.belongsTo("ClassQuarterPlan", "classQuarterPlanId"),
 
         fiscalYear: a.integer().required(),
-        monthKey: a.string().required(), // 2026-04
+        monthKey: a.string().required(),
         title: a.string().required(),
         periodStart: a.date(),
         periodEnd: a.date(),
@@ -1382,6 +1446,10 @@ const schema = a
         status: a.ref("PlanStatus"),
 
         monthEvents: a.hasMany("MonthEvent", "classMonthPlanId"),
+        phraseSelections: a.hasMany(
+          "ClassMonthPlanPhraseSelection",
+          "classMonthPlanId",
+        ),
         weekPlans: a.hasMany("ClassWeekPlan", "classMonthPlanId"),
       })
       .secondaryIndexes((index) => [
@@ -1391,6 +1459,53 @@ const schema = a
         index("tenantId")
           .sortKeys(["monthKey"])
           .queryField("listClassMonthPlansByTenantMonth"),
+      ])
+      .authorization((allow) => [
+        allow.authenticated().to(["create", "read", "update", "delete"]),
+      ]),
+
+    ClassMonthPlanPhraseSelection: a
+      .model({
+        tenantId: a.string().required(),
+
+        classMonthPlanId: a.id().required(),
+        classMonthPlan: a.belongsTo("ClassMonthPlan", "classMonthPlanId"),
+
+        classQuarterPlanId: a.id(),
+        fiscalYear: a.integer(),
+        monthKey: a.string(),
+
+        planPhraseId: a.string().required(),
+        phraseTextSnapshot: a.string().required(),
+
+        selectedDomainCode: a.string(),
+        selectedDomain: a.string(),
+        ageYears: a.integer(),
+        phraseNo: a.integer(),
+
+        abilityCodes: a.string().array(),
+        abilitySummaryJson: a.string(),
+
+        scoreHealth: a.integer(),
+        scoreHumanRelations: a.integer(),
+        scoreEnvironment: a.integer(),
+        scoreLanguage: a.integer(),
+        scoreExpression: a.integer(),
+
+        status: a.string().required(), // ACTIVE / ARCHIVED
+        sortOrder: a.integer(),
+        selectedAt: a.datetime(),
+      })
+      .secondaryIndexes((index) => [
+        index("classMonthPlanId")
+          .sortKeys(["status", "sortOrder"])
+          .queryField("listClassMonthPlanPhraseSelectionsByMonthPlan"),
+        index("tenantId")
+          .sortKeys(["fiscalYear", "monthKey", "sortOrder"])
+          .queryField("listClassMonthPlanPhraseSelectionsByTenantMonth"),
+        index("planPhraseId")
+          .sortKeys(["classMonthPlanId"])
+          .queryField("listClassMonthPlanPhraseSelectionsByPhrase"),
       ])
       .authorization((allow) => [
         allow.authenticated().to(["create", "read", "update", "delete"]),
@@ -1484,7 +1599,7 @@ const schema = a
 
         sourceClassMonthPlanId: a.id(),
 
-        monthKey: a.string().required(), // 例: 2026-04
+        monthKey: a.string().required(),
         title: a.string(),
         notes: a.string(),
 
@@ -1508,9 +1623,9 @@ const schema = a
         index("owner")
           .sortKeys(["monthKey"])
           .queryField("listScheduleMonthsByOwnerMonthKey"),
-        index("sourceClassMonthPlanId")
-          .sortKeys(["monthKey"])
-          .queryField("listScheduleMonthsBySourceClassMonthPlan"),
+        index("sourceClassMonthPlanId").queryField(
+          "listScheduleMonthsBySourceClassMonthPlan",
+        ),
       ])
       .authorization((allow) => [
         allow.ownerDefinedIn("owner"),
@@ -1525,15 +1640,22 @@ const schema = a
         scheduleMonthId: a.id().required(),
         scheduleMonth: a.belongsTo("ScheduleMonth", "scheduleMonthId"),
 
-        weekNoInMonth: a.integer().required(), // 1..5
-        dayOfWeek: a.integer().required(), // 0=Sun ... 6=Sat
+        sourceClassMonthPlanId: a.id(),
+        sourceClassWeekPracticeAssignmentId: a.id(),
+
+        targetDate: a.date().required(),
+        dayOfWeek: a.integer().required(),
+        weekNo: a.integer(),
+        weekNoInMonth: a.integer().required(),
 
         sourceType: a.ref("ScheduleSourceType").required(),
 
         title: a.string().required(),
+        eventLabel: a.string(),
         description: a.string(),
-        startTime: a.string().required(), // HH:mm
-        endTime: a.string().required(), // HH:mm
+
+        startTime: a.string().required(),
+        endTime: a.string().required(),
         sortOrder: a.integer().required(),
 
         practiceCode: a.string(),
@@ -1545,14 +1667,20 @@ const schema = a
         scoreLanguage: a.integer(),
         scoreExpression: a.integer(),
 
-        weekItems: a.hasMany("ScheduleWeekItem", "sourceMonthItemId"),
+        sourceWeekItems: a.hasMany("ScheduleWeekItem", "sourceMonthItemId"),
       })
       .secondaryIndexes((index) => [
+        index("scheduleMonthId")
+          .sortKeys(["targetDate", "sortOrder"])
+          .queryField("listScheduleMonthItemsByMonthDateSort"),
         index("scheduleMonthId")
           .sortKeys(["weekNoInMonth", "dayOfWeek", "sortOrder"])
           .queryField("listScheduleMonthItemsByMonthWeekDaySort"),
         index("practiceCode").queryField(
           "listScheduleMonthItemsByPracticeCode",
+        ),
+        index("sourceClassWeekPracticeAssignmentId").queryField(
+          "listScheduleMonthItemsBySourceAssignment",
         ),
       ])
       .authorization((allow) => [
@@ -1567,17 +1695,9 @@ const schema = a
 
         targetDate: a.date().required(),
         title: a.string().required(),
-        periodStart: a.date(),
-        periodEnd: a.date(),
 
         ageBand: a.string().required(),
         goalTextC: a.string(),
-
-        abilityHealthC: a.integer(),
-        abilityHumanRelationsC: a.integer(),
-        abilityEnvironmentC: a.integer(),
-        abilityLanguageC: a.integer(),
-        abilityExpressionC: a.integer(),
 
         status: a.ref("PlanStatus"),
 
@@ -1613,6 +1733,7 @@ const schema = a
       .authorization((allow) => [
         allow.authenticated().to(["create", "read", "update", "delete"]),
       ]),
+
     EnsureFiscalYearTemplateV2Response: a.customType({
       tenantId: a.string().required(),
       fiscalYear: a.integer().required(),
@@ -1671,9 +1792,10 @@ const schema = a
     allow.resource(ensureFiscalYearTemplateV2Fn),
     allow.resource(issueNextDaySchedules),
     allow.resource(analyzeTranscriptObservationsFn),
+    allow.resource(cleanupTranscriptTextFn),
+    allow.resource(syncScheduleDayObservationsFn),
     allow.resource(issueScheduleDayFromScheduleWeekFn),
     allow.resource(issueScheduleWeekFromScheduleMonthFn),
-    allow.resource(syncScheduleDayObservationsFn),
   ]);
 
 export type Schema = ClientSchema<typeof schema>;
