@@ -1,7 +1,9 @@
 // amplify/seed/seed.ts
 import { readFile } from "node:fs/promises";
+import { isAbsolute, resolve } from "node:path";
 import readline from "node:readline/promises";
 import { stdin as input, stdout as output } from "node:process";
+import { fileURLToPath, pathToFileURL } from "node:url";
 
 import Papa from "papaparse";
 
@@ -16,7 +18,39 @@ import {
 
 import type { Schema } from "../data/resource";
 
-const outputsUrl = new URL("../../amplify_outputs.json", import.meta.url);
+type AmplifyConfig = Parameters<typeof Amplify.configure>[0];
+
+const repoRootPath = fileURLToPath(new URL("../../", import.meta.url));
+
+function resolveOutputsUrl(): URL {
+  const outputsFile = String(process.env.SEED_OUTPUTS_FILE ?? "").trim();
+
+  if (!outputsFile) {
+    return new URL("../../amplify_outputs.json", import.meta.url);
+  }
+
+  if (/^file:/i.test(outputsFile)) {
+    return new URL(outputsFile);
+  }
+
+  const absolutePath = isAbsolute(outputsFile)
+    ? outputsFile
+    : resolve(repoRootPath, outputsFile);
+
+  return pathToFileURL(absolutePath);
+}
+
+function resolveSeedTarget(): string {
+  const target = String(process.env.SEED_TARGET ?? "").trim();
+  if (target) return target;
+
+  return String(process.env.SEED_OUTPUTS_FILE ?? "").trim()
+    ? "custom-outputs"
+    : "default-amplify_outputs";
+}
+
+const outputsUrl = resolveOutputsUrl();
+const seedTarget = resolveSeedTarget();
 
 const abilityCsvUrl = new URL("./data/ability_codes_lang.csv", import.meta.url);
 const observationHintCsvUrl = new URL(
@@ -150,23 +184,25 @@ type SeedModels = {
 type UpsertResult = "created" | "updated" | false;
 
 function toInt(v: unknown): number | null {
-  const s = String(v ?? "").trim();
-  if (!s) return null;
-  const n = Number(s);
-  if (!Number.isFinite(n)) return null;
-  return Math.trunc(n);
+  const value = String(v ?? "").trim();
+  if (!value) return null;
+
+  const num = Number(value);
+  if (!Number.isFinite(num)) return null;
+
+  return Math.trunc(num);
 }
 
 function asStr(v: unknown): string {
-  const s = String(v ?? "").trim();
-  if (!s) return "";
-  if (/^\d+(\.0+)?$/.test(s)) return s.replace(/\.0+$/, "");
-  return s;
+  const value = String(v ?? "").trim();
+  if (!value) return "";
+  if (/^\d+(\.0+)?$/.test(value)) return value.replace(/\.0+$/, "");
+  return value;
 }
 
 function asNullable(v: unknown): string | null {
-  const s = asStr(v);
-  return s || null;
+  const value = asStr(v);
+  return value || null;
 }
 
 function errorMessage(error: unknown): string {
@@ -201,6 +237,11 @@ async function parseCsv<T extends object>(url: URL): Promise<T[]> {
   const parsed = Papa.parse<T>(text, { header: true, skipEmptyLines: true });
   if (parsed.errors?.length) throw parsed.errors;
   return parsed.data;
+}
+
+async function readAmplifyOutputs(url: URL): Promise<AmplifyConfig> {
+  const text = await readFile(url, { encoding: "utf8" });
+  return JSON.parse(text) as AmplifyConfig;
 }
 
 async function promptLine(message: string): Promise<string> {
@@ -270,8 +311,8 @@ async function wipeModelByKey<TItem extends SeedItem>(
   let deleted = 0;
   let skipped = 0;
 
-  for (const it of items) {
-    const keyValue = asStr(it[keyField]);
+  for (const item of items) {
+    const keyValue = asStr(item[keyField]);
     if (!keyValue) {
       skipped += 1;
       continue;
@@ -590,14 +631,14 @@ async function seedRows<T extends object>(args: {
   let signedIn = false;
 
   try {
-    const outputs = JSON.parse(
-      await readFile(outputsUrl, { encoding: "utf8" }),
-    );
+    const outputs = await readAmplifyOutputs(outputsUrl);
     Amplify.configure(outputs);
 
     const username = await getUsername();
     const password = await getPassword();
 
+    console.log("SEED target:", seedTarget);
+    console.log("SEED outputs:", fileURLToPath(outputsUrl));
     console.log("SEED user:", `${username.slice(0, 4)}***`);
     console.log("SEED wipe:", SHOULD_WIPE);
 
