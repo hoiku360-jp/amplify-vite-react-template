@@ -200,23 +200,6 @@ async function invokeBedrockJson(
   return { suggestions, rawText };
 }
 
-function buildPracticeUpdateBase(practice: PracticeCodeRow) {
-  return {
-    id: practice.id,
-    practice_code: practice.practice_code,
-    tenantId: practice.tenantId ?? undefined,
-    owner: practice.owner ?? undefined,
-    ownerType: practice.ownerType ?? undefined,
-    practiceCategory: practice.practiceCategory ?? undefined,
-    visibility: practice.visibility ?? undefined,
-    publishScope: practice.publishScope ?? undefined,
-    name: practice.name ?? "",
-    memo: practice.memo ?? "",
-    source_type: practice.source_type ?? "practiceRegister",
-    version: Number(practice.version ?? 1),
-  };
-}
-
 export const handler: Schema["suggestPracticeLinks"]["functionHandler"] =
   async (event) => {
     const args = event.arguments as PracticeSuggestArgs;
@@ -352,7 +335,7 @@ export const handler: Schema["suggestPracticeLinks"]["functionHandler"] =
     }
 
     const practiceUpdate = await dataClient.models.PracticeCode.update({
-      ...buildPracticeUpdateBase(practice),
+      id: practice.id,
       aiModel: modelId,
       aiRawJson: ai.rawText,
       updatedBy: "suggest-practice-links",
