@@ -10,33 +10,230 @@ import { generateClient } from "aws-amplify/data";
 import { getAmplifyDataClientConfig } from "@aws-amplify/backend/function/runtime";
 import { env } from "$amplify/env/transcribe-poller";
 
-function isNotFound(err: any) {
-  const name = err?.name;
-  const msg = String(err?.message ?? "");
+type DataClient = ReturnType<typeof generateClient<Schema>>;
+
+type ErrorLike = {
+  name?: string;
+  message?: string;
+  stack?: string;
+};
+
+type GraphQLErrorLike = {
+  message?: string | null;
+};
+
+type NodeReadable = {
+  on(event: "data", listener: (chunk: Buffer) => void): unknown;
+  on(event: "end", listener: () => void): unknown;
+  on(event: "error", listener: (error: Error) => void): unknown;
+};
+
+type AudioJobLike = Schema["AudioJob"]["type"] & {
+  jobType?: string | null;
+  sourceEntityType?: string | null;
+  sourceEntityId?: string | null;
+  practiceCode?: string | null;
+};
+
+type TranscriptJson = {
+  results?: {
+    transcripts?: Array<{
+      transcript?: string | null;
+    }>;
+  };
+};
+
+type ListJobsByStatusDateInput = {
+  status: string;
+  sortDirection?: "ASC" | "DESC";
+  limit?: number;
+  nextToken?: string | null;
+};
+
+type ListAudioJobsResult = {
+  data?: AudioJobLike[] | null;
+  errors?: GraphQLErrorLike[] | null;
+  nextToken?: string | null;
+};
+
+type AudioJobModelWithStatusDate = typeof generateClient<Schema> extends (
+  ...args: never[]
+) => infer Client
+  ? Client extends { models: { AudioJob: infer Model } }
+    ? Model & {
+        listJobsByStatusDate?: (
+          input: ListJobsByStatusDateInput,
+        ) => Promise<ListAudioJobsResult>;
+      }
+    : never
+  : never;
+
+function toErrorLike(error: unknown): ErrorLike {
+  if (error instanceof Error) {
+    return {
+      name: error.name,
+      message: error.message,
+      stack: error.stack,
+    };
+  }
+
+  if (typeof error === "object" && error !== null) {
+    const obj = error as Record<string, unknown>;
+    return {
+      name: typeof obj.name === "string" ? obj.name : undefined,
+      message: typeof obj.message === "string" ? obj.message : undefined,
+      stack: typeof obj.stack === "string" ? obj.stack : undefined,
+    };
+  }
+
+  return {
+    message: String(error),
+  };
+}
+
+function isNotFound(error: unknown) {
+  const e = toErrorLike(error);
+  const msg = String(e.message ?? "");
   return (
-    name === "ResourceNotFoundException" || msg.includes("couldn't be found")
+    e.name === "ResourceNotFoundException" || msg.includes("couldn't be found")
   );
 }
 
-function safeString(v: unknown): string {
-  return typeof v === "string" ? v : String(v ?? "");
+function safeString(value: unknown): string {
+  return typeof value === "string" ? value : String(value ?? "");
 }
 
-function truncate(s: string, max = 120_000) {
-  if (s.length <= max) return s;
-  return s.slice(0, max) + "\n…(truncated)…";
+function truncate(text: string, max = 120_000) {
+  if (text.length <= max) return text;
+  return `${text.slice(0, max)}\n…(truncated)…`;
 }
 
-async function readStreamToString(body: any): Promise<string> {
-  if (!body) return "";
-  if (typeof body.transformToString === "function") {
-    return await body.transformToString("utf-8");
+function isoNow() {
+  return new Date().toISOString();
+}
+
+function normalizeType(value: unknown): string {
+  return safeString(value).trim().replace(/[\s-]/g, "_").toUpperCase();
+}
+
+function extractEpochMsFromJobName(
+  jobName: string | undefined | null,
+): number | undefined {
+  if (!jobName) return undefined;
+
+  const matched = jobName.match(/-(\d{10,})$/);
+  if (!matched) return undefined;
+
+  const parsed = Number(matched[1]);
+  return Number.isFinite(parsed) ? parsed : undefined;
+}
+
+/**
+ * legacy audioPath:
+ * practice-audio/{tenantId}/{owner}/{practice_code}/{fileName}
+ */
+function extractPracticeInfoFromAudioPath(
+  audioPath: string | undefined | null,
+): { tenantId?: string; practiceCode?: string } {
+  if (!audioPath) return {};
+
+  const parts = audioPath.split("/").filter(Boolean);
+
+  if (parts.length >= 5 && parts[0] === "practice-audio") {
+    return {
+      tenantId: parts[1],
+      practiceCode: parts[3],
+    };
   }
+
+  return {};
+}
+
+function resolveJobType(job: AudioJobLike): string {
+  const explicit = normalizeType(job.jobType);
+  if (explicit) return explicit;
+
+  const sourceEntityType = normalizeType(job.sourceEntityType);
+
+  if (
+    sourceEntityType === "PRACTICE" ||
+    sourceEntityType === "PRACTICE_CODE" ||
+    sourceEntityType === "PRACTICECODE"
+  ) {
+    return "PRACTICE";
+  }
+
+  if (
+    sourceEntityType === "SCHEDULE_DAY" ||
+    sourceEntityType === "SCHEDULEDAY"
+  ) {
+    return "SCHEDULE_DAY";
+  }
+
+  if (sourceEntityType === "DIGEST") {
+    return "DIGEST";
+  }
+
+  const legacyPractice = extractPracticeInfoFromAudioPath(job.audioPath);
+  if (legacyPractice.tenantId && legacyPractice.practiceCode) {
+    return "PRACTICE";
+  }
+
+  return "";
+}
+
+function resolvePracticeIdentifier(job: AudioJobLike): {
+  tenantId?: string;
+  identifier?: string;
+} {
+  const legacyPractice = extractPracticeInfoFromAudioPath(job.audioPath);
+
+  const tenantId =
+    safeString(job.tenantId).trim() ||
+    safeString(legacyPractice.tenantId).trim();
+
+  const identifier =
+    safeString(job.sourceEntityId).trim() ||
+    safeString(job.practiceCode).trim() ||
+    safeString(legacyPractice.practiceCode).trim();
+
+  return {
+    tenantId: tenantId || undefined,
+    identifier: identifier || undefined,
+  };
+}
+
+function joinErrorMessages(
+  errors: ReadonlyArray<{ message?: string | null }> | null | undefined,
+) {
+  return (errors ?? [])
+    .map((error) => error.message ?? "")
+    .filter(Boolean)
+    .join("\n");
+}
+
+async function readStreamToString(body: unknown): Promise<string> {
+  if (!body) return "";
+
+  if (
+    typeof body === "object" &&
+    body !== null &&
+    "transformToString" in body &&
+    typeof (body as { transformToString?: unknown }).transformToString ===
+      "function"
+  ) {
+    return await (
+      body as { transformToString: (encoding: string) => Promise<string> }
+    ).transformToString("utf-8");
+  }
+
   return await new Promise<string>((resolve, reject) => {
     const chunks: Buffer[] = [];
-    body.on("data", (c: Buffer) => chunks.push(c));
-    body.on("end", () => resolve(Buffer.concat(chunks).toString("utf-8")));
-    body.on("error", reject);
+    const stream = body as NodeReadable;
+
+    stream.on("data", (chunk: Buffer) => chunks.push(chunk));
+    stream.on("end", () => resolve(Buffer.concat(chunks).toString("utf-8")));
+    stream.on("error", reject);
   });
 }
 
@@ -44,44 +241,67 @@ async function fetchJsonWithRetry(
   url: string,
   retries = 3,
   timeoutMs = 12_000,
-): Promise<any> {
-  let lastErr: any;
+): Promise<TranscriptJson> {
+  let lastError: unknown = new Error("fetchJsonWithRetry failed");
+
   for (let i = 0; i < retries; i++) {
-    const ac = new AbortController();
-    const t = setTimeout(() => ac.abort(), timeoutMs);
+    const abortController = new AbortController();
+    const timer = setTimeout(() => abortController.abort(), timeoutMs);
+
     try {
-      const res = await fetch(url, { signal: ac.signal });
-      if (!res.ok) {
-        throw new Error(`fetch failed: ${res.status} ${res.statusText}`);
+      const response = await fetch(url, {
+        signal: abortController.signal,
+      });
+
+      if (!response.ok) {
+        throw new Error(
+          `fetch failed: ${response.status} ${response.statusText}`,
+        );
       }
-      return await res.json();
-    } catch (e: any) {
-      lastErr = e;
-      await new Promise((r) => setTimeout(r, 300 * (i + 1) * (i + 1)));
+
+      return (await response.json()) as TranscriptJson;
+    } catch (error) {
+      lastError = error;
+      await new Promise((resolve) =>
+        setTimeout(resolve, 300 * (i + 1) * (i + 1)),
+      );
     } finally {
-      clearTimeout(t);
+      clearTimeout(timer);
     }
   }
-  throw lastErr;
+
+  const e = toErrorLike(lastError);
+  throw new Error(e.message ?? String(lastError));
 }
 
 function parseS3FromUri(uri: string): { bucket?: string; key?: string } {
   try {
-    const u = new URL(uri);
-    const host = u.hostname;
+    if (uri.startsWith("s3://")) {
+      const withoutScheme = uri.slice("s3://".length);
+      const parts = withoutScheme.split("/").filter(Boolean);
+      return {
+        bucket: parts[0],
+        key: parts.slice(1).join("/"),
+      };
+    }
+
+    const url = new URL(uri);
+    const host = url.hostname;
 
     if (host.includes(".s3.") && host.endsWith(".amazonaws.com")) {
       const bucket = host.split(".s3.")[0];
-      const key = u.pathname.replace(/^\/+/, "");
+      const key = url.pathname.replace(/^\/+/, "");
       return { bucket, key };
     }
 
-    const parts = u.pathname.split("/").filter(Boolean);
+    const parts = url.pathname.split("/").filter(Boolean);
     if (parts.length >= 2) {
-      const bucket = parts[0];
-      const key = parts.slice(1).join("/");
-      return { bucket, key };
+      return {
+        bucket: parts[0],
+        key: parts.slice(1).join("/"),
+      };
     }
+
     return {};
   } catch {
     return {};
@@ -94,105 +314,93 @@ async function getTranscriptText(
 ): Promise<{ transcriptText: string; source: "fetch" | "s3" }> {
   try {
     const json = await fetchJsonWithRetry(transcriptFileUri, 3, 15_000);
-    const t = safeString(json?.results?.transcripts?.[0]?.transcript ?? "");
-    return { transcriptText: t, source: "fetch" };
-  } catch (e: any) {
-    console.warn("fetch TranscriptFileUri failed (will try s3 fallback)", {
-      msg: e?.message ?? String(e),
+    const transcriptText = safeString(
+      json.results?.transcripts?.[0]?.transcript ?? "",
+    );
+    return { transcriptText, source: "fetch" };
+  } catch (error) {
+    const e = toErrorLike(error);
+    console.warn("fetch TranscriptFileUri failed; trying S3 fallback", {
+      message: e.message,
     });
   }
 
   const { bucket, key } = parseS3FromUri(transcriptFileUri);
+
   if (!bucket || !key) {
     throw new Error("could not parse bucket/key from TranscriptFileUri");
   }
 
   const s3 = new S3Client({ region });
-  const obj = await s3.send(new GetObjectCommand({ Bucket: bucket, Key: key }));
-  const text = await readStreamToString(obj.Body);
-  const json = JSON.parse(text);
-  const t = safeString(json?.results?.transcripts?.[0]?.transcript ?? "");
-  return { transcriptText: t, source: "s3" };
+  const object = await s3.send(
+    new GetObjectCommand({
+      Bucket: bucket,
+      Key: key,
+    }),
+  );
+
+  const text = await readStreamToString(object.Body);
+  const json = JSON.parse(text) as TranscriptJson;
+
+  const transcriptText = safeString(
+    json.results?.transcripts?.[0]?.transcript ?? "",
+  );
+
+  return { transcriptText, source: "s3" };
 }
 
 async function withTimeout<T>(
-  p: Promise<T>,
+  promise: Promise<T>,
   ms: number,
   label: string,
 ): Promise<T> {
-  let t: any;
-  const timeout = new Promise<never>((_, rej) => {
-    t = setTimeout(() => rej(new Error(`timeout after ${ms}ms: ${label}`)), ms);
+  let timer: ReturnType<typeof setTimeout> | undefined;
+
+  const timeout = new Promise<never>((_, reject) => {
+    timer = setTimeout(
+      () => reject(new Error(`timeout after ${ms}ms: ${label}`)),
+      ms,
+    );
   });
+
   try {
-    return await Promise.race([p, timeout]);
+    return await Promise.race([promise, timeout]);
   } finally {
-    clearTimeout(t);
+    if (timer) clearTimeout(timer);
   }
 }
 
-function extractEpochMsFromJobName(
-  jobName: string | undefined | null,
-): number | undefined {
-  if (!jobName) return undefined;
-  const m = jobName.match(/-(\d{10,})$/);
-  if (!m) return undefined;
-  const n = Number(m[1]);
-  return Number.isFinite(n) ? n : undefined;
-}
-
-function isoNow() {
-  return new Date().toISOString();
-}
-
-/**
- * legacy audioPath:
- * practice-audio/{tenantId}/{owner}/{practice_code}/{fileName}
- */
-function extractPracticeInfoFromAudioPath(
-  audioPath: string | undefined | null,
-): { tenantId?: string; practiceCode?: string } {
-  if (!audioPath) return {};
-  const parts = audioPath.split("/").filter(Boolean);
-
-  if (parts.length < 5) return {};
-  if (parts[0] !== "practice-audio") return {};
-
-  return {
-    tenantId: parts[1],
-    practiceCode: parts[3],
-  };
-}
-
-function resolveJobType(job: any): string {
-  const explicit = safeString(job?.jobType).trim().toUpperCase();
-  if (explicit) return explicit;
-
-  const legacyPractice = extractPracticeInfoFromAudioPath(job?.audioPath);
-  if (legacyPractice.tenantId && legacyPractice.practiceCode) {
-    return "PRACTICE";
-  }
-
-  return "";
-}
-
-async function findPracticeByTenantAndPracticeCode(
-  dataClient: ReturnType<typeof generateClient<Schema>>,
-  tenantId: string,
-  practiceCode: string,
+async function findPracticeByTenantAndIdentifier(
+  dataClient: DataClient,
+  tenantId: string | undefined,
+  identifier: string,
 ) {
+  if (!identifier) return null;
+
+  if (!tenantId) {
+    const byId = await dataClient.models.PracticeCode.get({
+      id: identifier,
+    });
+
+    if (!byId.errors?.length && byId.data) {
+      return byId.data;
+    }
+
+    return null;
+  }
+
   const result = await dataClient.models.PracticeCode.list({
     filter: {
-      tenantId: { eq: tenantId },
+      tenantId: {
+        eq: tenantId,
+      },
     },
     limit: 1000,
   });
 
   if (result.errors?.length) {
     throw new Error(
-      `PracticeCode lookup failed: ${result.errors
-        .map((e: { message: string }) => e.message)
-        .join("\n")}`,
+      `PracticeCode lookup failed: ${joinErrorMessages(result.errors)}`,
     );
   }
 
@@ -201,25 +409,138 @@ async function findPracticeByTenantAndPracticeCode(
   console.info("PracticeCode lookup by tenantId", {
     tenantId,
     count: items.length,
-    targetPracticeCode: practiceCode,
+    targetIdentifier: identifier,
   });
 
-  return items.find((x) => x.practice_code === practiceCode) ?? null;
+  return (
+    items.find(
+      (item) =>
+        item.id === identifier ||
+        item.practice_code === identifier ||
+        safeString(item.practice_code).trim() === identifier.trim(),
+    ) ?? null
+  );
+}
+
+async function markAudioJobFailed(
+  dataClient: DataClient,
+  args: {
+    jobId: string;
+    transcribeStatus?: string | null;
+    errorMessage: string;
+  },
+) {
+  await dataClient.models.AudioJob.update({
+    id: args.jobId,
+    status: "FAILED",
+    transcribeStatus: args.transcribeStatus ?? "FAILED",
+    errorMessage: args.errorMessage,
+    completedAt: isoNow(),
+  });
+}
+
+async function listRunningAudioJobs(
+  dataClient: DataClient,
+  limit: number,
+): Promise<AudioJobLike[]> {
+  const audioJobModel = dataClient.models
+    .AudioJob as unknown as AudioJobModelWithStatusDate;
+
+  if (typeof audioJobModel.listJobsByStatusDate === "function") {
+    const collected: AudioJobLike[] = [];
+    let nextToken: string | null | undefined;
+    let page = 0;
+
+    do {
+      page++;
+
+      const result = await audioJobModel.listJobsByStatusDate({
+        status: "RUNNING",
+        sortDirection: "DESC",
+        limit: Math.min(50, limit - collected.length),
+        nextToken,
+      });
+
+      if (result.errors?.length) {
+        throw new Error(
+          `listJobsByStatusDate errors: ${joinErrorMessages(result.errors)}`,
+        );
+      }
+
+      collected.push(...((result.data ?? []) as AudioJobLike[]));
+      nextToken = result.nextToken;
+
+      if (collected.length >= limit) break;
+    } while (nextToken && page < 5);
+
+    console.info("list RUNNING jobs by status index", {
+      count: collected.length,
+      pages: page,
+      hasNextToken: Boolean(nextToken),
+    });
+
+    return collected.slice(0, limit);
+  }
+
+  console.warn(
+    "listJobsByStatusDate is not available. Falling back to paginated list scan.",
+  );
+
+  const fallback: AudioJobLike[] = [];
+  let nextToken: string | null | undefined;
+  let page = 0;
+
+  do {
+    page++;
+
+    const result = await dataClient.models.AudioJob.list({
+      limit: 100,
+      nextToken,
+    });
+
+    if (result.errors?.length) {
+      throw new Error(
+        `AudioJob.list errors: ${joinErrorMessages(result.errors)}`,
+      );
+    }
+
+    const data = (result.data ?? []) as AudioJobLike[];
+
+    fallback.push(
+      ...data.filter((job) => normalizeType(job.status) === "RUNNING"),
+    );
+
+    nextToken = result.nextToken;
+
+    if (fallback.length >= limit) break;
+  } while (nextToken && page < 10);
+
+  console.info("list RUNNING jobs by fallback scan", {
+    count: fallback.length,
+    pages: page,
+    hasNextToken: Boolean(nextToken),
+  });
+
+  return fallback.slice(0, limit);
 }
 
 export const handler = async () => {
   const region = process.env.AWS_REGION || "ap-northeast-1";
-  const transcribe = new TranscribeClient({ region, maxAttempts: 2 });
+  const transcribe = new TranscribeClient({
+    region,
+    maxAttempts: 2,
+  });
 
   const { resourceConfig, libraryOptions } = await getAmplifyDataClientConfig(
-    env as any,
+    env as never,
   );
+
   Amplify.configure(resourceConfig, libraryOptions);
   const dataClient = generateClient<Schema>();
 
   const TIMEOUT_MS = 60 * 60 * 1000;
-  const NOTFOUND_GRACE_MS = 10 * 60 * 1000;
-  const MAX_PER_RUN = 5;
+  const NOT_FOUND_GRACE_MS = 10 * 60 * 1000;
+  const MAX_PER_RUN = 10;
 
   const now = Date.now();
 
@@ -229,265 +550,341 @@ export const handler = async () => {
   let updated = 0;
   let cleaned = 0;
   let practiceUpdated = 0;
+  let failed = 0;
 
   try {
-    const { data: jobs, errors } = await dataClient.models.AudioJob.list({
-      filter: { status: { eq: "RUNNING" } },
-      limit: 50,
+    const list = await listRunningAudioJobs(dataClient, 50);
+
+    console.info("list RUNNING jobs", {
+      count: list.length,
+      errors: 0,
     });
 
-    if (errors?.length) {
-      console.error("list AudioJob errors", errors);
-      return;
-    }
+    for (const job of list) {
+      const jobName = safeString(job.transcribeJobName).trim();
 
-    const list = jobs ?? [];
-    console.info("list RUNNING jobs", { count: list.length, errors: 0 });
-
-    for (const j of list) {
-      if (!j.transcribeJobName) {
-        await dataClient.models.AudioJob.update({
-          id: j.id,
-          status: "FAILED",
+      if (!jobName) {
+        await markAudioJobFailed(dataClient, {
+          jobId: job.id,
           transcribeStatus: "FAILED",
           errorMessage: "CLEANUP: RUNNING but transcribeJobName is missing",
-          completedAt: isoNow(),
         });
+
         cleaned++;
+        failed++;
+
+        console.warn("RUNNING AudioJob without transcribeJobName -> FAILED", {
+          jobId: job.id,
+          sourceEntityType: job.sourceEntityType,
+          jobType: job.jobType,
+        });
       }
     }
 
-    const candidates = list.filter((j) => !!j.transcribeJobName);
+    const candidates = list.filter((job) =>
+      safeString(job.transcribeJobName).trim(),
+    );
 
-    for (const j of candidates) {
+    for (const job of candidates) {
       if (processed >= MAX_PER_RUN) break;
+
       processed++;
 
-      const jobId = j.id;
-      const jobName = j.transcribeJobName ?? "";
-      const resolvedJobType = resolveJobType(j);
+      const jobId = job.id;
+      const jobName = safeString(job.transcribeJobName).trim();
+      const resolvedJobType = resolveJobType(job);
 
       const startedMs =
-        extractEpochMsFromJobName(j.transcribeJobName) ||
-        (j.recordedAt ? Date.parse(j.recordedAt) : undefined);
+        extractEpochMsFromJobName(jobName) ||
+        (job.recordedAt ? Date.parse(job.recordedAt) : undefined);
 
-      if (!startedMs) continue;
-
-      if (now - startedMs > TIMEOUT_MS) {
-        await dataClient.models.AudioJob.update({
-          id: j.id,
-          status: "FAILED",
+      if (startedMs && now - startedMs > TIMEOUT_MS) {
+        await markAudioJobFailed(dataClient, {
+          jobId,
           transcribeStatus: "FAILED",
-          errorMessage: `CLEANUP: Transcribe IN_PROGRESS timeout (>60m). jobName=${jobName}`,
-          completedAt: isoNow(),
+          errorMessage: `CLEANUP: Transcribe timeout (>60m). jobName=${jobName}`,
         });
+
         cleaned++;
+        failed++;
         continue;
       }
 
       try {
-        const resp = await transcribe.send(
+        const response = await transcribe.send(
           new GetTranscriptionJobCommand({
             TranscriptionJobName: jobName,
           }),
         );
 
-        const status = safeString(
-          resp.TranscriptionJob?.TranscriptionJobStatus ?? "",
-        );
-        const transcriptFileUri = safeString(
-          resp.TranscriptionJob?.Transcript?.TranscriptFileUri ?? "",
+        const transcribeStatus = safeString(
+          response.TranscriptionJob?.TranscriptionJobStatus ?? "",
         );
 
-        if (status === "IN_PROGRESS" || status === "QUEUED") {
+        const transcriptFileUri = safeString(
+          response.TranscriptionJob?.Transcript?.TranscriptFileUri ?? "",
+        ).trim();
+
+        console.info("GetTranscriptionJob result", {
+          jobId,
+          jobName,
+          transcribeStatus,
+          hasTranscriptFileUri: Boolean(transcriptFileUri),
+          jobType: resolvedJobType || "(empty)",
+          sourceEntityType: job.sourceEntityType ?? null,
+        });
+
+        if (
+          transcribeStatus === "IN_PROGRESS" ||
+          transcribeStatus === "QUEUED"
+        ) {
           await dataClient.models.AudioJob.update({
             id: jobId,
-            transcribeStatus: status,
+            transcribeStatus,
             errorMessage: null,
           });
+
           updated++;
           continue;
         }
 
-        if (status === "FAILED") {
-          await dataClient.models.AudioJob.update({
-            id: jobId,
-            status: "FAILED",
+        if (transcribeStatus === "FAILED") {
+          await markAudioJobFailed(dataClient, {
+            jobId,
             transcribeStatus: "FAILED",
             errorMessage:
-              safeString(resp.TranscriptionJob?.FailureReason) ||
+              safeString(response.TranscriptionJob?.FailureReason) ||
               "Transcribe job failed",
-            completedAt: isoNow(),
           });
+
+          updated++;
+          failed++;
+          continue;
+        }
+
+        if (transcribeStatus !== "COMPLETED") {
+          await dataClient.models.AudioJob.update({
+            id: jobId,
+            transcribeStatus: transcribeStatus || "UNKNOWN",
+            errorMessage: `Unexpected Transcribe status: ${
+              transcribeStatus || "(empty)"
+            }`,
+          });
+
           updated++;
           continue;
         }
 
-        if (status === "COMPLETED") {
-          if (!transcriptFileUri) {
-            await dataClient.models.AudioJob.update({
-              id: jobId,
-              transcribeStatus: "COMPLETED",
-              errorMessage:
-                "COMPLETED but TranscriptFileUri is missing (will retry).",
-            });
-            updated++;
-            console.warn("COMPLETED but missing TranscriptFileUri", {
-              jobId,
-              jobName,
-            });
-            continue;
-          }
+        if (!transcriptFileUri) {
+          await markAudioJobFailed(dataClient, {
+            jobId,
+            transcribeStatus: "COMPLETED",
+            errorMessage:
+              "COMPLETED but TranscriptFileUri is missing. Marked FAILED to avoid infinite RUNNING.",
+          });
 
-          try {
-            const { transcriptText, source } = await withTimeout(
-              getTranscriptText(region, transcriptFileUri),
-              15_000,
-              `getTranscriptText ${jobName}`,
-            );
+          updated++;
+          failed++;
 
-            const finalTranscript = truncate(transcriptText || "");
+          console.warn("COMPLETED but missing TranscriptFileUri -> FAILED", {
+            jobId,
+            jobName,
+          });
 
-            await dataClient.models.AudioJob.update({
-              id: jobId,
-              status: "SUCCEEDED",
-              transcribeStatus: "COMPLETED",
-              transcriptText: finalTranscript || null,
-              errorMessage: null,
-              completedAt: isoNow(),
-            });
-            updated++;
+          continue;
+        }
 
-            if (resolvedJobType === "PRACTICE") {
-              const { tenantId, practiceCode } =
-                extractPracticeInfoFromAudioPath(j.audioPath);
+        try {
+          const { transcriptText, source } = await withTimeout(
+            getTranscriptText(region, transcriptFileUri),
+            15_000,
+            `getTranscriptText ${jobName}`,
+          );
 
-              if (!tenantId || !practiceCode) {
-                console.warn("practice info not found from audioPath", {
+          const finalTranscript = truncate(transcriptText || "");
+
+          await dataClient.models.AudioJob.update({
+            id: jobId,
+            status: "SUCCEEDED",
+            transcribeStatus: "COMPLETED",
+            transcriptText: finalTranscript || null,
+            errorMessage: null,
+            completedAt: isoNow(),
+          });
+
+          updated++;
+
+          if (resolvedJobType === "PRACTICE") {
+            const { tenantId, identifier } = resolvePracticeIdentifier(job);
+
+            if (!identifier) {
+              console.warn("Practice identifier not found for AudioJob", {
+                jobId,
+                jobName,
+                tenantId,
+                audioPath: job.audioPath,
+                sourceEntityType: job.sourceEntityType,
+                sourceEntityId: job.sourceEntityId,
+              });
+            } else {
+              const practice = await findPracticeByTenantAndIdentifier(
+                dataClient,
+                tenantId,
+                identifier,
+              );
+
+              if (!practice) {
+                console.warn("PracticeCode not found", {
                   jobId,
                   jobName,
-                  audioPath: j.audioPath,
+                  tenantId,
+                  identifier,
                 });
               } else {
-                const practice = await findPracticeByTenantAndPracticeCode(
-                  dataClient,
-                  tenantId,
-                  practiceCode,
-                );
+                const updatePracticeResult =
+                  await dataClient.models.PracticeCode.update({
+                    id: practice.id,
 
-                if (!practice) {
-                  console.warn("PracticeCode not found", {
+                    practice_code: practice.practice_code,
+                    tenantId: practice.tenantId ?? undefined,
+                    owner: practice.owner ?? undefined,
+                    ownerType: practice.ownerType ?? undefined,
+                    practiceCategory: practice.practiceCategory ?? undefined,
+                    visibility: practice.visibility ?? undefined,
+                    publishScope: practice.publishScope ?? undefined,
+
+                    name: practice.name ?? "",
+                    memo: practice.memo ?? "",
+                    source_type: practice.source_type ?? "practiceRegister",
+                    version: Number(practice.version ?? 1),
+
+                    status: "REVIEW",
+                    transcriptText: finalTranscript || "",
+                    transcribeJobName: jobName,
+                    transcribeStatus: "COMPLETED",
+                    errorMessage: "",
+                    updatedBy: "transcribe-poller",
+                  });
+
+                if (updatePracticeResult.errors?.length) {
+                  console.error("PracticeCode update errors", {
                     jobId,
                     jobName,
                     tenantId,
-                    practiceCode,
+                    identifier,
+                    practiceId: practice.id,
+                    errors: updatePracticeResult.errors,
                   });
                 } else {
-                  const updatePracticeResult =
-                    await dataClient.models.PracticeCode.update({
-                      id: practice.id,
+                  practiceUpdated++;
 
-                      practice_code: practice.practice_code,
-                      tenantId: practice.tenantId ?? undefined,
-                      owner: practice.owner ?? undefined,
-                      ownerType: practice.ownerType ?? undefined,
-                      practiceCategory: practice.practiceCategory ?? undefined,
-                      visibility: practice.visibility ?? undefined,
-                      publishScope: (practice as any).publishScope ?? undefined,
-
-                      name: practice.name ?? "",
-                      memo: practice.memo ?? "",
-                      source_type: practice.source_type ?? "practiceRegister",
-                      version: Number((practice as any).version ?? 1),
-
-                      status: "REVIEW",
-                      transcriptText: finalTranscript || "",
-                      transcribeJobName: jobName,
-                      transcribeStatus: "COMPLETED",
-                      errorMessage: "",
-                      updatedBy: "transcribe-poller",
-                    });
-
-                  if (updatePracticeResult.errors?.length) {
-                    console.error("PracticeCode update errors", {
-                      jobId,
-                      jobName,
-                      tenantId,
-                      practiceCode,
-                      practiceId: practice.id,
-                      errors: updatePracticeResult.errors,
-                    });
-                  } else {
-                    practiceUpdated++;
-                    console.info("PracticeCode updated from AudioJob", {
-                      jobId,
-                      jobName,
-                      tenantId,
-                      practiceCode,
-                      chars: finalTranscript.length,
-                      source,
-                    });
-                  }
+                  console.info("PracticeCode updated from AudioJob", {
+                    jobId,
+                    jobName,
+                    tenantId,
+                    identifier,
+                    chars: finalTranscript.length,
+                    source,
+                  });
                 }
               }
-            } else {
-              console.info("skip PracticeCode update for non-PRACTICE AudioJob", {
-                jobId,
-                jobName,
-                jobType: resolvedJobType || "(empty)",
-                chars: finalTranscript.length,
-              });
             }
-
-            console.info("transcript saved", {
+          } else {
+            console.info("skip PracticeCode update for non-PRACTICE AudioJob", {
               jobId,
               jobName,
-              source,
-              chars: finalTranscript.length,
               jobType: resolvedJobType || "(empty)",
+              sourceEntityType: job.sourceEntityType ?? null,
+              chars: finalTranscript.length,
             });
-          } catch (e: any) {
-            const msg = e?.message ?? String(e);
-            await dataClient.models.AudioJob.update({
-              id: jobId,
-              transcribeStatus: "COMPLETED",
-              errorMessage: `Transcript fetch failed (will retry): ${msg}`,
-            });
-            updated++;
-            console.error("transcript fetch failed", { jobId, jobName, msg });
           }
-        }
-      } catch (e: any) {
-        if (isNotFound(e)) {
-          const startedMs =
-            extractEpochMsFromJobName(jobName) ||
-            (j.recordedAt ? Date.parse(j.recordedAt) : undefined);
 
-          if (startedMs && now - startedMs > NOTFOUND_GRACE_MS) {
-            await dataClient.models.AudioJob.update({
-              id: jobId,
-              status: "FAILED",
+          console.info("transcript saved", {
+            jobId,
+            jobName,
+            source,
+            chars: finalTranscript.length,
+            jobType: resolvedJobType || "(empty)",
+          });
+        } catch (error) {
+          const e = toErrorLike(error);
+
+          await markAudioJobFailed(dataClient, {
+            jobId,
+            transcribeStatus: "COMPLETED",
+            errorMessage: `Transcript fetch failed: ${
+              e.message ?? String(error)
+            }. Marked FAILED to avoid infinite RUNNING.`,
+          });
+
+          updated++;
+          failed++;
+
+          console.error("transcript fetch failed -> FAILED", {
+            jobId,
+            jobName,
+            name: e.name,
+            message: e.message,
+          });
+        }
+      } catch (error) {
+        if (isNotFound(error)) {
+          const notFoundStartedMs =
+            extractEpochMsFromJobName(jobName) ||
+            (job.recordedAt ? Date.parse(job.recordedAt) : undefined);
+
+          if (
+            notFoundStartedMs &&
+            now - notFoundStartedMs > NOT_FOUND_GRACE_MS
+          ) {
+            await markAudioJobFailed(dataClient, {
+              jobId,
               transcribeStatus: "FAILED",
               errorMessage: `CLEANUP: GetTranscriptionJob NotFound too long (>10m). jobName=${jobName}`,
-              completedAt: isoNow(),
             });
+
             cleaned++;
-            console.warn("NotFound too long -> FAILED", { jobId, jobName });
-          } else {
-            console.warn("GetTranscriptionJob not found yet (will retry)", {
+            failed++;
+
+            console.warn("GetTranscriptionJob NotFound too long -> FAILED", {
               jobId,
               jobName,
-              msg: e?.message ?? String(e),
+            });
+          } else {
+            const e = toErrorLike(error);
+
+            await dataClient.models.AudioJob.update({
+              id: jobId,
+              errorMessage: `GetTranscriptionJob not found yet: ${
+                e.message ?? String(error)
+              }`,
+            });
+
+            console.warn("GetTranscriptionJob not found yet; will retry", {
+              jobId,
+              jobName,
+              message: e.message,
             });
           }
+
           continue;
         }
+
+        const e = toErrorLike(error);
+
+        await dataClient.models.AudioJob.update({
+          id: jobId,
+          errorMessage: `poller error: ${e.name ?? ""} ${
+            e.message ?? String(error)
+          }`,
+        });
 
         console.error("poller error", {
           jobId,
           jobName,
-          name: e?.name,
-          msg: e?.message ?? String(e),
+          name: e.name,
+          message: e.message,
+          stack: e.stack,
         });
       }
     }
@@ -496,6 +893,7 @@ export const handler = async () => {
       processed,
       updated,
       cleaned,
+      failed,
       practiceUpdated,
     });
   }
