@@ -17,6 +17,11 @@ export type PlanPhraseAbilityLinkRecord =
   Schema["PlanPhraseAbilityLink"]["type"];
 export type ClassMonthPlanPhraseSelectionRecord =
   Schema["ClassMonthPlanPhraseSelection"]["type"];
+export type ClassPlanPhraseSelectionRecord =
+  Schema["ClassPlanPhraseSelection"]["type"];
+
+export type PlanScopeType = "YEAR" | "TERM" | "MONTH";
+export type PlanPhraseRelationUse = "REFERENCE" | "SCORE";
 
 export type PlanDomainKey =
   | "health"
@@ -27,6 +32,8 @@ export type PlanDomainKey =
 
 export type PlanDomainLabel = "健康" | "人間関係" | "環境" | "言葉" | "表現";
 
+export type PlanDomainRelationLevel = "CENTER" | "RELATED" | "SUPPORT" | "NONE";
+
 export type PlanPhraseAbilitySummary = {
   abilityCode: string;
   abilityDomain: string;
@@ -35,6 +42,35 @@ export type PlanPhraseAbilitySummary = {
   abilityName?: string;
   relationType?: string;
   weight: number;
+};
+
+export type PlanPhraseSelectionForm = {
+  id?: string;
+  clientKey: string;
+
+  planScopeType: PlanScopeType;
+  relationUse: PlanPhraseRelationUse;
+
+  classAnnualPlanId?: string;
+  classQuarterPlanId?: string;
+  classMonthPlanId?: string;
+
+  termNo?: number;
+  monthKey?: string;
+
+  planPhraseId: string;
+  phraseTextSnapshot: string;
+
+  selectedDomainCode: string;
+  selectedDomain: string;
+  ageYears: string;
+  phraseNo?: number;
+
+  abilitySummary: PlanPhraseAbilitySummary[];
+
+  status: string;
+  sortOrder: number;
+  selectedAt?: string;
 };
 
 export type MonthPlanPhraseSelectionForm = {
@@ -50,6 +86,13 @@ export type MonthPlanPhraseSelectionForm = {
   status: string;
   sortOrder: number;
   selectedAt?: string;
+};
+
+type SelectionWithAbilitySummary = {
+  status: string;
+  sortOrder?: number | null;
+  phraseTextSnapshot: string;
+  abilitySummary: PlanPhraseAbilitySummary[];
 };
 
 export type TreeNode =
@@ -105,6 +148,7 @@ export type ClassAnnualPlanForm = {
   aiSuggestedText: string;
   finalText: string;
   status: string;
+  phraseSelections: PlanPhraseSelectionForm[];
 };
 
 export type QuarterPlanForm = {
@@ -123,6 +167,7 @@ export type QuarterPlanForm = {
   finalText: string;
   status: string;
   eventSummary: string;
+  phraseSelections: PlanPhraseSelectionForm[];
 };
 
 export type MonthPlanForm = {
@@ -248,6 +293,31 @@ export function parseAgeYears(value?: string | number | null): number | null {
   return Number.isFinite(n) ? Math.trunc(n) : null;
 }
 
+export function normalizePlanScopeType(value?: string | null): PlanScopeType {
+  const text = s(value).toUpperCase();
+  if (text === "YEAR" || text === "TERM" || text === "MONTH") return text;
+  return "MONTH";
+}
+
+export function normalizePlanPhraseRelationUse(
+  value?: string | null,
+): PlanPhraseRelationUse {
+  const text = s(value).toUpperCase();
+  if (text === "REFERENCE" || text === "SCORE") return text;
+  return "REFERENCE";
+}
+
+export function getTermNoFromPlanPhraseId(
+  planPhraseId?: string | null,
+): number | null {
+  const text = s(planPhraseId).toUpperCase();
+  if (text.includes("-Q1-")) return 1;
+  if (text.includes("-Q2-")) return 2;
+  if (text.includes("-Q3-")) return 3;
+  if (text.includes("-Q4-")) return 4;
+  return null;
+}
+
 export function parseAbilitySummaryJson(
   json?: string | null,
 ): PlanPhraseAbilitySummary[] {
@@ -335,7 +405,7 @@ export function summarizeAbilityWeightsByDomain(
 }
 
 export function summarizeSelectionsByDomain(
-  selections: MonthPlanPhraseSelectionForm[],
+  selections: SelectionWithAbilitySummary[],
 ): Record<PlanDomainKey, number> {
   const totals: Record<PlanDomainKey, number> = {
     health: 0,
@@ -356,7 +426,7 @@ export function summarizeSelectionsByDomain(
 }
 
 export function buildGoalTextFromSelections(
-  selections: MonthPlanPhraseSelectionForm[],
+  selections: SelectionWithAbilitySummary[],
 ): string {
   return selections
     .filter((x) => x.status !== "ARCHIVED")
@@ -364,6 +434,47 @@ export function buildGoalTextFromSelections(
     .map((x) => x.phraseTextSnapshot)
     .filter((x) => x.trim() !== "")
     .join("\n");
+}
+
+export function describeDomainTrend(
+  totals: Record<PlanDomainKey, number>,
+): string {
+  const rows = PLAN_DOMAINS.map((domain) => ({
+    ...domain,
+    value: totals[domain.key],
+  }))
+    .filter((x) => x.value > 0)
+    .sort((a, b) => b.value - a.value);
+
+  if (rows.length === 0) {
+    return "関連する育ちはまだ選択されていません。";
+  }
+
+  const top = rows[0];
+  const related = rows.slice(1, 4).map((x) => x.label);
+
+  if (related.length === 0) {
+    return `${top.label}を中心とした目標構成です。`;
+  }
+
+  return `${top.label}を中心に、${related.join("・")}にも広がる目標構成です。`;
+}
+
+export function getDomainRelationLevel(
+  value: number,
+  maxValue: number,
+): PlanDomainRelationLevel {
+  if (value <= 0 || maxValue <= 0) return "NONE";
+  if (value >= maxValue * 0.75) return "CENTER";
+  if (value >= maxValue * 0.4) return "RELATED";
+  return "SUPPORT";
+}
+
+export function getDomainRelationLabel(level: PlanDomainRelationLevel): string {
+  if (level === "CENTER") return "中心";
+  if (level === "RELATED") return "関連";
+  if (level === "SUPPORT") return "補助";
+  return "—";
 }
 
 export function recalculateMonthPlanFromSelections(
@@ -389,6 +500,23 @@ export function recalculateMonthPlanFromSelections(
   };
 }
 
+export function recalculateReferencePlanFromSelections<
+  T extends ClassAnnualPlanForm | QuarterPlanForm,
+>(form: T): T {
+  const activeSelections = form.phraseSelections.filter(
+    (x) => x.status !== "ARCHIVED",
+  );
+
+  return {
+    ...form,
+    goalText: buildGoalTextFromSelections(activeSelections),
+    phraseSelections: activeSelections.map((x, index) => ({
+      ...x,
+      sortOrder: index + 1,
+    })),
+  };
+}
+
 export function makePhraseSelectionClientKey(
   planPhraseId: string,
   index = 0,
@@ -398,6 +526,47 @@ export function makePhraseSelectionClientKey(
       ? crypto.randomUUID()
       : `${Date.now()}-${Math.random().toString(36).slice(2)}`;
   return `${planPhraseId || "phrase"}-${index}-${randomPart}`;
+}
+
+export function toPlanPhraseSelectionForm(
+  row: ClassPlanPhraseSelectionRecord,
+): PlanPhraseSelectionForm {
+  return {
+    id: row.id,
+    clientKey: row.id ?? makePhraseSelectionClientKey(row.planPhraseId ?? ""),
+    planScopeType: normalizePlanScopeType(row.planScopeType),
+    relationUse: normalizePlanPhraseRelationUse(row.relationUse),
+
+    classAnnualPlanId: row.classAnnualPlanId ?? undefined,
+    classQuarterPlanId: row.classQuarterPlanId ?? undefined,
+    classMonthPlanId: row.classMonthPlanId ?? undefined,
+
+    termNo:
+      row.termNo === null || row.termNo === undefined
+        ? undefined
+        : Number(row.termNo),
+    monthKey: row.monthKey ?? undefined,
+
+    planPhraseId: row.planPhraseId ?? "",
+    phraseTextSnapshot: row.phraseTextSnapshot ?? "",
+
+    selectedDomainCode: row.selectedDomainCode ?? "",
+    selectedDomain: row.selectedDomain ?? "",
+    ageYears:
+      row.ageYears === null || row.ageYears === undefined
+        ? ""
+        : String(row.ageYears),
+    phraseNo:
+      row.phraseNo === null || row.phraseNo === undefined
+        ? undefined
+        : Number(row.phraseNo),
+
+    abilitySummary: parseAbilitySummaryJson(row.abilitySummaryJson),
+
+    status: row.status ?? "ACTIVE",
+    sortOrder: Number(row.sortOrder ?? 0),
+    selectedAt: row.selectedAt ?? undefined,
+  };
 }
 
 export function toMonthPhraseSelectionForm(
@@ -531,13 +700,23 @@ export function emptyClassAnnualPlanForm(): ClassAnnualPlanForm {
     aiSuggestedText: "",
     finalText: "",
     status: "DRAFT",
+    phraseSelections: [],
   };
 }
 
 export function toClassAnnualPlanForm(
   row?: ClassAnnualPlanRecord | null,
+  phraseSelections?: ClassPlanPhraseSelectionRecord[],
 ): ClassAnnualPlanForm {
   if (!row) return emptyClassAnnualPlanForm();
+
+  const selectionForms = (phraseSelections ?? [])
+    .filter((x) => x.status !== "ARCHIVED")
+    .filter((x) => x.planScopeType === "YEAR")
+    .filter((x) => x.classAnnualPlanId === row.id)
+    .sort((a, b) => Number(a.sortOrder ?? 0) - Number(b.sortOrder ?? 0))
+    .map((x) => toPlanPhraseSelectionForm(x));
+
   return {
     title: row.title ?? "",
     periodStart: row.periodStart ?? "",
@@ -569,6 +748,7 @@ export function toClassAnnualPlanForm(
     aiSuggestedText: row.aiSuggestedText ?? "",
     finalText: row.finalText ?? "",
     status: row.status ?? "DRAFT",
+    phraseSelections: selectionForms,
   };
 }
 
@@ -589,12 +769,14 @@ export function emptyQuarterPlanForm(): QuarterPlanForm {
     finalText: "",
     status: "DRAFT",
     eventSummary: "",
+    phraseSelections: [],
   };
 }
 
 export function toQuarterPlanForm(
   row?: ClassQuarterPlanRecord | null,
   quarterEvents?: QuarterEventRecord[],
+  phraseSelections?: ClassPlanPhraseSelectionRecord[],
 ): QuarterPlanForm {
   if (!row) return emptyQuarterPlanForm();
 
@@ -603,6 +785,13 @@ export function toQuarterPlanForm(
     .map((x) => x.label ?? "")
     .filter((x) => x.trim() !== "")
     .join("\n");
+
+  const selectionForms = (phraseSelections ?? [])
+    .filter((x) => x.status !== "ARCHIVED")
+    .filter((x) => x.planScopeType === "TERM")
+    .filter((x) => x.classQuarterPlanId === row.id)
+    .sort((a, b) => Number(a.sortOrder ?? 0) - Number(b.sortOrder ?? 0))
+    .map((x) => toPlanPhraseSelectionForm(x));
 
   return {
     title: row.title ?? "",
@@ -636,6 +825,7 @@ export function toQuarterPlanForm(
     finalText: row.finalText ?? "",
     status: row.status ?? "DRAFT",
     eventSummary,
+    phraseSelections: selectionForms,
   };
 }
 

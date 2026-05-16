@@ -39,13 +39,20 @@ function textOr(value: string | null | undefined, fallback: string): string {
   return v.length > 0 ? v : fallback;
 }
 
+function termLabel(termNo?: number | null): string {
+  if (termNo === 1) return "1期（4〜6月）";
+  if (termNo === 2) return "2期（7〜9月）";
+  if (termNo === 3) return "3期（10〜12月）";
+  if (termNo === 4) return "4期（1〜3月）";
+  return `期計画${termNo ? ` ${termNo}` : ""}`;
+}
+
 export default function PlanV2Sidebar(props: Props) {
   const {
     tenant,
     fiscalYear,
     navPath,
     schoolAnnualPlan,
-    ageTargets,
     classrooms,
     classAnnualPlans,
     quarterPlans,
@@ -53,11 +60,18 @@ export default function PlanV2Sidebar(props: Props) {
     onNavigate,
   } = props;
 
+  void props.ageTargets;
+
   const safeTenantId = textOr(tenant.tenantId, "");
   const rootNode: TreeNode = { kind: "tenant", tenantId: safeTenantId };
   const currentPath = navPath.length > 0 ? navPath : [rootNode];
   const currentNode = currentPath[currentPath.length - 1];
   const currentKey = nodeKey(currentNode);
+
+  const classroomById = new Map<string, ClassroomRecord>();
+  for (const row of classrooms) {
+    classroomById.set(row.id, row);
+  }
 
   const annualByClassroomId = new Map<string, ClassAnnualPlanRecord>();
   for (const row of classAnnualPlans) {
@@ -84,18 +98,16 @@ export default function PlanV2Sidebar(props: Props) {
     rows.sort((a, b) => byText(a.monthKey, b.monthKey));
   }
 
-  const sortedAgeTargets = [...ageTargets].sort((a, b) => {
-    const sa = Number(a.sortOrder ?? 9999);
-    const sb = Number(b.sortOrder ?? 9999);
-    if (sa !== sb) return sa - sb;
-    return byText(a.ageBand, b.ageBand);
-  });
-
   const sortedClassrooms = [...classrooms].sort((a, b) => {
     const age = byText(a.ageBand, b.ageBand);
     if (age !== 0) return age;
     return byText(a.name, b.name);
   });
+
+  function classLabel(classroom?: ClassroomRecord | null): string {
+    if (!classroom) return "クラス";
+    return `${textOr(classroom.name, "クラス")}（${textOr(classroom.ageBand, "-")}）`;
+  }
 
   function labelForNode(node: TreeNode): string {
     switch (node.kind) {
@@ -103,31 +115,32 @@ export default function PlanV2Sidebar(props: Props) {
         return textOr(tenant.name, tenant.tenantId);
 
       case "schoolAnnualPlan":
-        return textOr(schoolAnnualPlan?.title, "保育所の年計画");
+        return textOr(schoolAnnualPlan?.title, "保育所年計画");
 
-      case "ageTarget": {
-        const row = ageTargets.find((x) => x.id === node.id);
-        return row ? `${textOr(row.ageBand, "-")} 年間方針` : "年齢別年間方針";
-      }
+      case "ageTarget":
+        return "年齢別年間方針";
 
       case "classroom": {
         const row = classrooms.find((x) => x.id === node.id);
-        return row ? `${textOr(row.name, "クラス")}（${textOr(row.ageBand, "-")}）` : "クラス";
+        return classLabel(row);
       }
 
       case "classAnnualPlan": {
         const row = classAnnualPlans.find((x) => x.id === node.id);
-        return textOr(row?.title, "クラス年計画");
+        const classroom = row ? classroomById.get(row.classroomId) : null;
+        return classroom
+          ? `${classLabel(classroom)} クラス年計画`
+          : textOr(row?.title, "クラス年計画");
       }
 
       case "quarter": {
         const row = quarterPlans.find((x) => x.id === node.id);
-        return textOr(row?.title, "期計画");
+        return row ? termLabel(row.termNo) : "期計画";
       }
 
       case "month": {
         const row = monthPlans.find((x) => x.id === node.id);
-        return textOr(row?.title, "月計画");
+        return textOr(row?.title, row?.monthKey ?? "月計画");
       }
 
       default:
@@ -143,28 +156,33 @@ export default function PlanV2Sidebar(props: Props) {
         if (schoolAnnualPlan) {
           items.push({
             node: { kind: "schoolAnnualPlan", id: schoolAnnualPlan.id },
-            label: textOr(schoolAnnualPlan.title, "保育所の年計画"),
-            meta: "保育所の年計画",
+            label: textOr(schoolAnnualPlan.title, "保育所年計画"),
+            meta: "園の方針",
           });
         }
 
         for (const classroom of sortedClassrooms) {
-          items.push({
-            node: { kind: "classroom", id: classroom.id },
-            label: `${textOr(classroom.name, "クラス")}（${textOr(classroom.ageBand, "-")}）`,
-            meta: "クラス",
-          });
+          const annual = annualByClassroomId.get(classroom.id);
+          if (annual) {
+            items.push({
+              node: { kind: "classAnnualPlan", id: annual.id },
+              label: `${classLabel(classroom)} クラス年計画`,
+              meta: "年間方針・期計画・月計画",
+            });
+          } else {
+            items.push({
+              node: { kind: "classroom", id: classroom.id },
+              label: classLabel(classroom),
+              meta: "クラス年計画が未生成です",
+            });
+          }
         }
 
         return items;
       }
 
       case "schoolAnnualPlan":
-        return sortedAgeTargets.map((row) => ({
-          node: { kind: "ageTarget", id: row.id },
-          label: `${textOr(row.ageBand, "-")} 年間方針`,
-          meta: row.goalTextA ? `目標: ${row.goalTextA}` : undefined,
-        }));
+        return [];
 
       case "ageTarget":
         return [];
@@ -185,8 +203,8 @@ export default function PlanV2Sidebar(props: Props) {
         const children = quarterByAnnualId.get(node.id) ?? [];
         return children.map((row) => ({
           node: { kind: "quarter", id: row.id },
-          label: textOr(row.title, "期計画"),
-          meta: `term=${row.termNo ?? "-"}`,
+          label: textOr(row.title, termLabel(row.termNo)),
+          meta: termLabel(row.termNo),
         }));
       }
 

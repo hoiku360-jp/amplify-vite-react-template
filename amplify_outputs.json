@@ -5619,6 +5619,337 @@
             "sortKeyFieldNames": []
           }
         },
+        "WeekendPlay": {
+          "name": "WeekendPlay",
+          "fields": {
+            "playId": {
+              "name": "playId",
+              "isArray": false,
+              "type": "String",
+              "isRequired": true,
+              "attributes": []
+            },
+            "playTitle": {
+              "name": "playTitle",
+              "isArray": false,
+              "type": "String",
+              "isRequired": true,
+              "attributes": []
+            },
+            "playType": {
+              "name": "playType",
+              "isArray": false,
+              "type": "String",
+              "isRequired": false,
+              "attributes": []
+            },
+            "setting": {
+              "name": "setting",
+              "isArray": false,
+              "type": "String",
+              "isRequired": false,
+              "attributes": []
+            },
+            "status": {
+              "name": "status",
+              "isArray": false,
+              "type": "String",
+              "isRequired": true,
+              "attributes": []
+            },
+            "parentHint": {
+              "name": "parentHint",
+              "isArray": false,
+              "type": "String",
+              "isRequired": false,
+              "attributes": []
+            },
+            "sourceFile": {
+              "name": "sourceFile",
+              "isArray": false,
+              "type": "String",
+              "isRequired": false,
+              "attributes": []
+            },
+            "playDescriptionDraft": {
+              "name": "playDescriptionDraft",
+              "isArray": false,
+              "type": "String",
+              "isRequired": false,
+              "attributes": []
+            },
+            "sortOrder": {
+              "name": "sortOrder",
+              "isArray": false,
+              "type": "Int",
+              "isRequired": false,
+              "attributes": []
+            },
+            "createdAt": {
+              "name": "createdAt",
+              "isArray": false,
+              "type": "AWSDateTime",
+              "isRequired": false,
+              "attributes": [],
+              "isReadOnly": true
+            },
+            "updatedAt": {
+              "name": "updatedAt",
+              "isArray": false,
+              "type": "AWSDateTime",
+              "isRequired": false,
+              "attributes": [],
+              "isReadOnly": true
+            }
+          },
+          "syncable": true,
+          "pluralName": "WeekendPlays",
+          "attributes": [
+            {
+              "type": "model",
+              "properties": {}
+            },
+            {
+              "type": "key",
+              "properties": {
+                "fields": [
+                  "playId"
+                ]
+              }
+            },
+            {
+              "type": "key",
+              "properties": {
+                "name": "weekendPlaysByPlayTypeAndSortOrder",
+                "queryField": "listWeekendPlaysByType",
+                "fields": [
+                  "playType",
+                  "sortOrder"
+                ]
+              }
+            },
+            {
+              "type": "key",
+              "properties": {
+                "name": "weekendPlaysBySettingAndSortOrder",
+                "queryField": "listWeekendPlaysBySetting",
+                "fields": [
+                  "setting",
+                  "sortOrder"
+                ]
+              }
+            },
+            {
+              "type": "key",
+              "properties": {
+                "name": "weekendPlaysByStatusAndSortOrder",
+                "queryField": "listWeekendPlaysByStatus",
+                "fields": [
+                  "status",
+                  "sortOrder"
+                ]
+              }
+            },
+            {
+              "type": "auth",
+              "properties": {
+                "rules": [
+                  {
+                    "allow": "private",
+                    "operations": [
+                      "create",
+                      "read",
+                      "update",
+                      "delete"
+                    ]
+                  }
+                ]
+              }
+            }
+          ],
+          "primaryKeyInfo": {
+            "isCustomPrimaryKey": true,
+            "primaryKeyFieldName": "playId",
+            "sortKeyFieldNames": []
+          }
+        },
+        "WeekendPlayAbilityLink": {
+          "name": "WeekendPlayAbilityLink",
+          "fields": {
+            "linkId": {
+              "name": "linkId",
+              "isArray": false,
+              "type": "String",
+              "isRequired": true,
+              "attributes": []
+            },
+            "playId": {
+              "name": "playId",
+              "isArray": false,
+              "type": "String",
+              "isRequired": true,
+              "attributes": []
+            },
+            "playTitle": {
+              "name": "playTitle",
+              "isArray": false,
+              "type": "String",
+              "isRequired": false,
+              "attributes": []
+            },
+            "sortOrder": {
+              "name": "sortOrder",
+              "isArray": false,
+              "type": "Int",
+              "isRequired": false,
+              "attributes": []
+            },
+            "relationType": {
+              "name": "relationType",
+              "isArray": false,
+              "type": "String",
+              "isRequired": false,
+              "attributes": []
+            },
+            "weight": {
+              "name": "weight",
+              "isArray": false,
+              "type": "Int",
+              "isRequired": false,
+              "attributes": []
+            },
+            "abilityCode": {
+              "name": "abilityCode",
+              "isArray": false,
+              "type": "String",
+              "isRequired": true,
+              "attributes": []
+            },
+            "domain": {
+              "name": "domain",
+              "isArray": false,
+              "type": "String",
+              "isRequired": false,
+              "attributes": []
+            },
+            "category": {
+              "name": "category",
+              "isArray": false,
+              "type": "String",
+              "isRequired": false,
+              "attributes": []
+            },
+            "abilityName": {
+              "name": "abilityName",
+              "isArray": false,
+              "type": "String",
+              "isRequired": false,
+              "attributes": []
+            },
+            "reason": {
+              "name": "reason",
+              "isArray": false,
+              "type": "String",
+              "isRequired": false,
+              "attributes": []
+            },
+            "status": {
+              "name": "status",
+              "isArray": false,
+              "type": "String",
+              "isRequired": true,
+              "attributes": []
+            },
+            "createdAt": {
+              "name": "createdAt",
+              "isArray": false,
+              "type": "AWSDateTime",
+              "isRequired": false,
+              "attributes": [],
+              "isReadOnly": true
+            },
+            "updatedAt": {
+              "name": "updatedAt",
+              "isArray": false,
+              "type": "AWSDateTime",
+              "isRequired": false,
+              "attributes": [],
+              "isReadOnly": true
+            }
+          },
+          "syncable": true,
+          "pluralName": "WeekendPlayAbilityLinks",
+          "attributes": [
+            {
+              "type": "model",
+              "properties": {}
+            },
+            {
+              "type": "key",
+              "properties": {
+                "fields": [
+                  "linkId"
+                ]
+              }
+            },
+            {
+              "type": "key",
+              "properties": {
+                "name": "weekendPlayAbilityLinksByPlayIdAndSortOrder",
+                "queryField": "listWeekendPlayAbilityLinksByPlay",
+                "fields": [
+                  "playId",
+                  "sortOrder"
+                ]
+              }
+            },
+            {
+              "type": "key",
+              "properties": {
+                "name": "weekendPlayAbilityLinksByAbilityCodeAndPlayIdAndSortOrder",
+                "queryField": "listWeekendPlayAbilityLinksByAbility",
+                "fields": [
+                  "abilityCode",
+                  "playId",
+                  "sortOrder"
+                ]
+              }
+            },
+            {
+              "type": "key",
+              "properties": {
+                "name": "weekendPlayAbilityLinksByStatusAndAbilityCodeAndPlayId",
+                "queryField": "listWeekendPlayAbilityLinksByStatusAbility",
+                "fields": [
+                  "status",
+                  "abilityCode",
+                  "playId"
+                ]
+              }
+            },
+            {
+              "type": "auth",
+              "properties": {
+                "rules": [
+                  {
+                    "allow": "private",
+                    "operations": [
+                      "create",
+                      "read",
+                      "update",
+                      "delete"
+                    ]
+                  }
+                ]
+              }
+            }
+          ],
+          "primaryKeyInfo": {
+            "isCustomPrimaryKey": true,
+            "primaryKeyFieldName": "linkId",
+            "sortKeyFieldNames": []
+          }
+        },
         "SchoolAnnualPlan": {
           "name": "SchoolAnnualPlan",
           "fields": {
@@ -7146,6 +7477,307 @@
                 "fields": [
                   "planPhraseId",
                   "classMonthPlanId"
+                ]
+              }
+            },
+            {
+              "type": "auth",
+              "properties": {
+                "rules": [
+                  {
+                    "allow": "private",
+                    "operations": [
+                      "create",
+                      "read",
+                      "update",
+                      "delete"
+                    ]
+                  }
+                ]
+              }
+            }
+          ],
+          "primaryKeyInfo": {
+            "isCustomPrimaryKey": false,
+            "primaryKeyFieldName": "id",
+            "sortKeyFieldNames": []
+          }
+        },
+        "ClassPlanPhraseSelection": {
+          "name": "ClassPlanPhraseSelection",
+          "fields": {
+            "id": {
+              "name": "id",
+              "isArray": false,
+              "type": "ID",
+              "isRequired": true,
+              "attributes": []
+            },
+            "tenantId": {
+              "name": "tenantId",
+              "isArray": false,
+              "type": "String",
+              "isRequired": true,
+              "attributes": []
+            },
+            "fiscalYear": {
+              "name": "fiscalYear",
+              "isArray": false,
+              "type": "Int",
+              "isRequired": true,
+              "attributes": []
+            },
+            "classroomId": {
+              "name": "classroomId",
+              "isArray": false,
+              "type": "ID",
+              "isRequired": false,
+              "attributes": []
+            },
+            "planScopeType": {
+              "name": "planScopeType",
+              "isArray": false,
+              "type": "String",
+              "isRequired": true,
+              "attributes": []
+            },
+            "relationUse": {
+              "name": "relationUse",
+              "isArray": false,
+              "type": "String",
+              "isRequired": true,
+              "attributes": []
+            },
+            "classAnnualPlanId": {
+              "name": "classAnnualPlanId",
+              "isArray": false,
+              "type": "ID",
+              "isRequired": false,
+              "attributes": []
+            },
+            "classQuarterPlanId": {
+              "name": "classQuarterPlanId",
+              "isArray": false,
+              "type": "ID",
+              "isRequired": false,
+              "attributes": []
+            },
+            "classMonthPlanId": {
+              "name": "classMonthPlanId",
+              "isArray": false,
+              "type": "ID",
+              "isRequired": false,
+              "attributes": []
+            },
+            "termNo": {
+              "name": "termNo",
+              "isArray": false,
+              "type": "Int",
+              "isRequired": false,
+              "attributes": []
+            },
+            "monthKey": {
+              "name": "monthKey",
+              "isArray": false,
+              "type": "String",
+              "isRequired": false,
+              "attributes": []
+            },
+            "planPhraseId": {
+              "name": "planPhraseId",
+              "isArray": false,
+              "type": "String",
+              "isRequired": true,
+              "attributes": []
+            },
+            "phraseTextSnapshot": {
+              "name": "phraseTextSnapshot",
+              "isArray": false,
+              "type": "String",
+              "isRequired": true,
+              "attributes": []
+            },
+            "selectedDomainCode": {
+              "name": "selectedDomainCode",
+              "isArray": false,
+              "type": "String",
+              "isRequired": false,
+              "attributes": []
+            },
+            "selectedDomain": {
+              "name": "selectedDomain",
+              "isArray": false,
+              "type": "String",
+              "isRequired": false,
+              "attributes": []
+            },
+            "ageYears": {
+              "name": "ageYears",
+              "isArray": false,
+              "type": "Int",
+              "isRequired": false,
+              "attributes": []
+            },
+            "phraseNo": {
+              "name": "phraseNo",
+              "isArray": false,
+              "type": "Int",
+              "isRequired": false,
+              "attributes": []
+            },
+            "abilityCodes": {
+              "name": "abilityCodes",
+              "isArray": true,
+              "type": "String",
+              "isRequired": false,
+              "attributes": [],
+              "isArrayNullable": true
+            },
+            "abilitySummaryJson": {
+              "name": "abilitySummaryJson",
+              "isArray": false,
+              "type": "String",
+              "isRequired": false,
+              "attributes": []
+            },
+            "relatedHealth": {
+              "name": "relatedHealth",
+              "isArray": false,
+              "type": "Int",
+              "isRequired": false,
+              "attributes": []
+            },
+            "relatedHumanRelations": {
+              "name": "relatedHumanRelations",
+              "isArray": false,
+              "type": "Int",
+              "isRequired": false,
+              "attributes": []
+            },
+            "relatedEnvironment": {
+              "name": "relatedEnvironment",
+              "isArray": false,
+              "type": "Int",
+              "isRequired": false,
+              "attributes": []
+            },
+            "relatedLanguage": {
+              "name": "relatedLanguage",
+              "isArray": false,
+              "type": "Int",
+              "isRequired": false,
+              "attributes": []
+            },
+            "relatedExpression": {
+              "name": "relatedExpression",
+              "isArray": false,
+              "type": "Int",
+              "isRequired": false,
+              "attributes": []
+            },
+            "status": {
+              "name": "status",
+              "isArray": false,
+              "type": "String",
+              "isRequired": true,
+              "attributes": []
+            },
+            "sortOrder": {
+              "name": "sortOrder",
+              "isArray": false,
+              "type": "Int",
+              "isRequired": false,
+              "attributes": []
+            },
+            "selectedAt": {
+              "name": "selectedAt",
+              "isArray": false,
+              "type": "AWSDateTime",
+              "isRequired": false,
+              "attributes": []
+            },
+            "createdAt": {
+              "name": "createdAt",
+              "isArray": false,
+              "type": "AWSDateTime",
+              "isRequired": false,
+              "attributes": [],
+              "isReadOnly": true
+            },
+            "updatedAt": {
+              "name": "updatedAt",
+              "isArray": false,
+              "type": "AWSDateTime",
+              "isRequired": false,
+              "attributes": [],
+              "isReadOnly": true
+            }
+          },
+          "syncable": true,
+          "pluralName": "ClassPlanPhraseSelections",
+          "attributes": [
+            {
+              "type": "model",
+              "properties": {}
+            },
+            {
+              "type": "key",
+              "properties": {
+                "name": "classPlanPhraseSelectionsByTenantIdAndFiscalYearAndPlanScopeTypeAndSortOrder",
+                "queryField": "listClassPlanPhraseSelectionsByTenantYearScope",
+                "fields": [
+                  "tenantId",
+                  "fiscalYear",
+                  "planScopeType",
+                  "sortOrder"
+                ]
+              }
+            },
+            {
+              "type": "key",
+              "properties": {
+                "name": "classPlanPhraseSelectionsByClassAnnualPlanIdAndStatusAndSortOrder",
+                "queryField": "listClassPlanPhraseSelectionsByAnnualPlan",
+                "fields": [
+                  "classAnnualPlanId",
+                  "status",
+                  "sortOrder"
+                ]
+              }
+            },
+            {
+              "type": "key",
+              "properties": {
+                "name": "classPlanPhraseSelectionsByClassQuarterPlanIdAndStatusAndSortOrder",
+                "queryField": "listClassPlanPhraseSelectionsByQuarterPlan",
+                "fields": [
+                  "classQuarterPlanId",
+                  "status",
+                  "sortOrder"
+                ]
+              }
+            },
+            {
+              "type": "key",
+              "properties": {
+                "name": "classPlanPhraseSelectionsByClassMonthPlanIdAndStatusAndSortOrder",
+                "queryField": "listClassPlanPhraseSelectionsByMonthPlan",
+                "fields": [
+                  "classMonthPlanId",
+                  "status",
+                  "sortOrder"
+                ]
+              }
+            },
+            {
+              "type": "key",
+              "properties": {
+                "name": "classPlanPhraseSelectionsByPlanPhraseIdAndTenantIdAndFiscalYear",
+                "queryField": "listClassPlanPhraseSelectionsByPhrase",
+                "fields": [
+                  "planPhraseId",
+                  "tenantId",
+                  "fiscalYear"
                 ]
               }
             },

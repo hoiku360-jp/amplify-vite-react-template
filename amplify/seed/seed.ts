@@ -62,6 +62,14 @@ const planPhraseAbilityLinkCsvUrl = new URL(
   "./data/PlanPhraseAbilityLink.csv",
   import.meta.url,
 );
+const weekendPlayCsvUrl = new URL(
+  "./data/WeekendPlay_description.csv",
+  import.meta.url,
+);
+const weekendPlayAbilityLinkCsvUrl = new URL(
+  "./data/WeekendPlayAbilityLink.csv",
+  import.meta.url,
+);
 
 // 固定ユーザー名
 const DEFAULT_SEED_USERNAME = "noreply-test01@hoiku360.jp";
@@ -131,6 +139,35 @@ type PlanPhraseAbilityLinkRow = {
   note?: string;
 };
 
+type WeekendPlayRow = {
+  index?: string | number;
+  playId: string;
+  playTitle: string;
+  playType?: string;
+  setting?: string;
+  status?: string;
+  parentHint?: string;
+  sourceFile?: string;
+  playDescriptionDraft?: string;
+  sortOrder?: string | number;
+};
+
+type WeekendPlayAbilityLinkRow = {
+  index?: string | number;
+  linkId: string;
+  playId: string;
+  playTitle?: string;
+  sortOrder?: string | number;
+  relationType?: string;
+  weight?: string | number;
+  abilityCode: string | number;
+  domain?: string;
+  category?: string;
+  abilityName?: string;
+  reason?: string;
+  status?: string;
+};
+
 type GraphqlErrorLike = {
   message?: string | null;
 };
@@ -179,6 +216,8 @@ type SeedModels = {
   AbilityObservationHint: SeedModel;
   PlanPhrase: SeedModel;
   PlanPhraseAbilityLink: SeedModel;
+  WeekendPlay: SeedModel;
+  WeekendPlayAbilityLink: SeedModel;
 };
 
 type UpsertResult = "created" | "updated" | false;
@@ -203,6 +242,58 @@ function asStr(v: unknown): string {
 function asNullable(v: unknown): string | null {
   const value = asStr(v);
   return value || null;
+}
+
+function readCsvField(row: Record<string, unknown>, key: string): unknown {
+  if (Object.prototype.hasOwnProperty.call(row, key)) {
+    return row[key];
+  }
+
+  const bomKey = `\uFEFF${key}`;
+  if (Object.prototype.hasOwnProperty.call(row, bomKey)) {
+    return row[bomKey];
+  }
+
+  return undefined;
+}
+
+function numberFromCode(value: string, prefix: string): number | null {
+  const normalized = value.trim();
+  if (!normalized.startsWith(prefix)) return null;
+
+  const digits = normalized.slice(prefix.length).replace(/\D/g, "");
+  if (!digits) return null;
+
+  const num = Number(digits);
+  return Number.isFinite(num) ? Math.trunc(num) : null;
+}
+
+function resolveWeekendPlaySortOrder(row: WeekendPlayRow): number {
+  const rawRow = row as Record<string, unknown>;
+
+  return (
+    toInt(row.sortOrder) ??
+    toInt(row.index) ??
+    toInt(readCsvField(rawRow, "sortOrder")) ??
+    toInt(readCsvField(rawRow, "index")) ??
+    numberFromCode(asStr(row.playId), "WP-") ??
+    999999
+  );
+}
+
+function resolveWeekendPlayLinkSortOrder(
+  row: WeekendPlayAbilityLinkRow,
+): number {
+  const rawRow = row as Record<string, unknown>;
+
+  return (
+    toInt(row.sortOrder) ??
+    toInt(row.index) ??
+    toInt(readCsvField(rawRow, "sortOrder")) ??
+    toInt(readCsvField(rawRow, "index")) ??
+    numberFromCode(asStr(row.linkId), "WPL-") ??
+    999999
+  );
 }
 
 function errorMessage(error: unknown): string {
@@ -422,14 +513,24 @@ async function findFirstByField<TItem extends SeedItem>(
   field: string,
   value: string,
 ): Promise<TItem | null> {
-  const res = await model.list({
-    authMode: "userPool",
-    filter: { [field]: { eq: value } },
-    limit: 1,
-  });
+  let nextToken: string | null | undefined = undefined;
 
-  if (res.errors?.length) throw res.errors;
-  return (res.data ?? [])[0] ?? null;
+  for (;;) {
+    const res = await model.list({
+      authMode: "userPool",
+      filter: { [field]: { eq: value } },
+      limit: 1000,
+      nextToken,
+    });
+
+    if (res.errors?.length) throw res.errors;
+
+    const found = (res.data ?? [])[0] ?? null;
+    if (found) return found;
+
+    nextToken = res.nextToken;
+    if (!nextToken) return null;
+  }
 }
 
 async function upsertAbilityCode(
@@ -606,6 +707,89 @@ async function upsertPlanPhraseAbilityLink(
   return "created";
 }
 
+async function upsertWeekendPlay(
+  model: SeedModel,
+  row: WeekendPlayRow,
+): Promise<UpsertResult> {
+  const playId = asStr(row.playId);
+  if (!playId) return false;
+
+  const playTitle = asStr(row.playTitle);
+  if (!playTitle) {
+    throw new Error(`WeekendPlay playTitle is empty. playId=${playId}`);
+  }
+
+  const payload = {
+    playId,
+    playTitle,
+    playType: asNullable(row.playType),
+    setting: asNullable(row.setting),
+    status: asStr(row.status) || "active",
+    parentHint: asNullable(row.parentHint),
+    sourceFile: asNullable(row.sourceFile),
+    playDescriptionDraft: asNullable(row.playDescriptionDraft),
+    sortOrder: resolveWeekendPlaySortOrder(row),
+  };
+
+  const existing = await findFirstByField(model, "playId", playId);
+  const existingPlayId = asStr(existing?.playId);
+
+  if (existingPlayId) {
+    const res = await model.update(payload, { authMode: "userPool" });
+    if (res.errors?.length) throw res.errors;
+    return "updated";
+  }
+
+  const res = await model.create(payload, { authMode: "userPool" });
+  if (res.errors?.length) throw res.errors;
+  return "created";
+}
+
+async function upsertWeekendPlayAbilityLink(
+  model: SeedModel,
+  row: WeekendPlayAbilityLinkRow,
+): Promise<UpsertResult> {
+  const linkId = asStr(row.linkId);
+  if (!linkId) return false;
+
+  const playId = asStr(row.playId);
+  const abilityCode = asStr(row.abilityCode);
+
+  if (!playId || !abilityCode) {
+    throw new Error(
+      `WeekendPlayAbilityLink required value is empty. linkId=${linkId} playId=${playId} abilityCode=${abilityCode}`,
+    );
+  }
+
+  const payload = {
+    linkId,
+    playId,
+    playTitle: asNullable(row.playTitle),
+    sortOrder: resolveWeekendPlayLinkSortOrder(row),
+    relationType: asNullable(row.relationType),
+    weight: toInt(row.weight) ?? 0,
+    abilityCode,
+    domain: asNullable(row.domain),
+    category: asNullable(row.category),
+    abilityName: asNullable(row.abilityName),
+    reason: asNullable(row.reason),
+    status: asStr(row.status) || "active",
+  };
+
+  const existing = await findFirstByField(model, "linkId", linkId);
+  const existingLinkId = asStr(existing?.linkId);
+
+  if (existingLinkId) {
+    const res = await model.update(payload, { authMode: "userPool" });
+    if (res.errors?.length) throw res.errors;
+    return "updated";
+  }
+
+  const res = await model.create(payload, { authMode: "userPool" });
+  if (res.errors?.length) throw res.errors;
+  return "created";
+}
+
 async function seedRows<T extends object>(args: {
   label: string;
   rows: T[];
@@ -659,11 +843,19 @@ async function seedRows<T extends object>(args: {
 
     if (SHOULD_WIPE) {
       await wipeModelByKey(
+        models.WeekendPlayAbilityLink,
+        "WeekendPlayAbilityLink",
+        "linkId",
+      );
+      await wipeModelByKey(models.WeekendPlay, "WeekendPlay", "playId");
+
+      await wipeModelByKey(
         models.PlanPhraseAbilityLink,
         "PlanPhraseAbilityLink",
         "linkId",
       );
       await wipeModelByKey(models.PlanPhrase, "PlanPhrase", "planPhraseId");
+
       await wipeModelById(
         models.AbilityObservationHint,
         "AbilityObservationHint",
@@ -709,6 +901,24 @@ async function seedRows<T extends object>(args: {
       rows: linkRows,
       upsert: (row) =>
         upsertPlanPhraseAbilityLink(models.PlanPhraseAbilityLink, row),
+    });
+
+    // 5) WeekendPlay投入
+    const weekendPlayRows = await parseCsv<WeekendPlayRow>(weekendPlayCsvUrl);
+    await seedRows({
+      label: "WeekendPlay",
+      rows: weekendPlayRows,
+      upsert: (row) => upsertWeekendPlay(models.WeekendPlay, row),
+    });
+
+    // 6) WeekendPlayAbilityLink投入
+    const weekendPlayAbilityLinkRows =
+      await parseCsv<WeekendPlayAbilityLinkRow>(weekendPlayAbilityLinkCsvUrl);
+    await seedRows({
+      label: "WeekendPlayAbilityLink",
+      rows: weekendPlayAbilityLinkRows,
+      upsert: (row) =>
+        upsertWeekendPlayAbilityLink(models.WeekendPlayAbilityLink, row),
     });
 
     console.log("seed done.");

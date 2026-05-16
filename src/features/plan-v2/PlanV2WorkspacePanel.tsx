@@ -16,6 +16,7 @@ import {
   type ClassAnnualPlanRecord,
   type ClassMonthPlanPhraseSelectionRecord,
   type ClassMonthPlanRecord,
+  type ClassPlanPhraseSelectionRecord,
   type ClassQuarterPlanRecord,
   type ClassroomForm,
   type ClassroomRecord,
@@ -23,7 +24,9 @@ import {
   type MonthPlanForm,
   type MonthPlanPhraseSelectionForm,
   type PlanPhraseAbilityLinkRecord,
+  type PlanPhraseAbilitySummary,
   type PlanPhraseRecord,
+  type PlanPhraseSelectionForm,
   type QuarterEventRecord,
   type QuarterPlanForm,
   type SchoolAnnualAgeTargetRecord,
@@ -99,7 +102,9 @@ function getUnknownErrorMessage(error: unknown, fallback: string): string {
   return fallback;
 }
 
-function uniqueAbilityCodes(rows: MonthPlanPhraseSelectionForm): string[] {
+function uniqueAbilityCodes(rows: {
+  abilitySummary: PlanPhraseAbilitySummary[];
+}): string[] {
   return Array.from(
     new Set(
       rows.abilitySummary
@@ -145,6 +150,9 @@ export default function PlanV2WorkspacePanel(props: { owner: string }) {
   const [monthPhraseSelections, setMonthPhraseSelections] = useState<
     ClassMonthPlanPhraseSelectionRecord[]
   >([]);
+  const [planPhraseSelections, setPlanPhraseSelections] = useState<
+    ClassPlanPhraseSelectionRecord[]
+  >([]);
 
   const refreshAll = useCallback(
     async (tenantIdArg?: string, fiscalYearArg?: number) => {
@@ -180,6 +188,7 @@ export default function PlanV2WorkspacePanel(props: { owner: string }) {
           setPlanPhrases([]);
           setPlanPhraseAbilityLinks([]);
           setMonthPhraseSelections([]);
+          setPlanPhraseSelections([]);
           return;
         }
 
@@ -195,6 +204,7 @@ export default function PlanV2WorkspacePanel(props: { owner: string }) {
           planPhraseRes,
           planPhraseAbilityLinkRes,
           monthPhraseSelectionRes,
+          planPhraseSelectionRes,
         ] = await Promise.all([
           client.models.Classroom.list({
             filter: { tenantId: { eq: tenantId } },
@@ -243,19 +253,24 @@ export default function PlanV2WorkspacePanel(props: { owner: string }) {
           }),
           client.models.PlanPhrase.list({
             filter: {
-              planPeriodType: { eq: "MONTH" },
-              status: { eq: "active" },
-            },
-            limit: 10000,
-          }),
-          client.models.PlanPhraseAbilityLink.list({
-            filter: {
-              planPeriodType: { eq: "MONTH" },
               status: { eq: "active" },
             },
             limit: 20000,
           }),
+          client.models.PlanPhraseAbilityLink.list({
+            filter: {
+              status: { eq: "active" },
+            },
+            limit: 50000,
+          }),
           client.models.ClassMonthPlanPhraseSelection.list({
+            filter: {
+              tenantId: { eq: tenantId },
+              fiscalYear: { eq: fy },
+            },
+            limit: 20000,
+          }),
+          client.models.ClassPlanPhraseSelection.list({
             filter: {
               tenantId: { eq: tenantId },
               fiscalYear: { eq: fy },
@@ -275,6 +290,7 @@ export default function PlanV2WorkspacePanel(props: { owner: string }) {
         throwIfModelErrors(planPhraseRes);
         throwIfModelErrors(planPhraseAbilityLinkRes);
         throwIfModelErrors(monthPhraseSelectionRes);
+        throwIfModelErrors(planPhraseSelectionRes);
 
         const nextQuarterPlans = [...(quarterPlanRes.data ?? [])];
         const quarterIds = new Set(nextQuarterPlans.map((x) => x.id));
@@ -306,10 +322,15 @@ export default function PlanV2WorkspacePanel(props: { owner: string }) {
         );
         setPlanPhrases(
           [...(planPhraseRes.data ?? [])].sort((a, b) => {
+            const period = byText(a.planPeriodType, b.planPeriodType);
+            if (period !== 0) return period;
+
             const age = Number(a.ageYears ?? 0) - Number(b.ageYears ?? 0);
             if (age !== 0) return age;
+
             const domain = byText(a.domainCode, b.domainCode);
             if (domain !== 0) return domain;
+
             return Number(a.sortOrder ?? 0) - Number(b.sortOrder ?? 0);
           }),
         );
@@ -321,6 +342,14 @@ export default function PlanV2WorkspacePanel(props: { owner: string }) {
         setMonthPhraseSelections(
           [...(monthPhraseSelectionRes.data ?? [])]
             .filter((x) => monthIds.has(x.classMonthPlanId))
+            .sort(
+              (a, b) => Number(a.sortOrder ?? 0) - Number(b.sortOrder ?? 0),
+            ),
+        );
+        setPlanPhraseSelections(
+          [...(planPhraseSelectionRes.data ?? [])]
+            .filter((x) => x.tenantId === tenantId)
+            .filter((x) => Number(x.fiscalYear ?? 0) === fy)
             .sort(
               (a, b) => Number(a.sortOrder ?? 0) - Number(b.sortOrder ?? 0),
             ),
@@ -539,6 +568,107 @@ export default function PlanV2WorkspacePanel(props: { owner: string }) {
     }
   }
 
+  async function replaceReferencePlanPhraseSelections(args: {
+    planScopeType: "YEAR" | "TERM";
+    classAnnualPlan?: ClassAnnualPlanRecord | null;
+    classQuarterPlan?: ClassQuarterPlanRecord | null;
+    phraseSelections: PlanPhraseSelectionForm[];
+  }) {
+    const {
+      planScopeType,
+      classAnnualPlan,
+      classQuarterPlan,
+      phraseSelections,
+    } = args;
+
+    const parentAnnualPlan =
+      classAnnualPlan ??
+      (classQuarterPlan
+        ? classAnnualPlans.find(
+            (x) => x.id === classQuarterPlan.classAnnualPlanId,
+          )
+        : null) ??
+      null;
+
+    const classAnnualPlanId = parentAnnualPlan?.id;
+    const classQuarterPlanId =
+      planScopeType === "TERM" ? classQuarterPlan?.id : undefined;
+
+    if (planScopeType === "YEAR" && !classAnnualPlanId) return;
+    if (planScopeType === "TERM" && !classQuarterPlanId) return;
+
+    const existing = planPhraseSelections.filter((x) => {
+      if (x.planScopeType !== planScopeType) return false;
+      if (planScopeType === "YEAR") {
+        return x.classAnnualPlanId === classAnnualPlanId;
+      }
+      return x.classQuarterPlanId === classQuarterPlanId;
+    });
+
+    for (const row of existing) {
+      const deleted = await client.models.ClassPlanPhraseSelection.delete({
+        id: row.id,
+      });
+      throwIfModelErrors(deleted);
+    }
+
+    const activeSelections = phraseSelections.filter(
+      (x) => x.status !== "ARCHIVED" && s(x.planPhraseId) !== "",
+    );
+
+    for (let i = 0; i < activeSelections.length; i += 1) {
+      const row = activeSelections[i];
+      const abilitySummary = row.abilitySummary ?? [];
+      const totals = summarizeAbilityWeightsByDomain(abilitySummary);
+
+      const created = await client.models.ClassPlanPhraseSelection.create({
+        tenantId: selectedTenantId,
+        fiscalYear:
+          parentAnnualPlan?.fiscalYear ??
+          classQuarterPlan?.fiscalYear ??
+          fiscalYear,
+
+        classroomId: parentAnnualPlan?.classroomId ?? null,
+
+        planScopeType,
+        relationUse: "REFERENCE",
+
+        classAnnualPlanId: classAnnualPlanId ?? null,
+        classQuarterPlanId: classQuarterPlanId ?? null,
+        classMonthPlanId: null,
+
+        termNo:
+          planScopeType === "TERM"
+            ? Number(classQuarterPlan?.termNo ?? row.termNo ?? 0)
+            : null,
+        monthKey: null,
+
+        planPhraseId: row.planPhraseId,
+        phraseTextSnapshot: row.phraseTextSnapshot,
+
+        selectedDomainCode: row.selectedDomainCode || "0",
+        selectedDomain: row.selectedDomain || "総合",
+        ageYears: toIntOrNull(row.ageYears),
+        phraseNo: row.phraseNo ?? null,
+
+        abilityCodes: uniqueAbilityCodes(row),
+        abilitySummaryJson: stringifyAbilitySummary(abilitySummary),
+
+        relatedHealth: totals.health,
+        relatedHumanRelations: totals.humanRelations,
+        relatedEnvironment: totals.environment,
+        relatedLanguage: totals.language,
+        relatedExpression: totals.expression,
+
+        status: "ACTIVE",
+        sortOrder: i + 1,
+        selectedAt: row.selectedAt || new Date().toISOString(),
+      });
+
+      throwIfModelErrors(created);
+    }
+  }
+
   async function prepareDemoTenant() {
     setLoading(true);
     setError("");
@@ -678,10 +808,10 @@ export default function PlanV2WorkspacePanel(props: { owner: string }) {
   }
 
   async function saveSchoolAnnualBundle(
-    form: SchoolAnnualPlanForm,
+    planForm: SchoolAnnualPlanForm,
     ageRows: Array<{ id: string; form: AbilityForm }>,
   ) {
-    if (!selectedSchoolAnnualPlan?.id) return;
+    if (!schoolAnnualPlan?.id) return;
 
     setLoading(true);
     setError("");
@@ -689,20 +819,18 @@ export default function PlanV2WorkspacePanel(props: { owner: string }) {
 
     try {
       const updatedPlan = await client.models.SchoolAnnualPlan.update({
-        id: selectedSchoolAnnualPlan.id,
-        title: form.title,
-        periodStart: form.periodStart || null,
-        periodEnd: form.periodEnd || null,
-        schoolPolicy: form.schoolPolicy || null,
-        status: toPlanStatus(form.status),
+        id: schoolAnnualPlan.id,
+        title: planForm.title,
+        periodStart: planForm.periodStart || null,
+        periodEnd: planForm.periodEnd || null,
+        schoolPolicy: planForm.schoolPolicy || null,
+        status: toPlanStatus(planForm.status),
       });
       throwIfModelErrors(updatedPlan);
 
       for (const row of ageRows) {
         const updatedAge = await client.models.SchoolAnnualAgeTarget.update({
           id: row.id,
-          tenantId: selectedTenantId,
-          fiscalYear,
           ageBand: row.form.ageBand,
           goalTextA: row.form.goalText || null,
           abilityHealthA: toIntOrNull(row.form.abilityHealth),
@@ -710,16 +838,23 @@ export default function PlanV2WorkspacePanel(props: { owner: string }) {
           abilityEnvironmentA: toIntOrNull(row.form.abilityEnvironment),
           abilityLanguageA: toIntOrNull(row.form.abilityLanguage),
           abilityExpressionA: toIntOrNull(row.form.abilityExpression),
+          draftText: row.form.draftText || null,
+          aiSuggestedText: row.form.aiSuggestedText || null,
+          finalText: row.form.finalText || null,
+          status: toPlanStatus(row.form.status),
         });
         throwIfModelErrors(updatedAge);
       }
 
       await refreshAll(selectedTenantId, fiscalYear);
-      setMessage("保育所の年計画を保存しました。");
+      setMessage("保育所年計画と年齢別方針を保存しました。");
     } catch (e) {
       console.error(e);
       setError(
-        getUnknownErrorMessage(e, "保育所の年計画の保存に失敗しました。"),
+        getUnknownErrorMessage(
+          e,
+          "保育所年計画と年齢別方針の保存に失敗しました。",
+        ),
       );
     } finally {
       setLoading(false);
@@ -736,8 +871,6 @@ export default function PlanV2WorkspacePanel(props: { owner: string }) {
     try {
       const updated = await client.models.SchoolAnnualAgeTarget.update({
         id: selectedAgeTarget.id,
-        tenantId: selectedTenantId,
-        fiscalYear,
         ageBand: form.ageBand,
         goalTextA: form.goalText || null,
         abilityHealthA: toIntOrNull(form.abilityHealth),
@@ -745,6 +878,10 @@ export default function PlanV2WorkspacePanel(props: { owner: string }) {
         abilityEnvironmentA: toIntOrNull(form.abilityEnvironment),
         abilityLanguageA: toIntOrNull(form.abilityLanguage),
         abilityExpressionA: toIntOrNull(form.abilityExpression),
+        draftText: form.draftText || null,
+        aiSuggestedText: form.aiSuggestedText || null,
+        finalText: form.finalText || null,
+        status: toPlanStatus(form.status),
       });
       throwIfModelErrors(updated);
 
@@ -816,6 +953,12 @@ export default function PlanV2WorkspacePanel(props: { owner: string }) {
       });
       throwIfModelErrors(updated);
 
+      await replaceReferencePlanPhraseSelections({
+        planScopeType: "YEAR",
+        classAnnualPlan: selectedClassAnnualPlan,
+        phraseSelections: form.phraseSelections,
+      });
+
       await refreshAll(selectedTenantId, fiscalYear);
       setMessage("クラス年計画を保存しました。");
     } catch (e) {
@@ -858,7 +1001,15 @@ export default function PlanV2WorkspacePanel(props: { owner: string }) {
       });
       throwIfModelErrors(updatedAnnual);
 
+      await replaceReferencePlanPhraseSelections({
+        planScopeType: "YEAR",
+        classAnnualPlan: classAnnualPlanForSelectedClassroom,
+        phraseSelections: annualForm.phraseSelections,
+      });
+
       for (const row of quarterRows) {
+        const quarterPlan = quarterPlans.find((x) => x.id === row.id) ?? null;
+
         const updatedQuarter = await client.models.ClassQuarterPlan.update({
           id: row.id,
           title: row.form.title,
@@ -877,15 +1028,25 @@ export default function PlanV2WorkspacePanel(props: { owner: string }) {
           status: toPlanStatus(row.form.status),
         });
         throwIfModelErrors(updatedQuarter);
+
         await replaceQuarterEvents(row.id, row.form.eventSummary);
+
+        if (quarterPlan) {
+          await replaceReferencePlanPhraseSelections({
+            planScopeType: "TERM",
+            classAnnualPlan: classAnnualPlanForSelectedClassroom,
+            classQuarterPlan: quarterPlan,
+            phraseSelections: row.form.phraseSelections,
+          });
+        }
       }
 
       await refreshAll(selectedTenantId, fiscalYear);
-      setMessage("クラスの年計画を保存しました。");
+      setMessage("クラス年計画と期計画を保存しました。");
     } catch (e) {
       console.error(e);
       setError(
-        getUnknownErrorMessage(e, "クラスの年計画の保存に失敗しました。"),
+        getUnknownErrorMessage(e, "クラス年計画と期計画の保存に失敗しました。"),
       );
     } finally {
       setLoading(false);
@@ -920,6 +1081,18 @@ export default function PlanV2WorkspacePanel(props: { owner: string }) {
       throwIfModelErrors(updated);
 
       await replaceQuarterEvents(selectedQuarterPlan.id, form.eventSummary);
+
+      const parentAnnualPlan =
+        classAnnualPlans.find(
+          (x) => x.id === selectedQuarterPlan.classAnnualPlanId,
+        ) ?? null;
+
+      await replaceReferencePlanPhraseSelections({
+        planScopeType: "TERM",
+        classAnnualPlan: parentAnnualPlan,
+        classQuarterPlan: selectedQuarterPlan,
+        phraseSelections: form.phraseSelections,
+      });
 
       await refreshAll(selectedTenantId, fiscalYear);
       setMessage("期計画を保存しました。");
@@ -965,6 +1138,18 @@ export default function PlanV2WorkspacePanel(props: { owner: string }) {
         selectedQuarterPlan.id,
         quarterForm.eventSummary,
       );
+
+      const parentAnnualPlan =
+        classAnnualPlans.find(
+          (x) => x.id === selectedQuarterPlan.classAnnualPlanId,
+        ) ?? null;
+
+      await replaceReferencePlanPhraseSelections({
+        planScopeType: "TERM",
+        classAnnualPlan: parentAnnualPlan,
+        classQuarterPlan: selectedQuarterPlan,
+        phraseSelections: quarterForm.phraseSelections,
+      });
 
       for (const row of monthRows) {
         const monthPlan = monthPlans.find((x) => x.id === row.id) ?? null;
@@ -1072,6 +1257,7 @@ export default function PlanV2WorkspacePanel(props: { owner: string }) {
     planPhrases,
     planPhraseAbilityLinks,
     monthPhraseSelections,
+    planPhraseSelections,
     classroomCount: classrooms.length,
     ageTargetCount: ageTargets.length,
     classAnnualPlanCount: classAnnualPlans.length,

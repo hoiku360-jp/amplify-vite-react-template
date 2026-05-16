@@ -5,20 +5,26 @@ import {
   useState,
   type CSSProperties,
   type Dispatch,
-  type ReactNode,
   type SetStateAction,
 } from "react";
 import {
   PLAN_DOMAINS,
   abilityLinksToSummary,
+  describeDomainTrend,
+  getDomainRelationLabel,
+  getDomainRelationLevel,
   getPlanDomainLabel,
+  getTermNoFromPlanPhraseId,
   makePhraseSelectionClientKey,
   nodeKey,
   parseAgeYears,
   recalculateMonthPlanFromSelections,
+  recalculateReferencePlanFromSelections,
   s,
+  summarizeSelectionsByDomain,
   toAbilityFormA,
   toClassAnnualPlanForm,
+  toClassroomForm,
   toMonthPlanForm,
   toQuarterPlanForm,
   toSchoolAnnualPlanForm,
@@ -27,16 +33,19 @@ import {
   type ClassAnnualPlanRecord,
   type ClassMonthPlanPhraseSelectionRecord,
   type ClassMonthPlanRecord,
+  type ClassPlanPhraseSelectionRecord,
   type ClassQuarterPlanRecord,
+  type ClassroomForm,
   type ClassroomRecord,
   type MonthEventRecord,
   type MonthPlanForm,
   type MonthPlanPhraseSelectionForm,
   type PlanDomainKey,
-  type PlanDomainLabel,
   type PlanPhraseAbilityLinkRecord,
   type PlanPhraseAbilitySummary,
   type PlanPhraseRecord,
+  type PlanPhraseSelectionForm,
+  type PlanScopeType,
   type QuarterEventRecord,
   type QuarterPlanForm,
   type SchoolAnnualAgeTargetRecord,
@@ -67,6 +76,7 @@ type Props = {
   planPhrases: PlanPhraseRecord[];
   planPhraseAbilityLinks: PlanPhraseAbilityLinkRecord[];
   monthPhraseSelections: ClassMonthPlanPhraseSelectionRecord[];
+  planPhraseSelections: ClassPlanPhraseSelectionRecord[];
 
   classroomCount: number;
   ageTargetCount: number;
@@ -78,7 +88,7 @@ type Props = {
     ageRows: Array<{ id: string; form: AbilityForm }>,
   ) => Promise<void>;
   onSaveAgeTarget: (form: AbilityForm) => Promise<void>;
-  onSaveClassroom: (form: never) => Promise<void>;
+  onSaveClassroom: (form: ClassroomForm) => Promise<void>;
   onSaveClassAnnualPlan: (form: ClassAnnualPlanForm) => Promise<void>;
   onSaveClassAnnualBundle: (
     annualForm: ClassAnnualPlanForm,
@@ -98,21 +108,7 @@ type AnnualLikeForm =
   | QuarterPlanForm
   | MonthPlanForm;
 
-type PhrasePickerTarget =
-  | {
-      mode: "quarter-month";
-      rowId: string;
-      rowTitle: string;
-      domain: (typeof PLAN_DOMAINS)[number];
-      ageYears: number | null;
-    }
-  | {
-      mode: "single-month";
-      rowId: string;
-      rowTitle: string;
-      domain: (typeof PLAN_DOMAINS)[number];
-      ageYears: number | null;
-    };
+type DomainDef = (typeof PLAN_DOMAINS)[number];
 
 const sectionStyle: CSSProperties = {
   display: "grid",
@@ -143,29 +139,32 @@ const tdStyle: CSSProperties = {
   verticalAlign: "top",
 };
 
+const smallMutedStyle: CSSProperties = {
+  fontSize: 12,
+  color: "#666",
+};
+
 function textOr(value: string | null | undefined, fallback = ""): string {
   return value ?? fallback;
 }
 
-function toScoreString(v: number | null | undefined): string {
-  return v === null || v === undefined ? "" : String(v);
+function sortBySortOrderThenId<T extends { sortOrder?: number | null }>(
+  rows: T[],
+  getId: (row: T) => string,
+): T[] {
+  return [...rows].sort((a, b) => {
+    const aa = Number(a.sortOrder ?? 999999);
+    const bb = Number(b.sortOrder ?? 999999);
+    if (aa !== bb) return aa - bb;
+    return getId(a).localeCompare(getId(b));
+  });
 }
 
-function applySharedAgeTargetToAnnualForm(
-  base: ClassAnnualPlanForm,
-  shared?: SchoolAnnualAgeTargetRecord | null,
-): ClassAnnualPlanForm {
-  if (!shared) return base;
-
-  return {
-    ...base,
-    goalText: shared.goalTextA ?? "",
-    abilityHealth: toScoreString(shared.abilityHealthA),
-    abilityHumanRelations: toScoreString(shared.abilityHumanRelationsA),
-    abilityEnvironment: toScoreString(shared.abilityEnvironmentA),
-    abilityLanguage: toScoreString(shared.abilityLanguageA),
-    abilityExpression: toScoreString(shared.abilityExpressionA),
-  };
+function isActiveStatus(value?: string | null): boolean {
+  const status = s(value).toUpperCase();
+  return (
+    status === "" || status === "ACTIVE" || status === "active".toUpperCase()
+  );
 }
 
 function buildSchoolAgeTargetForms(
@@ -187,6 +186,7 @@ function buildSchoolAgeTargetForms(
 function buildQuarterForms(
   quarterRows: ClassQuarterPlanRecord[],
   quarterEvents: QuarterEventRecord[],
+  planPhraseSelections: ClassPlanPhraseSelectionRecord[],
 ): Array<{ id: string; form: QuarterPlanForm }> {
   return [...quarterRows]
     .sort((a, b) => Number(a.termNo ?? 0) - Number(b.termNo ?? 0))
@@ -195,6 +195,7 @@ function buildQuarterForms(
       form: toQuarterPlanForm(
         row,
         quarterEvents.filter((x) => x.classQuarterPlanId === row.id),
+        planPhraseSelections.filter((x) => x.classQuarterPlanId === row.id),
       ),
     }));
 }
@@ -236,8 +237,8 @@ function buildMonthForm(
   );
 }
 
-function getAgeYearsForMonthForm(
-  form: MonthPlanForm,
+function getAgeYearsForForm(
+  form: { ageBand: string },
   fallbackAgeBand?: string | null,
 ): number | null {
   return parseAgeYears(form.ageBand) ?? parseAgeYears(fallbackAgeBand);
@@ -250,84 +251,6 @@ function getPhraseLinks(
   return planPhraseAbilityLinks.filter(
     (x) => s(x.planPhraseId) === planPhraseId && s(x.status) !== "ARCHIVED",
   );
-}
-
-function getFilteredPhrases(
-  planPhrases: PlanPhraseRecord[],
-  domainLabel: PlanDomainLabel,
-  ageYears: number | null,
-): PlanPhraseRecord[] {
-  return planPhrases
-    .filter((x) => {
-      if (s(x.status) !== "active" && s(x.status) !== "ACTIVE") return false;
-      if (s(x.planPeriodType) !== "MONTH") return false;
-      if (getPlanDomainLabel(x.domain) !== domainLabel) return false;
-      if (ageYears !== null && Number(x.ageYears ?? -1) !== ageYears) {
-        return false;
-      }
-      return true;
-    })
-    .sort((a, b) => {
-      const aa = Number(a.sortOrder ?? 999999);
-      const bb = Number(b.sortOrder ?? 999999);
-      if (aa !== bb) return aa - bb;
-      return s(a.planPhraseId).localeCompare(s(b.planPhraseId));
-    });
-}
-
-function buildSelectionFromPhrase(
-  phrase: PlanPhraseRecord,
-  links: PlanPhraseAbilityLinkRecord[],
-  domain: (typeof PLAN_DOMAINS)[number],
-  ageYears: number | null,
-  sortOrder: number,
-): MonthPlanPhraseSelectionForm {
-  return {
-    clientKey: makePhraseSelectionClientKey(s(phrase.planPhraseId), sortOrder),
-    planPhraseId: s(phrase.planPhraseId),
-    phraseTextSnapshot: s(phrase.phraseText),
-    selectedDomainCode: domain.code,
-    selectedDomain: domain.label,
-    ageYears: ageYears === null ? "" : String(ageYears),
-    abilitySummary: abilityLinksToSummary(links),
-    status: "ACTIVE",
-    sortOrder,
-    selectedAt: new Date().toISOString(),
-  };
-}
-
-function addPhraseToMonthForm(
-  form: MonthPlanForm,
-  phrase: PlanPhraseRecord,
-  links: PlanPhraseAbilityLinkRecord[],
-  domain: (typeof PLAN_DOMAINS)[number],
-  ageYears: number | null,
-): MonthPlanForm {
-  const nextSortOrder = form.phraseSelections.length + 1;
-  const selection = buildSelectionFromPhrase(
-    phrase,
-    links,
-    domain,
-    ageYears,
-    nextSortOrder,
-  );
-
-  return recalculateMonthPlanFromSelections({
-    ...form,
-    phraseSelections: [...form.phraseSelections, selection],
-  });
-}
-
-function removePhraseFromMonthForm(
-  form: MonthPlanForm,
-  clientKey: string,
-): MonthPlanForm {
-  return recalculateMonthPlanFromSelections({
-    ...form,
-    phraseSelections: form.phraseSelections.filter(
-      (x) => x.clientKey !== clientKey,
-    ),
-  });
 }
 
 function abilitySummaryLabel(rows: PlanPhraseAbilitySummary[]): string {
@@ -363,24 +286,665 @@ function abilitySummaryLabel(rows: PlanPhraseAbilitySummary[]): string {
     .join(" / ");
 }
 
+function getMonthCandidates(
+  planPhrases: PlanPhraseRecord[],
+  domain: DomainDef,
+  ageYears: number | null,
+): PlanPhraseRecord[] {
+  return sortBySortOrderThenId(
+    planPhrases.filter((x) => {
+      if (!isActiveStatus(x.status)) return false;
+      if (s(x.planPeriodType).toUpperCase() !== "MONTH") return false;
+      if (getPlanDomainLabel(x.domain) !== domain.label) return false;
+      if (ageYears !== null && Number(x.ageYears ?? -1) !== ageYears) {
+        return false;
+      }
+      return true;
+    }),
+    (row) => s(row.planPhraseId),
+  );
+}
+
+function getReferenceCandidates(args: {
+  planPhrases: PlanPhraseRecord[];
+  planScopeType: Exclude<PlanScopeType, "MONTH">;
+  ageYears: number | null;
+  termNo?: number | null;
+}): PlanPhraseRecord[] {
+  const { planPhrases, planScopeType, ageYears, termNo } = args;
+
+  return sortBySortOrderThenId(
+    planPhrases.filter((x) => {
+      if (!isActiveStatus(x.status)) return false;
+      if (s(x.planPeriodType).toUpperCase() !== planScopeType) return false;
+      if (ageYears !== null && Number(x.ageYears ?? -1) !== ageYears) {
+        return false;
+      }
+      if (planScopeType === "TERM" && termNo !== null && termNo !== undefined) {
+        return getTermNoFromPlanPhraseId(x.planPhraseId) === termNo;
+      }
+      return true;
+    }),
+    (row) => s(row.planPhraseId),
+  );
+}
+
+function buildMonthSelectionFromPhrase(
+  phrase: PlanPhraseRecord,
+  links: PlanPhraseAbilityLinkRecord[],
+  domain: DomainDef,
+  ageYears: number | null,
+  sortOrder: number,
+): MonthPlanPhraseSelectionForm {
+  return {
+    clientKey: makePhraseSelectionClientKey(s(phrase.planPhraseId), sortOrder),
+    planPhraseId: s(phrase.planPhraseId),
+    phraseTextSnapshot: s(phrase.phraseText),
+    selectedDomainCode: domain.code,
+    selectedDomain: domain.label,
+    ageYears: ageYears === null ? "" : String(ageYears),
+    abilitySummary: abilityLinksToSummary(links),
+    status: "ACTIVE",
+    sortOrder,
+    selectedAt: new Date().toISOString(),
+  };
+}
+
+function addPhraseToMonthForm(
+  form: MonthPlanForm,
+  phrase: PlanPhraseRecord,
+  links: PlanPhraseAbilityLinkRecord[],
+  domain: DomainDef,
+  ageYears: number | null,
+): MonthPlanForm {
+  const activeSelections = form.phraseSelections.filter(
+    (x) => x.status !== "ARCHIVED",
+  );
+
+  if (activeSelections.some((x) => x.planPhraseId === s(phrase.planPhraseId))) {
+    return form;
+  }
+
+  const selection = buildMonthSelectionFromPhrase(
+    phrase,
+    links,
+    domain,
+    ageYears,
+    activeSelections.length + 1,
+  );
+
+  return recalculateMonthPlanFromSelections({
+    ...form,
+    phraseSelections: [...activeSelections, selection],
+  });
+}
+
+function removePhraseFromMonthForm(
+  form: MonthPlanForm,
+  clientKey: string,
+): MonthPlanForm {
+  return recalculateMonthPlanFromSelections({
+    ...form,
+    phraseSelections: form.phraseSelections.filter(
+      (x) => x.clientKey !== clientKey,
+    ),
+  });
+}
+
+function buildReferenceSelectionFromPhrase(args: {
+  phrase: PlanPhraseRecord;
+  links: PlanPhraseAbilityLinkRecord[];
+  planScopeType: Exclude<PlanScopeType, "MONTH">;
+  ageYears: number | null;
+  termNo?: number | null;
+  sortOrder: number;
+}): PlanPhraseSelectionForm {
+  const { phrase, links, planScopeType, ageYears, termNo, sortOrder } = args;
+  const phraseNo = Number(phrase.phraseNo ?? NaN);
+
+  return {
+    clientKey: makePhraseSelectionClientKey(s(phrase.planPhraseId), sortOrder),
+    planScopeType,
+    relationUse: "REFERENCE",
+    termNo: planScopeType === "TERM" ? (termNo ?? undefined) : undefined,
+    planPhraseId: s(phrase.planPhraseId),
+    phraseTextSnapshot: s(phrase.phraseText),
+    selectedDomainCode: s(phrase.domainCode) || "0",
+    selectedDomain: s(phrase.domain) || "総合",
+    ageYears: ageYears === null ? "" : String(ageYears),
+    phraseNo: Number.isFinite(phraseNo) ? phraseNo : undefined,
+    abilitySummary: abilityLinksToSummary(links),
+    status: "ACTIVE",
+    sortOrder,
+    selectedAt: new Date().toISOString(),
+  };
+}
+
+function addPhraseToReferenceForm<
+  T extends ClassAnnualPlanForm | QuarterPlanForm,
+>(
+  form: T,
+  phrase: PlanPhraseRecord,
+  links: PlanPhraseAbilityLinkRecord[],
+  planScopeType: Exclude<PlanScopeType, "MONTH">,
+  ageYears: number | null,
+  termNo?: number | null,
+): T {
+  const activeSelections = form.phraseSelections.filter(
+    (x) => x.status !== "ARCHIVED",
+  );
+
+  if (activeSelections.some((x) => x.planPhraseId === s(phrase.planPhraseId))) {
+    return form;
+  }
+
+  const selection = buildReferenceSelectionFromPhrase({
+    phrase,
+    links,
+    planScopeType,
+    ageYears,
+    termNo,
+    sortOrder: activeSelections.length + 1,
+  });
+
+  return recalculateReferencePlanFromSelections({
+    ...form,
+    phraseSelections: [...activeSelections, selection],
+  } as T);
+}
+
+function removePhraseFromReferenceForm<
+  T extends ClassAnnualPlanForm | QuarterPlanForm,
+>(form: T, clientKey: string): T {
+  return recalculateReferencePlanFromSelections({
+    ...form,
+    phraseSelections: form.phraseSelections.filter(
+      (x) => x.clientKey !== clientKey,
+    ),
+  } as T);
+}
+
+function PhraseCard(props: {
+  phrase: PlanPhraseRecord;
+  summary: PlanPhraseAbilitySummary[];
+  disabled?: boolean;
+  onClick: () => void;
+}) {
+  const { phrase, summary, disabled = false, onClick } = props;
+  const label = abilitySummaryLabel(summary);
+
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      disabled={disabled}
+      style={{
+        display: "grid",
+        gap: 4,
+        textAlign: "left",
+        padding: 10,
+        border: "1px solid #d1d5db",
+        borderRadius: 8,
+        background: disabled ? "#f3f4f6" : "#fff",
+        cursor: disabled ? "not-allowed" : "pointer",
+      }}
+    >
+      <span style={{ fontWeight: 700 }}>
+        {s(phrase.planPhraseId)} / {phrase.phraseType ?? "計画文例"}
+      </span>
+      <span style={{ whiteSpace: "pre-wrap" }}>{phrase.phraseText}</span>
+      <span style={smallMutedStyle}>
+        関連する育ち: {label || "Ability Linkなし"}
+      </span>
+    </button>
+  );
+}
+
+function DomainTrendPanel(props: {
+  title: string;
+  selections: PlanPhraseSelectionForm[];
+}) {
+  const { title, selections } = props;
+  const activeSelections = selections.filter((x) => x.status !== "ARCHIVED");
+  const totals = summarizeSelectionsByDomain(activeSelections);
+  const maxValue = Math.max(
+    ...PLAN_DOMAINS.map((domain) => totals[domain.key]),
+  );
+
+  return (
+    <div style={{ ...subtleBoxStyle, display: "grid", gap: 8 }}>
+      <div style={{ fontWeight: 700 }}>{title}</div>
+      <div style={smallMutedStyle}>{describeDomainTrend(totals)}</div>
+      <div style={{ display: "grid", gap: 6 }}>
+        {PLAN_DOMAINS.map((domain) => {
+          const value = totals[domain.key];
+          const level = getDomainRelationLevel(value, maxValue);
+          const label = getDomainRelationLabel(level);
+          const barCount =
+            level === "CENTER"
+              ? 3
+              : level === "RELATED"
+                ? 2
+                : level === "SUPPORT"
+                  ? 1
+                  : 0;
+
+          return (
+            <div
+              key={domain.key}
+              style={{
+                display: "grid",
+                gridTemplateColumns: "88px 80px 1fr",
+                gap: 8,
+                alignItems: "center",
+                fontSize: 13,
+              }}
+            >
+              <span>{domain.label}</span>
+              <span>{label}</span>
+              <span aria-label={`${domain.label}: ${label}`}>
+                {barCount > 0 ? "■".repeat(barCount) : "—"}
+              </span>
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
+function MonthDomainScorePanel(props: {
+  form: MonthPlanForm;
+  title?: string;
+  compact?: boolean;
+}) {
+  const { form, title = "5領域(C)", compact = false } = props;
+
+  return (
+    <div style={{ display: "grid", gap: 6 }}>
+      <div style={{ fontWeight: 700 }}>{title}</div>
+      <div
+        style={{
+          display: "grid",
+          gridTemplateColumns: compact ? "1fr" : "repeat(5, minmax(88px, 1fr))",
+          gap: 8,
+        }}
+      >
+        {PLAN_DOMAINS.map((domain) => (
+          <label key={domain.key} style={{ display: "grid", gap: 3 }}>
+            <span style={{ fontSize: 12 }}>{domain.label}</span>
+            <input
+              type="number"
+              value={textOr(form[domain.formField])}
+              readOnly
+              style={{
+                width: "100%",
+                background: "#f9fafb",
+                color: "#111827",
+              }}
+            />
+          </label>
+        ))}
+      </div>
+      <div style={smallMutedStyle}>
+        選択した月のねらいの Ability Link から自動集計した参考値です。
+      </div>
+    </div>
+  );
+}
+
+function SelectedReferenceList<
+  T extends ClassAnnualPlanForm | QuarterPlanForm,
+>(props: { form: T; setForm: Dispatch<SetStateAction<T>> }) {
+  const { form, setForm } = props;
+  const rows = form.phraseSelections.filter((x) => x.status !== "ARCHIVED");
+
+  if (rows.length === 0) {
+    return <div style={smallMutedStyle}>選択済みの計画文例はありません。</div>;
+  }
+
+  return (
+    <div style={{ display: "grid", gap: 8 }}>
+      {rows.map((row, index) => (
+        <div
+          key={row.clientKey}
+          style={{
+            display: "grid",
+            gridTemplateColumns: "1fr auto",
+            gap: 8,
+            padding: 8,
+            border: "1px solid #e5e7eb",
+            borderRadius: 8,
+            background: "#fff",
+          }}
+        >
+          <div style={{ display: "grid", gap: 4 }}>
+            <div style={{ fontWeight: 700 }}>
+              {index + 1}. {row.planPhraseId}
+            </div>
+            <div style={{ whiteSpace: "pre-wrap" }}>
+              {row.phraseTextSnapshot}
+            </div>
+            <div style={smallMutedStyle}>
+              関連する育ち:{" "}
+              {abilitySummaryLabel(row.abilitySummary) || "Ability Linkなし"}
+            </div>
+          </div>
+          <button
+            type="button"
+            onClick={() =>
+              setForm((prev) =>
+                removePhraseFromReferenceForm(prev, row.clientKey),
+              )
+            }
+          >
+            削除
+          </button>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+function ReferencePhraseSelector<
+  T extends ClassAnnualPlanForm | QuarterPlanForm,
+>(props: {
+  title: string;
+  planScopeType: Exclude<PlanScopeType, "MONTH">;
+  form: T;
+  setForm: Dispatch<SetStateAction<T>>;
+  planPhrases: PlanPhraseRecord[];
+  planPhraseAbilityLinks: PlanPhraseAbilityLinkRecord[];
+  fallbackAgeBand?: string | null;
+  termNo?: number | null;
+}) {
+  const {
+    title,
+    planScopeType,
+    form,
+    setForm,
+    planPhrases,
+    planPhraseAbilityLinks,
+    fallbackAgeBand,
+    termNo = null,
+  } = props;
+  const [open, setOpen] = useState(false);
+  const ageYears = getAgeYearsForForm(form, fallbackAgeBand);
+  const selectedPhraseIds = new Set(
+    form.phraseSelections
+      .filter((x) => x.status !== "ARCHIVED")
+      .map((x) => x.planPhraseId),
+  );
+
+  const candidates = useMemo(
+    () =>
+      getReferenceCandidates({
+        planPhrases,
+        planScopeType,
+        ageYears,
+        termNo,
+      }),
+    [ageYears, planPhrases, planScopeType, termNo],
+  );
+
+  return (
+    <div style={{ ...subtleBoxStyle, display: "grid", gap: 10 }}>
+      <div
+        style={{
+          display: "flex",
+          gap: 8,
+          alignItems: "center",
+          flexWrap: "wrap",
+        }}
+      >
+        <strong>{title}</strong>
+        <span style={smallMutedStyle}>
+          対象年齢: {ageYears === null ? "未設定" : `${ageYears}歳`}
+          {planScopeType === "TERM" && termNo ? ` / 第${termNo}期` : ""}
+        </span>
+        <button type="button" onClick={() => setOpen((v) => !v)}>
+          {open ? "候補を閉じる" : "候補から選ぶ"}
+        </button>
+      </div>
+
+      <SelectedReferenceList form={form} setForm={setForm} />
+      <DomainTrendPanel
+        title={`${title}の関連領域`}
+        selections={form.phraseSelections}
+      />
+
+      {open ? (
+        <div style={{ display: "grid", gap: 8 }}>
+          {candidates.length === 0 ? (
+            <div style={smallMutedStyle}>
+              条件に一致する計画文例がありません。PlanPhraseマスター、対象年齢、期番号を確認してください。
+            </div>
+          ) : (
+            candidates.map((phrase) => {
+              const phraseId = s(phrase.planPhraseId);
+              const links = getPhraseLinks(phraseId, planPhraseAbilityLinks);
+              const summary = abilityLinksToSummary(links);
+              const disabled = selectedPhraseIds.has(phraseId);
+
+              return (
+                <PhraseCard
+                  key={phraseId}
+                  phrase={phrase}
+                  summary={summary}
+                  disabled={disabled}
+                  onClick={() =>
+                    setForm((prev) =>
+                      addPhraseToReferenceForm(
+                        prev,
+                        phrase,
+                        links,
+                        planScopeType,
+                        ageYears,
+                        termNo,
+                      ),
+                    )
+                  }
+                />
+              );
+            })
+          )}
+        </div>
+      ) : null}
+    </div>
+  );
+}
+
+function SelectedMonthPhraseList(props: {
+  form: MonthPlanForm;
+  setForm: Dispatch<SetStateAction<MonthPlanForm>>;
+}) {
+  const { form, setForm } = props;
+  const rows = form.phraseSelections.filter((x) => x.status !== "ARCHIVED");
+
+  if (rows.length === 0) {
+    return (
+      <div style={smallMutedStyle}>選択済みの月のねらいはありません。</div>
+    );
+  }
+
+  return (
+    <div style={{ display: "grid", gap: 8 }}>
+      {rows.map((row, index) => (
+        <div
+          key={row.clientKey}
+          style={{
+            display: "grid",
+            gridTemplateColumns: "1fr auto",
+            gap: 8,
+            padding: 8,
+            border: "1px solid #e5e7eb",
+            borderRadius: 8,
+            background: "#fff",
+          }}
+        >
+          <div style={{ display: "grid", gap: 4 }}>
+            <div style={{ fontWeight: 700 }}>
+              {index + 1}. {row.selectedDomain} / {row.planPhraseId}
+            </div>
+            <div style={{ whiteSpace: "pre-wrap" }}>
+              {row.phraseTextSnapshot}
+            </div>
+            <div style={smallMutedStyle}>
+              影響:{" "}
+              {abilitySummaryLabel(row.abilitySummary) || "Ability Linkなし"}
+            </div>
+          </div>
+          <button
+            type="button"
+            onClick={() =>
+              setForm((prev) => removePhraseFromMonthForm(prev, row.clientKey))
+            }
+          >
+            削除
+          </button>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+function MonthPhraseSelector(props: {
+  title?: string;
+  form: MonthPlanForm;
+  setForm: Dispatch<SetStateAction<MonthPlanForm>>;
+  planPhrases: PlanPhraseRecord[];
+  planPhraseAbilityLinks: PlanPhraseAbilityLinkRecord[];
+  fallbackAgeBand?: string | null;
+  showDomainScores?: boolean;
+}) {
+  const {
+    title = "月のねらい候補",
+    form,
+    setForm,
+    planPhrases,
+    planPhraseAbilityLinks,
+    fallbackAgeBand,
+    showDomainScores = true,
+  } = props;
+  const [activeDomainKey, setActiveDomainKey] = useState<PlanDomainKey | "">(
+    "",
+  );
+  const ageYears = getAgeYearsForForm(form, fallbackAgeBand);
+  const activeDomain =
+    PLAN_DOMAINS.find((domain) => domain.key === activeDomainKey) ?? null;
+  const selectedPhraseIds = new Set(
+    form.phraseSelections
+      .filter((x) => x.status !== "ARCHIVED")
+      .map((x) => x.planPhraseId),
+  );
+
+  const candidates = activeDomain
+    ? getMonthCandidates(planPhrases, activeDomain, ageYears)
+    : [];
+
+  return (
+    <div style={{ ...subtleBoxStyle, display: "grid", gap: 10 }}>
+      <div
+        style={{
+          display: "flex",
+          gap: 8,
+          alignItems: "center",
+          flexWrap: "wrap",
+        }}
+      >
+        <strong>{title}</strong>
+        <span style={smallMutedStyle}>
+          対象年齢: {ageYears === null ? "未設定" : `${ageYears}歳`}
+        </span>
+      </div>
+
+      <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+        {PLAN_DOMAINS.map((domain) => (
+          <button
+            key={domain.key}
+            type="button"
+            onClick={() =>
+              setActiveDomainKey((prev) =>
+                prev === domain.key ? "" : domain.key,
+              )
+            }
+            style={{
+              fontWeight: activeDomainKey === domain.key ? 700 : 400,
+            }}
+          >
+            {domain.label}から選ぶ
+          </button>
+        ))}
+      </div>
+
+      <SelectedMonthPhraseList form={form} setForm={setForm} />
+      {showDomainScores ? <MonthDomainScorePanel form={form} /> : null}
+
+      {activeDomain ? (
+        <div style={{ display: "grid", gap: 8 }}>
+          <div style={{ fontWeight: 700 }}>
+            {activeDomain.label}の月のねらい候補
+          </div>
+          {candidates.length === 0 ? (
+            <div style={smallMutedStyle}>
+              条件に一致する月のねらいがありません。PlanPhraseマスターと対象年齢を確認してください。
+            </div>
+          ) : (
+            candidates.map((phrase) => {
+              const phraseId = s(phrase.planPhraseId);
+              const links = getPhraseLinks(phraseId, planPhraseAbilityLinks);
+              const summary = abilityLinksToSummary(links);
+              const disabled = selectedPhraseIds.has(phraseId);
+
+              return (
+                <PhraseCard
+                  key={phraseId}
+                  phrase={phrase}
+                  summary={summary}
+                  disabled={disabled}
+                  onClick={() =>
+                    setForm((prev) =>
+                      addPhraseToMonthForm(
+                        prev,
+                        phrase,
+                        links,
+                        activeDomain,
+                        ageYears,
+                      ),
+                    )
+                  }
+                />
+              );
+            })
+          )}
+        </div>
+      ) : null}
+    </div>
+  );
+}
+
 function AnnualLikeFieldsLite<T extends AnnualLikeForm>(props: {
   form: T;
   setForm: Dispatch<SetStateAction<T>>;
   showEventSummary?: boolean;
   lockGoalAndAbilities?: boolean;
+  hideGoalAndAbilities?: boolean;
   goalLabel?: string;
   abilityLabel?: string;
+  note?: string;
 }) {
   const {
     form,
     setForm,
     showEventSummary = false,
     lockGoalAndAbilities = false,
+    hideGoalAndAbilities = false,
     goalLabel = "目標",
     abilityLabel = "5領域",
+    note,
   } = props;
 
-  const disabledStyle = lockGoalAndAbilities
+  const disabledStyle: CSSProperties = lockGoalAndAbilities
     ? { background: "#f3f4f6", color: "#111827" }
     : { background: "#fff", color: "#111827" };
 
@@ -451,108 +1015,119 @@ function AnnualLikeFieldsLite<T extends AnnualLikeForm>(props: {
         />
       </label>
 
-      <label>
-        {goalLabel}
-        <textarea
-          rows={3}
-          value={textOr(form.goalText)}
-          disabled={lockGoalAndAbilities}
-          onChange={(e) =>
-            setForm((prev) => ({ ...prev, goalText: e.target.value }))
-          }
-          style={{ width: "100%", ...disabledStyle }}
-        />
-      </label>
+      {!hideGoalAndAbilities ? (
+        <>
+          <label>
+            {goalLabel}
+            <textarea
+              rows={4}
+              value={textOr(form.goalText)}
+              disabled={lockGoalAndAbilities}
+              onChange={(e) =>
+                setForm((prev) => ({ ...prev, goalText: e.target.value }))
+              }
+              style={{ width: "100%", ...disabledStyle }}
+            />
+          </label>
 
-      <div>
-        <div style={{ marginBottom: 4 }}>{abilityLabel}</div>
-        <div
-          style={{
-            display: "grid",
-            gridTemplateColumns: "repeat(5, 1fr)",
-            gap: 8,
-          }}
-        >
-          <label>
-            健康
-            <input
-              type="number"
-              value={textOr(form.abilityHealth)}
-              disabled={lockGoalAndAbilities}
-              onChange={(e) =>
-                setForm((prev) => ({ ...prev, abilityHealth: e.target.value }))
-              }
-              style={{ width: "100%", ...disabledStyle }}
-            />
-          </label>
-          <label>
-            人間関係
-            <input
-              type="number"
-              value={textOr(form.abilityHumanRelations)}
-              disabled={lockGoalAndAbilities}
-              onChange={(e) =>
-                setForm((prev) => ({
-                  ...prev,
-                  abilityHumanRelations: e.target.value,
-                }))
-              }
-              style={{ width: "100%", ...disabledStyle }}
-            />
-          </label>
-          <label>
-            環境
-            <input
-              type="number"
-              value={textOr(form.abilityEnvironment)}
-              disabled={lockGoalAndAbilities}
-              onChange={(e) =>
-                setForm((prev) => ({
-                  ...prev,
-                  abilityEnvironment: e.target.value,
-                }))
-              }
-              style={{ width: "100%", ...disabledStyle }}
-            />
-          </label>
-          <label>
-            言葉
-            <input
-              type="number"
-              value={textOr(form.abilityLanguage)}
-              disabled={lockGoalAndAbilities}
-              onChange={(e) =>
-                setForm((prev) => ({
-                  ...prev,
-                  abilityLanguage: e.target.value,
-                }))
-              }
-              style={{ width: "100%", ...disabledStyle }}
-            />
-          </label>
-          <label>
-            表現
-            <input
-              type="number"
-              value={textOr(form.abilityExpression)}
-              disabled={lockGoalAndAbilities}
-              onChange={(e) =>
-                setForm((prev) => ({
-                  ...prev,
-                  abilityExpression: e.target.value,
-                }))
-              }
-              style={{ width: "100%", ...disabledStyle }}
-            />
-          </label>
-        </div>
-      </div>
+          {note ? <div style={smallMutedStyle}>{note}</div> : null}
+
+          <div>
+            <div style={{ marginBottom: 4 }}>{abilityLabel}</div>
+            <div
+              style={{
+                display: "grid",
+                gridTemplateColumns: "repeat(5, 1fr)",
+                gap: 8,
+              }}
+            >
+              <label>
+                健康
+                <input
+                  type="number"
+                  value={textOr(form.abilityHealth)}
+                  disabled={lockGoalAndAbilities}
+                  onChange={(e) =>
+                    setForm((prev) => ({
+                      ...prev,
+                      abilityHealth: e.target.value,
+                    }))
+                  }
+                  style={{ width: "100%", ...disabledStyle }}
+                />
+              </label>
+              <label>
+                人間関係
+                <input
+                  type="number"
+                  value={textOr(form.abilityHumanRelations)}
+                  disabled={lockGoalAndAbilities}
+                  onChange={(e) =>
+                    setForm((prev) => ({
+                      ...prev,
+                      abilityHumanRelations: e.target.value,
+                    }))
+                  }
+                  style={{ width: "100%", ...disabledStyle }}
+                />
+              </label>
+              <label>
+                環境
+                <input
+                  type="number"
+                  value={textOr(form.abilityEnvironment)}
+                  disabled={lockGoalAndAbilities}
+                  onChange={(e) =>
+                    setForm((prev) => ({
+                      ...prev,
+                      abilityEnvironment: e.target.value,
+                    }))
+                  }
+                  style={{ width: "100%", ...disabledStyle }}
+                />
+              </label>
+              <label>
+                言葉
+                <input
+                  type="number"
+                  value={textOr(form.abilityLanguage)}
+                  disabled={lockGoalAndAbilities}
+                  onChange={(e) =>
+                    setForm((prev) => ({
+                      ...prev,
+                      abilityLanguage: e.target.value,
+                    }))
+                  }
+                  style={{ width: "100%", ...disabledStyle }}
+                />
+              </label>
+              <label>
+                表現
+                <input
+                  type="number"
+                  value={textOr(form.abilityExpression)}
+                  disabled={lockGoalAndAbilities}
+                  onChange={(e) =>
+                    setForm((prev) => ({
+                      ...prev,
+                      abilityExpression: e.target.value,
+                    }))
+                  }
+                  style={{ width: "100%", ...disabledStyle }}
+                />
+              </label>
+            </div>
+          </div>
+        </>
+      ) : note ? (
+        <div style={smallMutedStyle}>{note}</div>
+      ) : null}
 
       {showEventSummary && "eventSummary" in form ? (
         <label>
-          行事
+          行事・季節の要点
           <textarea
-            rows={4}
+            rows={3}
             value={textOr(form.eventSummary)}
             onChange={(e) =>
               setForm((prev) =>
@@ -569,313 +1144,520 @@ function AnnualLikeFieldsLite<T extends AnnualLikeForm>(props: {
   );
 }
 
-function DomainScoreBadges(props: { form: MonthPlanForm }) {
-  const { form } = props;
-  const values: Record<PlanDomainKey, string> = {
-    health: form.abilityHealth,
-    humanRelations: form.abilityHumanRelations,
-    environment: form.abilityEnvironment,
-    language: form.abilityLanguage,
-    expression: form.abilityExpression,
-  };
+function ClassroomFields(props: {
+  form: ClassroomForm;
+  setForm: Dispatch<SetStateAction<ClassroomForm>>;
+}) {
+  const { form, setForm } = props;
 
   return (
-    <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
-      {PLAN_DOMAINS.map((domain) => (
-        <span
-          key={domain.key}
-          style={{
-            display: "inline-flex",
-            gap: 4,
-            alignItems: "center",
-            padding: "3px 8px",
-            border: "1px solid #d1d5db",
-            borderRadius: 999,
-            background: "#fff",
-            fontSize: 12,
-          }}
+    <div style={{ display: "grid", gap: 8 }}>
+      <label>
+        クラス名
+        <input
+          value={form.name}
+          onChange={(e) =>
+            setForm((prev) => ({ ...prev, name: e.target.value }))
+          }
+          style={{ width: "100%" }}
+        />
+      </label>
+      <label>
+        対象年齢
+        <input
+          value={form.ageBand}
+          onChange={(e) =>
+            setForm((prev) => ({ ...prev, ageBand: e.target.value }))
+          }
+          style={{ width: "100%" }}
+        />
+      </label>
+      <label>
+        園名
+        <input
+          value={form.schoolName}
+          onChange={(e) =>
+            setForm((prev) => ({ ...prev, schoolName: e.target.value }))
+          }
+          style={{ width: "100%" }}
+        />
+      </label>
+      <label>
+        status
+        <select
+          value={form.status}
+          onChange={(e) =>
+            setForm((prev) => ({ ...prev, status: e.target.value }))
+          }
         >
-          <strong>{domain.label}</strong>
-          <span>{values[domain.key] || "0"}</span>
-        </span>
-      ))}
+          <option value="active">active</option>
+          <option value="inactive">inactive</option>
+        </select>
+      </label>
     </div>
   );
 }
 
-function MonthCardHeader(props: {
-  form: MonthPlanForm;
-  isCollapsed: boolean;
-  onToggle: () => void;
+function SchoolAnnualPlanFields(props: {
+  form: SchoolAnnualPlanForm;
+  setForm: Dispatch<SetStateAction<SchoolAnnualPlanForm>>;
 }) {
-  const { form, isCollapsed, onToggle } = props;
+  const { form, setForm } = props;
 
   return (
-    <button
-      type="button"
-      onClick={onToggle}
-      style={{
-        width: "100%",
-        display: "grid",
-        gap: 8,
-        textAlign: "left",
-        padding: 10,
-        border: "1px solid #d1d5db",
-        borderRadius: 8,
-        background: "#fff",
-        cursor: "pointer",
-      }}
-    >
-      <div
-        style={{
-          display: "flex",
-          flexWrap: "wrap",
-          gap: 8,
-          alignItems: "center",
-          justifyContent: "space-between",
-        }}
-      >
-        <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
-          <span style={{ fontWeight: 700 }}>
-            {isCollapsed ? "▶" : "▼"} {textOr(form.title)}
-          </span>
-          <span style={{ fontSize: 12, color: "#666" }}>
-            {form.periodStart}〜{form.periodEnd}
-          </span>
-        </div>
-        <span style={{ fontSize: 12, color: "#666" }}>
-          選択済み文例: {form.phraseSelections.length}件
-        </span>
+    <>
+      <label>
+        タイトル
+        <input
+          value={form.title}
+          onChange={(e) =>
+            setForm((prev) => ({ ...prev, title: e.target.value }))
+          }
+          style={{ width: "100%" }}
+        />
+      </label>
+      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}>
+        <label>
+          periodStart
+          <input
+            type="date"
+            value={form.periodStart}
+            onChange={(e) =>
+              setForm((prev) => ({ ...prev, periodStart: e.target.value }))
+            }
+            style={{ width: "100%" }}
+          />
+        </label>
+        <label>
+          periodEnd
+          <input
+            type="date"
+            value={form.periodEnd}
+            onChange={(e) =>
+              setForm((prev) => ({ ...prev, periodEnd: e.target.value }))
+            }
+            style={{ width: "100%" }}
+          />
+        </label>
       </div>
-      <DomainScoreBadges form={form} />
-    </button>
+      <label>
+        園の方針
+        <textarea
+          rows={5}
+          value={form.schoolPolicy}
+          onChange={(e) =>
+            setForm((prev) => ({ ...prev, schoolPolicy: e.target.value }))
+          }
+          style={{ width: "100%" }}
+        />
+      </label>
+      <label>
+        status
+        <select
+          value={form.status}
+          onChange={(e) =>
+            setForm((prev) => ({ ...prev, status: e.target.value }))
+          }
+        >
+          <option value="DRAFT">DRAFT</option>
+          <option value="REVIEWED">REVIEWED</option>
+          <option value="FINAL">FINAL</option>
+        </select>
+      </label>
+    </>
   );
 }
 
-function SelectedPhraseList(props: {
-  form: MonthPlanForm;
-  onRemove: (clientKey: string) => void;
+function StatusSelect<T extends AnnualLikeForm>(props: {
+  form: T;
+  setForm: Dispatch<SetStateAction<T>>;
 }) {
-  const { form, onRemove } = props;
+  const { form, setForm } = props;
 
-  if (form.phraseSelections.length === 0) {
+  return (
+    <label>
+      status
+      <select
+        value={form.status}
+        onChange={(e) =>
+          setForm((prev) => ({ ...prev, status: e.target.value }))
+        }
+      >
+        <option value="DRAFT">DRAFT</option>
+        <option value="REVIEWED">REVIEWED</option>
+        <option value="FINAL">FINAL</option>
+      </select>
+    </label>
+  );
+}
+
+function PlanV2EditorInner(props: Props) {
+  const {
+    selectedNode,
+    tenant,
+    schoolAnnualPlan,
+    schoolAgeTargets = [],
+    ageTarget,
+    classroom,
+    classAnnualPlan,
+    classAnnualPlanForClassroom,
+    quarterPlan,
+    monthPlan,
+    quarterChildrenForClassroom = [],
+    selectedQuarterEvents = [],
+    quarterEvents = [],
+    monthChildren = [],
+    monthEvents = [],
+    monthPhraseSelections = [],
+    planPhraseSelections = [],
+    planPhrases = [],
+    planPhraseAbilityLinks = [],
+    classroomCount,
+    ageTargetCount,
+    classAnnualPlanCount,
+    onSaveSchoolAnnualPlan,
+    onSaveSchoolAnnualBundle,
+    onSaveAgeTarget,
+    onSaveClassroom,
+    onSaveClassAnnualPlan,
+    onSaveClassAnnualBundle,
+    onSaveQuarterPlan,
+    onSaveQuarterBundle,
+    onSaveMonthPlan,
+  } = props;
+
+  const [schoolForm, setSchoolForm] = useState<SchoolAnnualPlanForm>(() =>
+    toSchoolAnnualPlanForm(schoolAnnualPlan),
+  );
+  const [schoolAgeTargetRows, setSchoolAgeTargetRows] = useState<
+    Array<{ id: string; form: AbilityForm }>
+  >(() => buildSchoolAgeTargetForms(schoolAgeTargets));
+  const [ageTargetForm, setAgeTargetForm] = useState<AbilityForm>(() =>
+    toAbilityFormA(ageTarget),
+  );
+  const [classroomForm, setClassroomForm] = useState<ClassroomForm>(() =>
+    toClassroomForm(classroom),
+  );
+  const [annualForm, setAnnualForm] = useState<ClassAnnualPlanForm>(() =>
+    toClassAnnualPlanForm(
+      classAnnualPlan,
+      planPhraseSelections.filter(
+        (x) => x.classAnnualPlanId === classAnnualPlan?.id,
+      ),
+    ),
+  );
+  const [classBundleAnnualForm, setClassBundleAnnualForm] =
+    useState<ClassAnnualPlanForm>(() =>
+      toClassAnnualPlanForm(
+        classAnnualPlanForClassroom,
+        planPhraseSelections.filter(
+          (x) => x.classAnnualPlanId === classAnnualPlanForClassroom?.id,
+        ),
+      ),
+    );
+  const [classBundleQuarterForms, setClassBundleQuarterForms] = useState<
+    Array<{ id: string; form: QuarterPlanForm }>
+  >(() =>
+    buildQuarterForms(
+      quarterChildrenForClassroom,
+      quarterEvents,
+      planPhraseSelections,
+    ),
+  );
+  const [quarterForm, setQuarterForm] = useState<QuarterPlanForm>(() =>
+    toQuarterPlanForm(
+      quarterPlan,
+      selectedQuarterEvents,
+      planPhraseSelections.filter(
+        (x) => x.classQuarterPlanId === quarterPlan?.id,
+      ),
+    ),
+  );
+  const [quarterMonthRows, setQuarterMonthRows] = useState<
+    Array<{ id: string; form: MonthPlanForm }>
+  >(() =>
+    buildQuarterMonthForms(monthChildren, monthEvents, monthPhraseSelections),
+  );
+  const [monthForm, setMonthForm] = useState<MonthPlanForm>(() =>
+    buildMonthForm(monthPlan, monthEvents, monthPhraseSelections),
+  );
+
+  const selectedClassSharedAgeTarget = useMemo(() => {
+    const ageBand =
+      classAnnualPlan?.ageBand ?? classAnnualPlanForClassroom?.ageBand;
+    return schoolAgeTargets.find((x) => s(x.ageBand) === s(ageBand)) ?? null;
+  }, [
+    classAnnualPlan?.ageBand,
+    classAnnualPlanForClassroom?.ageBand,
+    schoolAgeTargets,
+  ]);
+
+  void selectedClassSharedAgeTarget;
+  void schoolAgeTargetRows;
+  void setSchoolAgeTargetRows;
+  void ageTargetForm;
+  void setAgeTargetForm;
+  void classroomForm;
+  void setClassroomForm;
+  void classBundleAnnualForm;
+  void setClassBundleAnnualForm;
+  void classBundleQuarterForms;
+  void setClassBundleQuarterForms;
+  void onSaveSchoolAnnualBundle;
+  void onSaveAgeTarget;
+  void onSaveClassroom;
+  void onSaveClassAnnualBundle;
+  void ClassroomFields;
+
+  if (!selectedNode) {
     return (
-      <div style={{ fontSize: 12, color: "#666" }}>
-        まだ計画文例が選択されていません。下の5領域ボタンから文例を選択してください。
+      <div style={sectionStyle}>左のツリーから対象を選択してください。</div>
+    );
+  }
+
+  if (selectedNode.kind === "tenant") {
+    return (
+      <div style={sectionStyle}>
+        <h2 style={{ margin: 0 }}>PLAN v2</h2>
+        <div style={subtleBoxStyle}>
+          tenant: {tenant?.tenantId ?? "-"} / {tenant?.name ?? "-"}
+        </div>
+        <div style={{ display: "grid", gap: 6 }}>
+          <div>クラス数: {classroomCount}</div>
+          <div>年齢別年間方針: {ageTargetCount}</div>
+          <div>クラス年計画: {classAnnualPlanCount}</div>
+        </div>
+        <div style={smallMutedStyle}>
+          左のツリーから保育所年計画、クラス、期、月を選ぶと編集できます。
+        </div>
       </div>
     );
   }
 
-  return (
-    <div style={{ display: "grid", gap: 8 }}>
-      {form.phraseSelections.map((selection, index) => (
-        <div
-          key={selection.clientKey}
-          style={{
-            display: "grid",
-            gap: 6,
-            padding: 8,
-            border: "1px solid #e5e7eb",
-            borderRadius: 8,
-            background: "#fff",
-          }}
-        >
-          <div style={{ display: "flex", gap: 8, alignItems: "flex-start" }}>
-            <div style={{ fontWeight: 700, color: "#374151" }}>
-              {index + 1}.
-            </div>
-            <div style={{ flex: 1, whiteSpace: "pre-wrap" }}>
-              {selection.phraseTextSnapshot}
-            </div>
-            <button type="button" onClick={() => onRemove(selection.clientKey)}>
-              削除
-            </button>
-          </div>
-          <div style={{ fontSize: 12, color: "#666", lineHeight: 1.5 }}>
-            選択領域: {selection.selectedDomain || "-"}
-            <br />
-            影響Ability: {abilitySummaryLabel(selection.abilitySummary) || "-"}
-          </div>
+  if (selectedNode.kind === "schoolAnnualPlan") {
+    return (
+      <div style={sectionStyle}>
+        <h2 style={{ margin: 0 }}>保育所年計画</h2>
+        <div style={smallMutedStyle}>
+          年齢別年間方針は内部データとして保持し、画面上は園の方針だけを編集します。
         </div>
-      ))}
-    </div>
-  );
-}
+        <SchoolAnnualPlanFields form={schoolForm} setForm={setSchoolForm} />
 
-function MonthPhrasePlanner(props: {
-  rowId: string;
-  form: MonthPlanForm;
-  rowTitle: string;
-  ageYears: number | null;
-  onOpenPicker: (target: PhrasePickerTarget) => void;
-  onRemovePhrase: (rowId: string, clientKey: string) => void;
-  pickerMode: PhrasePickerTarget["mode"];
-  onChangeEventSummary: (rowId: string, value: string) => void;
-  onChangeManualGoal: (rowId: string, value: string) => void;
-  pickerPanel?: ReactNode;
-}) {
-  const {
-    rowId,
-    form,
-    rowTitle,
-    ageYears,
-    onOpenPicker,
-    onRemovePhrase,
-    pickerMode,
-    onChangeEventSummary,
-    onChangeManualGoal,
-    pickerPanel,
-  } = props;
-  const isPhraseDriven = form.phraseSelections.length > 0;
-
-  return (
-    <div style={{ display: "grid", gap: 8, minWidth: 520 }}>
-      <SelectedPhraseList
-        form={form}
-        onRemove={(clientKey) => onRemovePhrase(rowId, clientKey)}
-      />
-
-      <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
-        {PLAN_DOMAINS.map((domain) => (
-          <button
-            key={domain.key}
-            type="button"
-            onClick={() =>
-              onOpenPicker({
-                mode: pickerMode,
-                rowId,
-                rowTitle,
-                domain,
-                ageYears,
-              })
-            }
-          >
-            {domain.label}から選ぶ
-          </button>
-        ))}
-      </div>
-
-      {pickerPanel}
-
-      <label>
-        目標(C) {isPhraseDriven ? "（選択文例から自動生成）" : ""}
-        <textarea
-          rows={isPhraseDriven ? 5 : 3}
-          value={textOr(form.goalText)}
-          readOnly={isPhraseDriven}
-          onChange={(e) => onChangeManualGoal(rowId, e.target.value)}
-          style={{
-            width: "100%",
-            background: isPhraseDriven ? "#f9fafb" : "#fff",
-          }}
-        />
-      </label>
-
-      <div>
-        <div style={{ marginBottom: 4, fontSize: 12, color: "#666" }}>
-          5領域スコア（選択文例のAbility Linkから再集計）
-        </div>
-        <DomainScoreBadges form={form} />
-      </div>
-
-      <label>
-        行事
-        <textarea
-          rows={3}
-          value={textOr(form.eventSummary)}
-          onChange={(e) => onChangeEventSummary(rowId, e.target.value)}
-          style={{ width: "100%" }}
-        />
-      </label>
-    </div>
-  );
-}
-
-function PhrasePickerPanel(props: {
-  target: PhrasePickerTarget | null;
-  planPhrases: PlanPhraseRecord[];
-  planPhraseAbilityLinks: PlanPhraseAbilityLinkRecord[];
-  onSelect: (phrase: PlanPhraseRecord) => void;
-  onClose: () => void;
-}) {
-  const { target, planPhrases, planPhraseAbilityLinks, onSelect, onClose } =
-    props;
-
-  const candidates = useMemo(() => {
-    if (!target) return [];
-    return getFilteredPhrases(
-      planPhrases,
-      target.domain.label,
-      target.ageYears,
-    );
-  }, [planPhrases, target]);
-
-  if (!target) return null;
-
-  return (
-    <div
-      style={{
-        ...subtleBoxStyle,
-        display: "grid",
-        gap: 10,
-        background: "#f8fafc",
-      }}
-    >
-      <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
-        <strong>
-          {target.rowTitle}：{target.domain.label}の計画文例
-        </strong>
-        <span style={{ color: "#666", fontSize: 12 }}>
-          対象年齢:{" "}
-          {target.ageYears === null ? "未設定" : `${target.ageYears}歳`}
-        </span>
-        <button type="button" onClick={onClose} style={{ marginLeft: "auto" }}>
-          閉じる
+        <button onClick={() => void onSaveSchoolAnnualPlan(schoolForm)}>
+          保育所年計画を保存
         </button>
       </div>
+    );
+  }
 
-      {candidates.length === 0 ? (
-        <div style={{ color: "#666" }}>
-          条件に一致する計画文例がありません。対象年齢とPlanPhraseマスターを確認してください。
+  if (selectedNode.kind === "ageTarget") {
+    return (
+      <div style={sectionStyle}>
+        <h2 style={{ margin: 0 }}>年齢別年間方針</h2>
+        <div style={smallMutedStyle}>
+          年齢別年間方針は、現在の画面では表示・編集対象から外しています。
         </div>
-      ) : (
-        <div style={{ display: "grid", gap: 8 }}>
-          {candidates.map((phrase) => {
-            const phraseId = s(phrase.planPhraseId);
-            const links = getPhraseLinks(phraseId, planPhraseAbilityLinks);
-            const summary = abilityLinksToSummary(links);
-            return (
-              <button
-                key={phraseId}
-                type="button"
-                onClick={() => onSelect(phrase)}
+      </div>
+    );
+  }
+
+  if (selectedNode.kind === "classroom") {
+    return (
+      <div style={sectionStyle}>
+        <h2 style={{ margin: 0 }}>{classroom?.name ?? "クラス"}</h2>
+        <div style={subtleBoxStyle}>
+          対象年齢: {classroom?.ageBand ?? "-"} / 園:{" "}
+          {classroom?.schoolName ?? "-"}
+        </div>
+        <div style={smallMutedStyle}>
+          クラス情報の編集画面は非表示にしました。左のメニューからクラス年計画、期計画、月計画を選択してください。
+        </div>
+      </div>
+    );
+  }
+
+  if (selectedNode.kind === "classAnnualPlan") {
+    return (
+      <div style={sectionStyle}>
+        <h2 style={{ margin: 0 }}>クラス年計画</h2>
+        <AnnualLikeFieldsLite
+          form={annualForm}
+          setForm={setAnnualForm}
+          hideGoalAndAbilities
+          note="年間目標と5領域(A)の手入力欄は非表示にしました。年間目標候補の選択結果を内部的に goalTextA へ保存します。"
+        />
+        <StatusSelect form={annualForm} setForm={setAnnualForm} />
+        <ReferencePhraseSelector
+          title="年間目標候補"
+          planScopeType="YEAR"
+          form={annualForm}
+          setForm={setAnnualForm}
+          planPhrases={planPhrases}
+          planPhraseAbilityLinks={planPhraseAbilityLinks}
+          fallbackAgeBand={classAnnualPlan?.ageBand}
+        />
+        <button onClick={() => void onSaveClassAnnualPlan(annualForm)}>
+          クラス年計画を保存
+        </button>
+      </div>
+    );
+  }
+
+  if (selectedNode.kind === "quarter") {
+    const termNo = Number(quarterPlan?.termNo ?? 0) || null;
+
+    return (
+      <div style={sectionStyle}>
+        <h2 style={{ margin: 0 }}>期計画</h2>
+        <AnnualLikeFieldsLite
+          form={quarterForm}
+          setForm={setQuarterForm}
+          showEventSummary
+          hideGoalAndAbilities
+          note="四半期目標と5領域(B)の手入力欄は非表示にしました。四半期目標候補の選択結果を内部的に goalTextB へ保存します。"
+        />
+        <StatusSelect form={quarterForm} setForm={setQuarterForm} />
+        <ReferencePhraseSelector
+          title="四半期目標候補"
+          planScopeType="TERM"
+          form={quarterForm}
+          setForm={setQuarterForm}
+          planPhrases={planPhrases}
+          planPhraseAbilityLinks={planPhraseAbilityLinks}
+          fallbackAgeBand={quarterPlan?.ageBand}
+          termNo={termNo}
+        />
+
+        <div style={sectionStyle}>
+          <div style={{ fontWeight: 700 }}>月比較（C）</div>
+          {quarterMonthRows.length === 0 ? (
+            <div style={smallMutedStyle}>月計画がありません。</div>
+          ) : (
+            <div style={{ overflowX: "auto" }}>
+              <table
                 style={{
-                  display: "grid",
-                  gap: 4,
-                  textAlign: "left",
-                  padding: 10,
-                  border: "1px solid #d1d5db",
-                  borderRadius: 8,
-                  background: "#fff",
-                  cursor: "pointer",
+                  width: "100%",
+                  minWidth: 1200,
+                  borderCollapse: "collapse",
                 }}
               >
-                <span style={{ fontWeight: 700 }}>
-                  {phraseId} / {phrase.phraseType ?? "月のねらい"}
-                </span>
-                <span style={{ whiteSpace: "pre-wrap" }}>
-                  {phrase.phraseText}
-                </span>
-                <span style={{ fontSize: 12, color: "#666" }}>
-                  影響: {abilitySummaryLabel(summary) || "Ability Linkなし"}
-                </span>
-              </button>
-            );
-          })}
+                <thead>
+                  <tr>
+                    <th style={thStyle}>月</th>
+                    <th style={thStyle}>月のねらい候補</th>
+                    <th style={thStyle}>5領域(C)</th>
+                    <th style={thStyle}>行事</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {quarterMonthRows.map((row, rowIndex) => {
+                    const month = monthChildren.find((x) => x.id === row.id);
+                    return (
+                      <tr key={row.id}>
+                        <td style={tdStyle}>
+                          {month?.monthKey ?? row.form.title}
+                        </td>
+                        <td style={tdStyle}>
+                          <MonthPhraseSelector
+                            title="月のねらい候補"
+                            form={row.form}
+                            setForm={(updater) => {
+                              setQuarterMonthRows((prev) =>
+                                prev.map((item, index) => {
+                                  if (index !== rowIndex) return item;
+                                  const nextForm =
+                                    typeof updater === "function"
+                                      ? updater(item.form)
+                                      : updater;
+                                  return { ...item, form: nextForm };
+                                }),
+                              );
+                            }}
+                            planPhrases={planPhrases}
+                            planPhraseAbilityLinks={planPhraseAbilityLinks}
+                            fallbackAgeBand={quarterPlan?.ageBand}
+                            showDomainScores={false}
+                          />
+                        </td>
+                        <td style={tdStyle}>
+                          <MonthDomainScorePanel form={row.form} compact />
+                        </td>
+                        <td style={tdStyle}>
+                          <textarea
+                            rows={8}
+                            value={row.form.eventSummary}
+                            onChange={(e) => {
+                              const value = e.target.value;
+                              setQuarterMonthRows((prev) =>
+                                prev.map((item, index) =>
+                                  index === rowIndex
+                                    ? {
+                                        ...item,
+                                        form: {
+                                          ...item.form,
+                                          eventSummary: value,
+                                        },
+                                      }
+                                    : item,
+                                ),
+                              );
+                            }}
+                            style={{ width: "100%" }}
+                          />
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+          )}
         </div>
-      )}
-    </div>
-  );
+
+        <div style={{ display: "flex", gap: 8 }}>
+          <button onClick={() => void onSaveQuarterPlan(quarterForm)}>
+            期計画だけ保存
+          </button>
+          <button
+            onClick={() =>
+              void onSaveQuarterBundle(quarterForm, quarterMonthRows)
+            }
+          >
+            期計画と月計画を保存
+          </button>
+        </div>
+      </div>
+    );
+  }
+
+  if (selectedNode.kind === "month") {
+    return (
+      <div style={sectionStyle}>
+        <h2 style={{ margin: 0 }}>月計画</h2>
+        <AnnualLikeFieldsLite
+          form={monthForm}
+          setForm={setMonthForm}
+          showEventSummary
+          hideGoalAndAbilities
+          note="月のねらい(C)の手入力欄は非表示にしました。候補選択結果を内部的に goalTextC と5領域(C)へ反映します。"
+        />
+        <StatusSelect form={monthForm} setForm={setMonthForm} />
+        <MonthPhraseSelector
+          title="月のねらい候補"
+          form={monthForm}
+          setForm={setMonthForm}
+          planPhrases={planPhrases}
+          planPhraseAbilityLinks={planPhraseAbilityLinks}
+          fallbackAgeBand={monthPlan?.ageBand}
+        />
+        <button onClick={() => void onSaveMonthPlan(monthForm)}>
+          月計画を保存
+        </button>
+      </div>
+    );
+  }
+
+  return <div style={sectionStyle}>このノードの編集画面は未対応です。</div>;
 }
 
 export default function PlanV2Editor(props: Props) {
@@ -894,6 +1676,7 @@ export default function PlanV2Editor(props: Props) {
     monthChildren = [],
     monthEvents = [],
     monthPhraseSelections = [],
+    planPhraseSelections = [],
     planPhrases = [],
     planPhraseAbilityLinks = [],
   } = props;
@@ -915,6 +1698,7 @@ export default function PlanV2Editor(props: Props) {
         monthChildren.map((x) => x.id).join(","),
         monthEvents.map((x) => x.id).join(","),
         monthPhraseSelections.map((x) => x.id).join(","),
+        planPhraseSelections.map((x) => x.id).join(","),
         `${planPhrases.length}:${planPhraseAbilityLinks.length}`,
       ].join("::"),
     [
@@ -932,814 +1716,11 @@ export default function PlanV2Editor(props: Props) {
       monthChildren,
       monthEvents,
       monthPhraseSelections,
+      planPhraseSelections,
       planPhrases.length,
       planPhraseAbilityLinks.length,
     ],
   );
 
   return <PlanV2EditorInner key={editorKey} {...props} />;
-}
-
-function PlanV2EditorInner(props: Props) {
-  const {
-    selectedNode,
-    tenant,
-    schoolAnnualPlan,
-    schoolAgeTargets = [],
-    ageTarget,
-    classroom,
-    classAnnualPlan,
-    classAnnualPlanForClassroom,
-    quarterPlan,
-    monthPlan,
-    quarterChildrenForClassroom = [],
-    monthChildren = [],
-    quarterEvents = [],
-    selectedQuarterEvents = [],
-    monthEvents = [],
-    planPhrases = [],
-    planPhraseAbilityLinks = [],
-    monthPhraseSelections = [],
-    classroomCount,
-    ageTargetCount,
-    classAnnualPlanCount,
-    onSaveSchoolAnnualPlan,
-    onSaveSchoolAnnualBundle,
-    onSaveAgeTarget,
-    onSaveClassAnnualPlan,
-    onSaveClassAnnualBundle,
-    onSaveQuarterPlan,
-    onSaveQuarterBundle,
-    onSaveMonthPlan,
-  } = props;
-
-  const [schoolForm, setSchoolForm] = useState<SchoolAnnualPlanForm>(() =>
-    toSchoolAnnualPlanForm(schoolAnnualPlan),
-  );
-  const [schoolAgeTargetForms, setSchoolAgeTargetForms] = useState<
-    Array<{ id: string; form: AbilityForm }>
-  >(() => buildSchoolAgeTargetForms(schoolAgeTargets));
-  const [ageForm, setAgeForm] = useState<AbilityForm>(() =>
-    toAbilityFormA(ageTarget),
-  );
-  const [annualForm, setAnnualForm] = useState<ClassAnnualPlanForm>(() =>
-    toClassAnnualPlanForm(classAnnualPlan),
-  );
-  const [classBundleAnnualForm, setClassBundleAnnualForm] =
-    useState<ClassAnnualPlanForm>(() =>
-      toClassAnnualPlanForm(classAnnualPlanForClassroom),
-    );
-  const [classBundleQuarterForms, setClassBundleQuarterForms] = useState<
-    Array<{ id: string; form: QuarterPlanForm }>
-  >(() => buildQuarterForms(quarterChildrenForClassroom, quarterEvents));
-  const [quarterBundleForm, setQuarterBundleForm] = useState<QuarterPlanForm>(
-    () => toQuarterPlanForm(quarterPlan, selectedQuarterEvents),
-  );
-  const [quarterMonthForms, setQuarterMonthForms] = useState<
-    Array<{ id: string; form: MonthPlanForm }>
-  >(() =>
-    buildQuarterMonthForms(monthChildren, monthEvents, monthPhraseSelections),
-  );
-  const [monthForm, setMonthForm] = useState<MonthPlanForm>(() =>
-    buildMonthForm(monthPlan, monthEvents, monthPhraseSelections),
-  );
-  const [phrasePickerTarget, setPhrasePickerTarget] =
-    useState<PhrasePickerTarget | null>(null);
-  const [collapsedQuarterMonthIds, setCollapsedQuarterMonthIds] = useState<
-    Set<string>
-  >(() => new Set());
-
-  const sharedAgeTargetForSelectedClassroom = useMemo(() => {
-    const ageBand =
-      classroom?.ageBand || classAnnualPlanForClassroom?.ageBand || "";
-    return schoolAgeTargets.find((x) => (x.ageBand ?? "") === ageBand) ?? null;
-  }, [
-    classroom?.ageBand,
-    classAnnualPlanForClassroom?.ageBand,
-    schoolAgeTargets,
-  ]);
-
-  const sharedAgeTargetForSelectedAnnualPlan = useMemo(() => {
-    const ageBand = classAnnualPlan?.ageBand || "";
-    return schoolAgeTargets.find((x) => (x.ageBand ?? "") === ageBand) ?? null;
-  }, [classAnnualPlan?.ageBand, schoolAgeTargets]);
-
-  const classBundleAnnualSharedForm = useMemo(
-    () =>
-      applySharedAgeTargetToAnnualForm(
-        classBundleAnnualForm,
-        sharedAgeTargetForSelectedClassroom,
-      ),
-    [classBundleAnnualForm, sharedAgeTargetForSelectedClassroom],
-  );
-
-  const annualSharedForm = useMemo(
-    () =>
-      applySharedAgeTargetToAnnualForm(
-        annualForm,
-        sharedAgeTargetForSelectedAnnualPlan,
-      ),
-    [annualForm, sharedAgeTargetForSelectedAnnualPlan],
-  );
-
-  const lockClassroomAnnualA = !!sharedAgeTargetForSelectedClassroom;
-  const lockAnnualA = !!sharedAgeTargetForSelectedAnnualPlan;
-
-  function updateQuarterMonthForm(
-    rowId: string,
-    updater: (form: MonthPlanForm) => MonthPlanForm,
-  ) {
-    setQuarterMonthForms((rows) =>
-      rows.map((row) =>
-        row.id === rowId ? { ...row, form: updater(row.form) } : row,
-      ),
-    );
-  }
-
-  function toggleQuarterMonthCollapsed(rowId: string) {
-    setCollapsedQuarterMonthIds((prev) => {
-      const next = new Set(prev);
-      if (next.has(rowId)) {
-        next.delete(rowId);
-      } else {
-        next.add(rowId);
-        if (
-          phrasePickerTarget?.mode === "quarter-month" &&
-          phrasePickerTarget.rowId === rowId
-        ) {
-          setPhrasePickerTarget(null);
-        }
-      }
-      return next;
-    });
-  }
-
-  function openQuarterMonthPicker(target: PhrasePickerTarget) {
-    setCollapsedQuarterMonthIds((prev) => {
-      const next = new Set(prev);
-      next.delete(target.rowId);
-      return next;
-    });
-    setPhrasePickerTarget(target);
-  }
-
-  function handleRemovePhrase(
-    mode: PhrasePickerTarget["mode"],
-    rowId: string,
-    clientKey: string,
-  ) {
-    if (mode === "single-month") {
-      setMonthForm((prev) => removePhraseFromMonthForm(prev, clientKey));
-      return;
-    }
-
-    updateQuarterMonthForm(rowId, (form) =>
-      removePhraseFromMonthForm(form, clientKey),
-    );
-  }
-
-  function handleSelectPhrase(phrase: PlanPhraseRecord) {
-    if (!phrasePickerTarget) return;
-
-    const links = getPhraseLinks(
-      s(phrase.planPhraseId),
-      planPhraseAbilityLinks,
-    );
-    const add = (form: MonthPlanForm) =>
-      addPhraseToMonthForm(
-        form,
-        phrase,
-        links,
-        phrasePickerTarget.domain,
-        phrasePickerTarget.ageYears,
-      );
-
-    if (phrasePickerTarget.mode === "single-month") {
-      setMonthForm((prev) => add(prev));
-    } else {
-      updateQuarterMonthForm(phrasePickerTarget.rowId, add);
-    }
-
-    setPhrasePickerTarget(null);
-  }
-
-  if (!selectedNode) {
-    return (
-      <div style={subtleBoxStyle}>
-        左のツリーから編集対象を選択してください。
-      </div>
-    );
-  }
-
-  const tenantTitle = tenant ? `${tenant.name ?? tenant.tenantId}` : "tenant";
-
-  if (selectedNode.kind === "tenant") {
-    return (
-      <div style={sectionStyle}>
-        <h2 style={{ margin: 0 }}>PLAN v2：{tenantTitle}</h2>
-        <div
-          style={{
-            display: "grid",
-            gridTemplateColumns: "repeat(3, 1fr)",
-            gap: 8,
-          }}
-        >
-          <div style={subtleBoxStyle}>年齢別年間方針: {ageTargetCount}</div>
-          <div style={subtleBoxStyle}>クラス: {classroomCount}</div>
-          <div style={subtleBoxStyle}>クラス年計画: {classAnnualPlanCount}</div>
-        </div>
-        <div style={{ color: "#666" }}>
-          左のツリーから、保育所年計画、年齢別年間方針、クラス、期、月を選択してください。
-        </div>
-      </div>
-    );
-  }
-
-  if (selectedNode.kind === "schoolAnnualPlan") {
-    return (
-      <div style={sectionStyle}>
-        <h2 style={{ margin: 0 }}>保育所年計画</h2>
-        <label>
-          タイトル
-          <input
-            value={schoolForm.title}
-            onChange={(e) =>
-              setSchoolForm((prev) => ({ ...prev, title: e.target.value }))
-            }
-            style={{ width: "100%" }}
-          />
-        </label>
-        <div
-          style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}
-        >
-          <label>
-            periodStart
-            <input
-              type="date"
-              value={schoolForm.periodStart}
-              onChange={(e) =>
-                setSchoolForm((prev) => ({
-                  ...prev,
-                  periodStart: e.target.value,
-                }))
-              }
-              style={{ width: "100%" }}
-            />
-          </label>
-          <label>
-            periodEnd
-            <input
-              type="date"
-              value={schoolForm.periodEnd}
-              onChange={(e) =>
-                setSchoolForm((prev) => ({
-                  ...prev,
-                  periodEnd: e.target.value,
-                }))
-              }
-              style={{ width: "100%" }}
-            />
-          </label>
-        </div>
-        <label>
-          園の方針
-          <textarea
-            rows={5}
-            value={schoolForm.schoolPolicy}
-            onChange={(e) =>
-              setSchoolForm((prev) => ({
-                ...prev,
-                schoolPolicy: e.target.value,
-              }))
-            }
-            style={{ width: "100%" }}
-          />
-        </label>
-
-        <div style={sectionStyle}>
-          <div style={{ fontWeight: 700 }}>年齢別年間方針</div>
-          <div style={{ overflowX: "auto" }}>
-            <table
-              style={{
-                width: "100%",
-                minWidth: 1100,
-                borderCollapse: "collapse",
-              }}
-            >
-              <thead>
-                <tr>
-                  <th style={thStyle}>年齢</th>
-                  <th style={thStyle}>目標(A)</th>
-                  {PLAN_DOMAINS.map((domain) => (
-                    <th key={domain.key} style={thStyle}>
-                      {domain.label}
-                    </th>
-                  ))}
-                </tr>
-              </thead>
-              <tbody>
-                {schoolAgeTargetForms.map((row, idx) => (
-                  <tr key={row.id}>
-                    <td style={tdStyle}>
-                      <input
-                        value={row.form.ageBand}
-                        onChange={(e) =>
-                          setSchoolAgeTargetForms((rows) =>
-                            rows.map((x, i) =>
-                              i === idx
-                                ? {
-                                    ...x,
-                                    form: {
-                                      ...x.form,
-                                      ageBand: e.target.value,
-                                    },
-                                  }
-                                : x,
-                            ),
-                          )
-                        }
-                        style={{ width: 90 }}
-                      />
-                    </td>
-                    <td style={tdStyle}>
-                      <textarea
-                        rows={3}
-                        value={row.form.goalText}
-                        onChange={(e) =>
-                          setSchoolAgeTargetForms((rows) =>
-                            rows.map((x, i) =>
-                              i === idx
-                                ? {
-                                    ...x,
-                                    form: {
-                                      ...x.form,
-                                      goalText: e.target.value,
-                                    },
-                                  }
-                                : x,
-                            ),
-                          )
-                        }
-                        style={{ width: "100%", minWidth: 220 }}
-                      />
-                    </td>
-                    {PLAN_DOMAINS.map((domain) => (
-                      <td key={domain.key} style={tdStyle}>
-                        <input
-                          type="number"
-                          value={row.form[domain.formField]}
-                          onChange={(e) =>
-                            setSchoolAgeTargetForms((rows) =>
-                              rows.map((x, i) =>
-                                i === idx
-                                  ? {
-                                      ...x,
-                                      form: {
-                                        ...x.form,
-                                        [domain.formField]: e.target.value,
-                                      },
-                                    }
-                                  : x,
-                              ),
-                            )
-                          }
-                          style={{ width: 80 }}
-                        />
-                      </td>
-                    ))}
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        </div>
-
-        <div style={{ display: "flex", gap: 8 }}>
-          <button onClick={() => void onSaveSchoolAnnualPlan(schoolForm)}>
-            保育所年計画のみ保存
-          </button>
-          <button
-            onClick={() =>
-              void onSaveSchoolAnnualBundle(schoolForm, schoolAgeTargetForms)
-            }
-          >
-            保育所年計画と年齢別年間方針を保存
-          </button>
-        </div>
-      </div>
-    );
-  }
-
-  if (selectedNode.kind === "ageTarget") {
-    return (
-      <div style={sectionStyle}>
-        <h2 style={{ margin: 0 }}>年齢別年間方針</h2>
-        <AnnualLikeFieldsLite
-          form={ageForm}
-          setForm={setAgeForm}
-          goalLabel="目標(A)"
-          abilityLabel="5領域(A)"
-        />
-        <button onClick={() => void onSaveAgeTarget(ageForm)}>
-          年齢別年間方針を保存
-        </button>
-      </div>
-    );
-  }
-
-  if (selectedNode.kind === "classAnnualPlan") {
-    return (
-      <div style={sectionStyle}>
-        <h2 style={{ margin: 0 }}>クラス年計画</h2>
-        <AnnualLikeFieldsLite
-          form={annualSharedForm}
-          setForm={setAnnualForm}
-          lockGoalAndAbilities={lockAnnualA}
-          goalLabel="目標(A)"
-          abilityLabel="5領域(A)"
-        />
-        <div style={{ fontSize: 12, color: "#666" }}>
-          {lockAnnualA
-            ? "同一年齢の年齢別年間方針を表示しています。変更は保育所年計画側で行ってください。"
-            : "同一年齢の年齢別年間方針が未設定のため、クラス年計画側の値を編集できます。"}
-        </div>
-        <button onClick={() => void onSaveClassAnnualPlan(annualForm)}>
-          クラス年計画を保存
-        </button>
-      </div>
-    );
-  }
-
-  if (selectedNode.kind === "classroom") {
-    return (
-      <div style={sectionStyle}>
-        <h2 style={{ margin: 0 }}>クラス計画：{classroom?.name ?? ""}</h2>
-        <div style={subtleBoxStyle}>
-          対象年齢: {classroom?.ageBand ?? "-"} / 園:{" "}
-          {classroom?.schoolName ?? "-"}
-        </div>
-
-        <div style={sectionStyle}>
-          <div style={{ fontWeight: 700 }}>① 年計画（A）</div>
-          <AnnualLikeFieldsLite
-            form={classBundleAnnualSharedForm}
-            setForm={setClassBundleAnnualForm}
-            lockGoalAndAbilities={lockClassroomAnnualA}
-            goalLabel="目標(A)"
-            abilityLabel="5領域(A)"
-          />
-          <div style={{ fontSize: 12, color: "#666" }}>
-            {lockClassroomAnnualA
-              ? "同一年齢の年齢別年間方針を表示しています。ここでは編集せず、保育所年計画側で変更してください。"
-              : "同一年齢の年齢別年間方針が未設定のため、クラス側の値を表示しています。"}
-          </div>
-        </div>
-
-        <div style={sectionStyle}>
-          <div style={{ fontWeight: 700 }}>②〜⑤ 四半期比較（1Q〜4Q）</div>
-          {classBundleQuarterForms.length === 0 ? (
-            <div>期計画がありません。</div>
-          ) : (
-            <div style={{ overflowX: "auto" }}>
-              <table
-                style={{
-                  width: "100%",
-                  minWidth: 1300,
-                  borderCollapse: "collapse",
-                }}
-              >
-                <thead>
-                  <tr>
-                    <th style={thStyle}>期</th>
-                    <th style={thStyle}>目標(B)</th>
-                    {PLAN_DOMAINS.map((domain) => (
-                      <th key={domain.key} style={thStyle}>
-                        {domain.label}
-                      </th>
-                    ))}
-                    <th style={thStyle}>行事</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {classBundleQuarterForms.map((row, idx) => (
-                    <tr key={row.id}>
-                      <td
-                        style={{
-                          ...tdStyle,
-                          whiteSpace: "nowrap",
-                          fontWeight: 700,
-                        }}
-                      >
-                        {textOr(row.form.title)}
-                      </td>
-                      <td style={tdStyle}>
-                        <textarea
-                          rows={3}
-                          value={textOr(row.form.goalText)}
-                          onChange={(e) =>
-                            setClassBundleQuarterForms((rows) =>
-                              rows.map((x, i) =>
-                                i === idx
-                                  ? {
-                                      ...x,
-                                      form: {
-                                        ...x.form,
-                                        goalText: e.target.value,
-                                      },
-                                    }
-                                  : x,
-                              ),
-                            )
-                          }
-                          style={{ width: "100%", minWidth: 220 }}
-                        />
-                      </td>
-                      {PLAN_DOMAINS.map((domain) => (
-                        <td key={domain.key} style={tdStyle}>
-                          <input
-                            type="number"
-                            value={row.form[domain.formField]}
-                            onChange={(e) =>
-                              setClassBundleQuarterForms((rows) =>
-                                rows.map((x, i) =>
-                                  i === idx
-                                    ? {
-                                        ...x,
-                                        form: {
-                                          ...x.form,
-                                          [domain.formField]: e.target.value,
-                                        },
-                                      }
-                                    : x,
-                                ),
-                              )
-                            }
-                            style={{ width: 90 }}
-                          />
-                        </td>
-                      ))}
-                      <td style={tdStyle}>
-                        <textarea
-                          rows={3}
-                          value={textOr(row.form.eventSummary)}
-                          onChange={(e) =>
-                            setClassBundleQuarterForms((rows) =>
-                              rows.map((x, i) =>
-                                i === idx
-                                  ? {
-                                      ...x,
-                                      form: {
-                                        ...x.form,
-                                        eventSummary: e.target.value,
-                                      },
-                                    }
-                                  : x,
-                              ),
-                            )
-                          }
-                          style={{ width: "100%", minWidth: 180 }}
-                        />
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          )}
-        </div>
-
-        <button
-          onClick={() =>
-            void onSaveClassAnnualBundle(
-              classBundleAnnualForm,
-              classBundleQuarterForms,
-            )
-          }
-        >
-          クラス年計画を保存
-        </button>
-      </div>
-    );
-  }
-
-  if (selectedNode.kind === "quarter") {
-    return (
-      <div style={sectionStyle}>
-        <h2 style={{ margin: 0 }}>クラス期計画：{quarterBundleForm.title}</h2>
-
-        <div style={sectionStyle}>
-          <div style={{ fontWeight: 700 }}>① 期計画（B）</div>
-          <AnnualLikeFieldsLite
-            form={quarterBundleForm}
-            setForm={setQuarterBundleForm}
-            showEventSummary
-            goalLabel="目標(B)"
-            abilityLabel="5領域(B)"
-          />
-        </div>
-
-        <div style={sectionStyle}>
-          <div style={{ display: "grid", gap: 4 }}>
-            <div style={{ fontWeight: 700 }}>
-              ②〜④ 月比較（子どもの成長と月ごとの行事を比較しながら検討）
-            </div>
-            <div style={{ fontSize: 12, color: "#666" }}>
-              5領域ボタンから計画文例を選ぶと、目標(C)と5領域スコアが自動で再集計されます。
-            </div>
-          </div>
-
-          {quarterMonthForms.length === 0 ? (
-            <div>月計画がありません。</div>
-          ) : (
-            <div style={{ display: "grid", gap: 10 }}>
-              {quarterMonthForms.map((row) => {
-                const ageYears = getAgeYearsForMonthForm(
-                  row.form,
-                  quarterBundleForm.ageBand,
-                );
-                const isCollapsed = collapsedQuarterMonthIds.has(row.id);
-                const isActivePicker =
-                  phrasePickerTarget?.mode === "quarter-month" &&
-                  phrasePickerTarget.rowId === row.id;
-
-                return (
-                  <div
-                    key={row.id}
-                    style={{
-                      display: "grid",
-                      gap: 8,
-                      padding: 8,
-                      border: "1px solid #e5e7eb",
-                      borderRadius: 10,
-                      background: "#f9fafb",
-                    }}
-                  >
-                    <MonthCardHeader
-                      form={row.form}
-                      isCollapsed={isCollapsed}
-                      onToggle={() => toggleQuarterMonthCollapsed(row.id)}
-                    />
-
-                    {!isCollapsed ? (
-                      <MonthPhrasePlanner
-                        rowId={row.id}
-                        form={row.form}
-                        rowTitle={textOr(row.form.title)}
-                        ageYears={ageYears}
-                        pickerMode="quarter-month"
-                        onOpenPicker={openQuarterMonthPicker}
-                        onRemovePhrase={(rowId, clientKey) =>
-                          handleRemovePhrase("quarter-month", rowId, clientKey)
-                        }
-                        onChangeManualGoal={(rowId, value) =>
-                          updateQuarterMonthForm(rowId, (form) => ({
-                            ...form,
-                            goalText: value,
-                          }))
-                        }
-                        onChangeEventSummary={(rowId, value) =>
-                          updateQuarterMonthForm(rowId, (form) => ({
-                            ...form,
-                            eventSummary: value,
-                          }))
-                        }
-                        pickerPanel={
-                          <PhrasePickerPanel
-                            target={isActivePicker ? phrasePickerTarget : null}
-                            planPhrases={planPhrases}
-                            planPhraseAbilityLinks={planPhraseAbilityLinks}
-                            onSelect={handleSelectPhrase}
-                            onClose={() => setPhrasePickerTarget(null)}
-                          />
-                        }
-                      />
-                    ) : null}
-                  </div>
-                );
-              })}
-            </div>
-          )}
-        </div>
-
-        <div style={{ display: "flex", gap: 8 }}>
-          <button onClick={() => void onSaveQuarterPlan(quarterBundleForm)}>
-            期計画のみ保存
-          </button>
-          <button
-            onClick={() =>
-              void onSaveQuarterBundle(quarterBundleForm, quarterMonthForms)
-            }
-          >
-            期計画を保存
-          </button>
-        </div>
-      </div>
-    );
-  }
-
-  if (selectedNode.kind === "month") {
-    const ageYears = getAgeYearsForMonthForm(monthForm, monthPlan?.ageBand);
-
-    return (
-      <div style={sectionStyle}>
-        <h2 style={{ margin: 0 }}>月計画：{monthForm.title}</h2>
-
-        <div style={sectionStyle}>
-          <label>
-            タイトル
-            <input
-              value={monthForm.title}
-              onChange={(e) =>
-                setMonthForm((prev) => ({ ...prev, title: e.target.value }))
-              }
-              style={{ width: "100%" }}
-            />
-          </label>
-          <div
-            style={{
-              display: "grid",
-              gridTemplateColumns: "1fr 1fr 1fr",
-              gap: 8,
-            }}
-          >
-            <label>
-              periodStart
-              <input
-                type="date"
-                value={monthForm.periodStart}
-                onChange={(e) =>
-                  setMonthForm((prev) => ({
-                    ...prev,
-                    periodStart: e.target.value,
-                  }))
-                }
-                style={{ width: "100%" }}
-              />
-            </label>
-            <label>
-              periodEnd
-              <input
-                type="date"
-                value={monthForm.periodEnd}
-                onChange={(e) =>
-                  setMonthForm((prev) => ({
-                    ...prev,
-                    periodEnd: e.target.value,
-                  }))
-                }
-                style={{ width: "100%" }}
-              />
-            </label>
-            <label>
-              対象年齢
-              <input
-                value={monthForm.ageBand}
-                onChange={(e) =>
-                  setMonthForm((prev) => ({ ...prev, ageBand: e.target.value }))
-                }
-                style={{ width: "100%" }}
-              />
-            </label>
-          </div>
-
-          <MonthPhrasePlanner
-            rowId={monthPlan?.id ?? "single-month"}
-            form={monthForm}
-            rowTitle={monthForm.title}
-            ageYears={ageYears}
-            pickerMode="single-month"
-            onOpenPicker={setPhrasePickerTarget}
-            onRemovePhrase={(_rowId, clientKey) =>
-              handleRemovePhrase("single-month", "single-month", clientKey)
-            }
-            onChangeManualGoal={(_rowId, value) =>
-              setMonthForm((prev) => ({ ...prev, goalText: value }))
-            }
-            onChangeEventSummary={(_rowId, value) =>
-              setMonthForm((prev) => ({ ...prev, eventSummary: value }))
-            }
-            pickerPanel={
-              <PhrasePickerPanel
-                target={
-                  phrasePickerTarget?.mode === "single-month"
-                    ? phrasePickerTarget
-                    : null
-                }
-                planPhrases={planPhrases}
-                planPhraseAbilityLinks={planPhraseAbilityLinks}
-                onSelect={handleSelectPhrase}
-                onClose={() => setPhrasePickerTarget(null)}
-              />
-            }
-          />
-        </div>
-
-        <button onClick={() => void onSaveMonthPlan(monthForm)}>
-          月計画を保存
-        </button>
-      </div>
-    );
-  }
-
-  return <div style={subtleBoxStyle}>未対応の編集対象です。</div>;
 }

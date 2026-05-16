@@ -20,6 +20,7 @@ type ClassQuarterPlanRow = Schema["ClassQuarterPlan"]["type"];
 type ClassMonthPlanRow = Schema["ClassMonthPlan"]["type"];
 type ClassMonthPlanPhraseSelectionRow =
   Schema["ClassMonthPlanPhraseSelection"]["type"];
+type ClassPlanPhraseSelectionRow = Schema["ClassPlanPhraseSelection"]["type"];
 
 type ScoreSet = {
   health: number;
@@ -58,6 +59,7 @@ type PlanAbilitySummaryRow = {
   abilityCode: string;
   abilityName: string;
   categoryName: string;
+  abilityDomain: string;
   weight: number;
 };
 
@@ -65,6 +67,9 @@ type PlanAbilityWeightRow = {
   abilityCode: string;
   label: string;
   weight: number;
+  recommendWeight: number;
+  sourceKind: "MONTH" | "YEAR" | "TERM";
+  sourceLabel: string;
 };
 
 type PracticeRecommendation = {
@@ -73,7 +78,10 @@ type PracticeRecommendation = {
   recommendScore: number;
   matchAbilityCount: number;
   totalPracticeScore: number;
+  monthMatchCount: number;
+  referenceMatchCount: number;
   matchedAbilities: string[];
+  sourceLabels: string[];
 };
 
 type ModelError = {
@@ -104,10 +112,6 @@ type CreatableModel<TRow> = {
 
 type UpdatableModel<TRow> = {
   update(input: MutationInput): Promise<MutationResponse<TRow>>;
-};
-
-type DeletableModel<TRow> = {
-  delete(input: MutationInput): Promise<MutationResponse<TRow>>;
 };
 
 type AbilityPracticeLinkModel = {
@@ -164,6 +168,7 @@ type SimpleScheduleWorkspaceClient = {
     ClassQuarterPlan: ListableModel<ClassQuarterPlanRow>;
     ClassMonthPlan: ListableModel<ClassMonthPlanRow>;
     ClassMonthPlanPhraseSelection: ListableModel<ClassMonthPlanPhraseSelectionRow>;
+    ClassPlanPhraseSelection: ListableModel<ClassPlanPhraseSelectionRow>;
     ScheduleMonth: ListableModel<ScheduleMonthRow> &
       CreatableModel<ScheduleMonthRow> &
       UpdatableModel<ScheduleMonthRow>;
@@ -171,8 +176,7 @@ type SimpleScheduleWorkspaceClient = {
       UpdatableModel<ScheduleWeekRow>;
     ScheduleWeekItem: ListableModel<ScheduleWeekItemRow> &
       CreatableModel<ScheduleWeekItemRow> &
-      UpdatableModel<ScheduleWeekItemRow> &
-      DeletableModel<ScheduleWeekItemRow>;
+      UpdatableModel<ScheduleWeekItemRow>;
     ScheduleDay: ListableModel<ScheduleDayRow>;
     AbilityPracticeLink: AbilityPracticeLinkModel;
   };
@@ -198,13 +202,6 @@ type AgeTargetDisplayRow = AgeTargetRow & {
   ageBand?: string | number | null;
 };
 
-type AbilityCodeLike = {
-  code?: string | number | null;
-  domain?: string | null;
-  category?: string | null;
-  name?: string | null;
-};
-
 type IssueVersionLike = {
   issueVersion?: number | null;
 };
@@ -228,6 +225,15 @@ const SCORE_AREAS: ScoreArea[] = [
   { key: "language", label: "言葉" },
   { key: "expression", label: "表現" },
 ];
+
+function s(value: unknown): string {
+  return String(value ?? "").trim();
+}
+
+function n(value: unknown, fallback = 0): number {
+  const parsed = Number(value ?? fallback);
+  return Number.isFinite(parsed) ? parsed : fallback;
+}
 
 function todayString() {
   return formatDate(new Date());
@@ -317,7 +323,7 @@ function classroomLabel(row: ClassroomDisplayRow) {
 }
 
 function ageTargetLabel(row: AgeTargetDisplayRow) {
-  const ageBand = String(row.ageBand ?? "").trim();
+  const ageBand = s(row.ageBand);
 
   if (ageBand) {
     return ageBand.includes("歳児") ? ageBand : `${ageBand}歳児`;
@@ -334,12 +340,8 @@ function classMonthPlanLabel(row: ClassMonthPlanRow) {
   return `${row.monthKey} / ${row.title || "月計画"} / ${row.ageBand || "-"}`;
 }
 
-function mapAbilityToArea(
-  codeRow?: AbilityCodeLike,
-  fallbackAbilityCode?: string | null,
-): ScoreKey | null {
-  const rawCode = String(codeRow?.code ?? fallbackAbilityCode ?? "").trim();
-  const normalizedCode = rawCode.replace(/[^0-9]/g, "");
+function domainKeyFromAbilityCode(abilityCode?: string | number | null) {
+  const normalizedCode = s(abilityCode).replace(/[^0-9]/g, "");
   const prefix2 = normalizedCode.slice(0, 2);
 
   if (prefix2 === "11") return "health";
@@ -348,15 +350,16 @@ function mapAbilityToArea(
   if (prefix2 === "41") return "language";
   if (prefix2 === "51") return "expression";
 
-  const rawText = `${codeRow?.domain ?? ""} ${codeRow?.category ?? ""} ${
-    codeRow?.name ?? ""
-  }`;
-  if (rawText.includes("健康")) return "health";
-  if (rawText.includes("人間関係")) return "humanRelations";
-  if (rawText.includes("環境")) return "environment";
-  if (rawText.includes("言葉")) return "language";
-  if (rawText.includes("表現")) return "expression";
+  return null;
+}
 
+function domainKeyFromLabel(label?: string | null): ScoreKey | null {
+  const text = s(label);
+  if (text.includes("健康")) return "health";
+  if (text.includes("人間関係")) return "humanRelations";
+  if (text.includes("環境")) return "environment";
+  if (text.includes("言葉")) return "language";
+  if (text.includes("表現")) return "expression";
   return null;
 }
 
@@ -376,22 +379,22 @@ function scoreSetFromClassMonthPlan(
   if (!row) return emptyScores();
 
   return {
-    health: Number(row.abilityHealthC ?? 0),
-    humanRelations: Number(row.abilityHumanRelationsC ?? 0),
-    environment: Number(row.abilityEnvironmentC ?? 0),
-    language: Number(row.abilityLanguageC ?? 0),
-    expression: Number(row.abilityExpressionC ?? 0),
+    health: n(row.abilityHealthC),
+    humanRelations: n(row.abilityHumanRelationsC),
+    environment: n(row.abilityEnvironmentC),
+    language: n(row.abilityLanguageC),
+    expression: n(row.abilityExpressionC),
   };
 }
 
 function sumScoreSets(rows: Array<ScoreSet>) {
   return rows.reduce(
-    (acc, s) => ({
-      health: acc.health + (s.health ?? 0),
-      humanRelations: acc.humanRelations + (s.humanRelations ?? 0),
-      environment: acc.environment + (s.environment ?? 0),
-      language: acc.language + (s.language ?? 0),
-      expression: acc.expression + (s.expression ?? 0),
+    (acc, scores) => ({
+      health: acc.health + scores.health,
+      humanRelations: acc.humanRelations + scores.humanRelations,
+      environment: acc.environment + scores.environment,
+      language: acc.language + scores.language,
+      expression: acc.expression + scores.expression,
     }),
     emptyScores(),
   );
@@ -406,8 +409,8 @@ function latestIssueVersion<T extends IssueVersionLike>(a: T, b: T) {
 }
 
 function latestItemVersion<T extends TimestampLike>(a: T, b: T) {
-  const aTime = String(a.updatedAt ?? a.createdAt ?? "");
-  const bTime = String(b.updatedAt ?? b.createdAt ?? "");
+  const aTime = s(a.updatedAt ?? a.createdAt);
+  const bTime = s(b.updatedAt ?? b.createdAt);
   return bTime.localeCompare(aTime);
 }
 
@@ -419,9 +422,7 @@ function formatModelErrors(
   errors?: ModelError[] | null,
   fallback = "Unknown error",
 ) {
-  const messages = (errors ?? [])
-    .map((e) => String(e.message ?? "").trim())
-    .filter(Boolean);
+  const messages = (errors ?? []).map((e) => s(e.message)).filter(Boolean);
 
   return messages.length > 0 ? messages.join(", ") : fallback;
 }
@@ -448,21 +449,6 @@ function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null;
 }
 
-function readStringField(row: Record<string, unknown>, key: string) {
-  const value = row[key];
-  return typeof value === "string" ? value.trim() : "";
-}
-
-function readNumberField(row: Record<string, unknown>, key: string) {
-  const value = row[key];
-  if (typeof value === "number") return Number.isFinite(value) ? value : 0;
-  if (typeof value === "string") {
-    const parsed = Number(value);
-    return Number.isFinite(parsed) ? parsed : 0;
-  }
-  return 0;
-}
-
 function parseAbilitySummaryJson(
   input?: string | null,
 ): PlanAbilitySummaryRow[] {
@@ -475,10 +461,11 @@ function parseAbilitySummaryJson(
     return parsed
       .filter(isRecord)
       .map((row) => ({
-        abilityCode: readStringField(row, "abilityCode"),
-        abilityName: readStringField(row, "abilityName"),
-        categoryName: readStringField(row, "categoryName"),
-        weight: readNumberField(row, "weight"),
+        abilityCode: s(row.abilityCode),
+        abilityName: s(row.abilityName),
+        categoryName: s(row.categoryName),
+        abilityDomain: s(row.abilityDomain),
+        weight: n(row.weight, 1),
       }))
       .filter((row) => row.abilityCode.length > 0);
   } catch {
@@ -486,53 +473,129 @@ function parseAbilitySummaryJson(
   }
 }
 
-function buildPlanAbilityWeights(
-  selections: ClassMonthPlanPhraseSelectionRow[],
-): PlanAbilityWeightRow[] {
+function activeSelection(status?: string | null) {
+  return s(status || "ACTIVE").toUpperCase() !== "ARCHIVED";
+}
+
+function selectionScopeLabel(scopeType?: string | null) {
+  const scope = s(scopeType).toUpperCase();
+  if (scope === "YEAR") return "年間方針";
+  if (scope === "TERM") return "四半期方針";
+  return "月計画";
+}
+
+function sourceFactor(scopeType?: string | null) {
+  const scope = s(scopeType).toUpperCase();
+  if (scope === "MONTH") return 10;
+  if (scope === "TERM") return 3;
+  if (scope === "YEAR") return 1;
+  return 1;
+}
+
+function buildAbilityWeightsFromRows(args: {
+  rows: Array<{
+    status?: string | null;
+    abilitySummaryJson?: string | null;
+    abilityCodes?: Array<string | null> | null;
+    planScopeType?: string | null;
+  }>;
+  defaultScopeType: "MONTH" | "YEAR" | "TERM";
+}): PlanAbilityWeightRow[] {
+  const { rows, defaultScopeType } = args;
   const map = new Map<string, PlanAbilityWeightRow>();
 
-  for (const selection of selections) {
-    if (String(selection.status ?? "").toUpperCase() === "ARCHIVED") {
-      continue;
-    }
+  for (const selection of rows) {
+    if (!activeSelection(selection.status)) continue;
 
+    const scopeType = s(
+      selection.planScopeType || defaultScopeType,
+    ).toUpperCase();
+    const sourceKind =
+      scopeType === "YEAR" ? "YEAR" : scopeType === "TERM" ? "TERM" : "MONTH";
+    const sourceLabel = selectionScopeLabel(sourceKind);
+    const factor = sourceFactor(sourceKind);
     const summaryRows = parseAbilitySummaryJson(selection.abilitySummaryJson);
 
     for (const summary of summaryRows) {
       const abilityCode = summary.abilityCode;
       const label =
         summary.abilityName || summary.categoryName || summary.abilityCode;
-      const weight = Number(summary.weight || 1);
+      const weight = Math.max(1, n(summary.weight, 1));
       const current = map.get(abilityCode);
 
       if (current) {
         current.weight += weight;
+        current.recommendWeight += weight * factor;
+        if (!current.sourceLabel.includes(sourceLabel)) {
+          current.sourceLabel = `${current.sourceLabel}・${sourceLabel}`;
+        }
       } else {
         map.set(abilityCode, {
           abilityCode,
           label,
           weight,
+          recommendWeight: weight * factor,
+          sourceKind,
+          sourceLabel,
         });
       }
     }
 
     for (const abilityCode of selection.abilityCodes ?? []) {
-      const code = String(abilityCode ?? "").trim();
+      const code = s(abilityCode);
       if (!code || map.has(code)) continue;
 
       map.set(code, {
         abilityCode: code,
         label: code,
         weight: 1,
+        recommendWeight: factor,
+        sourceKind,
+        sourceLabel,
       });
     }
   }
 
   return [...map.values()].sort((a, b) => {
-    const weightDiff = b.weight - a.weight;
+    const weightDiff = b.recommendWeight - a.recommendWeight;
     if (weightDiff !== 0) return weightDiff;
     return a.abilityCode.localeCompare(b.abilityCode);
   });
+}
+
+function summarizeSelectionsToScores(
+  selections: ClassPlanPhraseSelectionRow[],
+): ScoreSet {
+  const totals = emptyScores();
+
+  for (const row of selections) {
+    if (!activeSelection(row.status)) continue;
+
+    const direct = {
+      health: n(row.relatedHealth),
+      humanRelations: n(row.relatedHumanRelations),
+      environment: n(row.relatedEnvironment),
+      language: n(row.relatedLanguage),
+      expression: n(row.relatedExpression),
+    };
+
+    if (Object.values(direct).some((value) => value > 0)) {
+      for (const area of SCORE_AREAS) {
+        totals[area.key] += direct[area.key];
+      }
+      continue;
+    }
+
+    for (const summary of parseAbilitySummaryJson(row.abilitySummaryJson)) {
+      const key =
+        domainKeyFromAbilityCode(summary.abilityCode) ||
+        domainKeyFromLabel(summary.abilityDomain);
+      if (!key) continue;
+      totals[key] += Math.max(1, n(summary.weight, 1));
+    }
+  }
+
+  return totals;
 }
 
 function scoreSummaryText(scores: ScoreSet) {
@@ -549,6 +612,27 @@ function compareStatusLabel(diff: number, planScore: number) {
   if (diff < 0) return "不足";
   if (diff === 0) return "一致";
   return "超過";
+}
+
+function domainTrendText(scores: ScoreSet) {
+  const rows = SCORE_AREAS.map((area) => ({
+    ...area,
+    value: scores[area.key],
+  }))
+    .filter((row) => row.value > 0)
+    .sort((a, b) => b.value - a.value);
+
+  if (rows.length === 0) return "年間・四半期方針の選択はまだありません。";
+
+  const top = rows[0];
+  const related = rows.slice(1, 4).map((row) => row.label);
+  if (related.length === 0) return `${top.label}を中心とした方針です。`;
+  return `${top.label}を中心に、${related.join("・")}にも広がる方針です。`;
+}
+
+function practiceActive(row: PracticeRow) {
+  const status = s(row.status || "active").toUpperCase();
+  return status !== "ARCHIVED";
 }
 
 const thStyle: CSSProperties = {
@@ -578,6 +662,11 @@ const subtleBoxStyle: CSSProperties = {
   border: "1px solid #e5e7eb",
 };
 
+const smallMutedStyle: CSSProperties = {
+  color: "#666",
+  fontSize: 13,
+};
+
 export default function SimpleScheduleWorkspacePanel(props: Props) {
   const { owner } = props;
 
@@ -602,6 +691,9 @@ export default function SimpleScheduleWorkspacePanel(props: Props) {
   const [monthPhraseSelections, setMonthPhraseSelections] = useState<
     ClassMonthPlanPhraseSelectionRow[]
   >([]);
+  const [planPhraseSelections, setPlanPhraseSelections] = useState<
+    ClassPlanPhraseSelectionRow[]
+  >([]);
   const [months, setMonths] = useState<ScheduleMonthRow[]>([]);
   const [weeks, setWeeks] = useState<ScheduleWeekRow[]>([]);
   const [weekItemsByWeekId, setWeekItemsByWeekId] = useState<
@@ -625,10 +717,14 @@ export default function SimpleScheduleWorkspacePanel(props: Props) {
     [monthKey],
   );
 
-  const practiceMap = useMemo(
-    () => new Map(practiceRows.map((p) => [p.practice_code, p])),
-    [practiceRows],
-  );
+  const practiceMap = useMemo(() => {
+    const map = new Map<string, PracticeRow>();
+    for (const row of practiceRows) {
+      const code = s(row.practice_code);
+      if (code) map.set(code, row);
+    }
+    return map;
+  }, [practiceRows]);
 
   const selectedMonth = useMemo(
     () => months.find((m) => m.id === selectedMonthId) ?? null,
@@ -690,14 +786,64 @@ export default function SimpleScheduleWorkspacePanel(props: Props) {
     selectedMonth?.sourceClassMonthPlanId,
   ]);
 
+  const selectedClassQuarterPlan = useMemo(() => {
+    const quarterId = selectedClassMonthPlan?.classQuarterPlanId ?? "";
+    if (!quarterId) return null;
+    return classQuarterPlans.find((row) => row.id === quarterId) ?? null;
+  }, [classQuarterPlans, selectedClassMonthPlan?.classQuarterPlanId]);
+
+  const selectedClassAnnualPlan = useMemo(() => {
+    const annualId = selectedClassQuarterPlan?.classAnnualPlanId ?? "";
+    if (annualId) {
+      return classAnnualPlans.find((row) => row.id === annualId) ?? null;
+    }
+
+    return (
+      classAnnualPlans.find(
+        (row) =>
+          row.tenantId === tenantId &&
+          row.fiscalYear === fiscalYear &&
+          row.classroomId === classroomId,
+      ) ?? null
+    );
+  }, [
+    classAnnualPlans,
+    classroomId,
+    fiscalYear,
+    selectedClassQuarterPlan?.classAnnualPlanId,
+    tenantId,
+  ]);
+
   const selectedPlanPhraseSelections = useMemo(() => {
     if (!selectedClassMonthPlan?.id) return [];
 
     return monthPhraseSelections
       .filter((row) => row.classMonthPlanId === selectedClassMonthPlan.id)
-      .filter((row) => String(row.status ?? "").toUpperCase() !== "ARCHIVED")
-      .sort((a, b) => Number(a.sortOrder ?? 0) - Number(b.sortOrder ?? 0));
+      .filter((row) => activeSelection(row.status))
+      .sort((a, b) => n(a.sortOrder) - n(b.sortOrder));
   }, [monthPhraseSelections, selectedClassMonthPlan?.id]);
+
+  const selectedReferencePhraseSelections = useMemo(() => {
+    const annualPlanId = selectedClassAnnualPlan?.id ?? "";
+    const quarterPlanId = selectedClassQuarterPlan?.id ?? "";
+
+    return planPhraseSelections
+      .filter((row) => activeSelection(row.status))
+      .filter((row) => s(row.relationUse || "REFERENCE") === "REFERENCE")
+      .filter((row) => {
+        const scope = s(row.planScopeType).toUpperCase();
+        if (scope === "YEAR")
+          return !!annualPlanId && row.classAnnualPlanId === annualPlanId;
+        if (scope === "TERM")
+          return !!quarterPlanId && row.classQuarterPlanId === quarterPlanId;
+        return false;
+      })
+      .sort((a, b) => n(a.sortOrder) - n(b.sortOrder));
+  }, [
+    planPhraseSelections,
+    selectedClassAnnualPlan?.id,
+    selectedClassQuarterPlan?.id,
+  ]);
 
   const selectedPlanScores = useMemo(
     () => scoreSetFromClassMonthPlan(selectedClassMonthPlan),
@@ -705,16 +851,52 @@ export default function SimpleScheduleWorkspacePanel(props: Props) {
   );
 
   const selectedPlanAbilityRows = useMemo(
-    () => buildPlanAbilityWeights(selectedPlanPhraseSelections),
+    () =>
+      buildAbilityWeightsFromRows({
+        rows: selectedPlanPhraseSelections,
+        defaultScopeType: "MONTH",
+      }),
     [selectedPlanPhraseSelections],
   );
 
+  const referenceAbilityRows = useMemo(
+    () =>
+      buildAbilityWeightsFromRows({
+        rows: selectedReferencePhraseSelections,
+        defaultScopeType: "YEAR",
+      }),
+    [selectedReferencePhraseSelections],
+  );
+
+  const combinedAbilityRows = useMemo(() => {
+    const map = new Map<string, PlanAbilityWeightRow>();
+
+    for (const row of [...selectedPlanAbilityRows, ...referenceAbilityRows]) {
+      const current = map.get(row.abilityCode);
+      if (current) {
+        current.weight += row.weight;
+        current.recommendWeight += row.recommendWeight;
+        if (!current.sourceLabel.includes(row.sourceLabel)) {
+          current.sourceLabel = `${current.sourceLabel}・${row.sourceLabel}`;
+        }
+      } else {
+        map.set(row.abilityCode, { ...row });
+      }
+    }
+
+    return [...map.values()].sort((a, b) => {
+      const weightDiff = b.recommendWeight - a.recommendWeight;
+      if (weightDiff !== 0) return weightDiff;
+      return a.abilityCode.localeCompare(b.abilityCode);
+    });
+  }, [referenceAbilityRows, selectedPlanAbilityRows]);
+
   const selectedPlanAbilitySignature = useMemo(
     () =>
-      selectedPlanAbilityRows
-        .map((row) => `${row.abilityCode}:${row.weight}`)
+      combinedAbilityRows
+        .map((row) => `${row.abilityCode}:${row.recommendWeight}`)
         .join("|"),
-    [selectedPlanAbilityRows],
+    [combinedAbilityRows],
   );
 
   const recommendedPracticeCodeSet = useMemo(
@@ -725,9 +907,17 @@ export default function SimpleScheduleWorkspacePanel(props: Props) {
   const nonRecommendedPracticeRows = useMemo(
     () =>
       practiceRows.filter(
-        (row) => !recommendedPracticeCodeSet.has(row.practice_code),
+        (row) =>
+          practiceActive(row) &&
+          s(row.practice_code) &&
+          !recommendedPracticeCodeSet.has(s(row.practice_code)),
       ),
     [practiceRows, recommendedPracticeCodeSet],
+  );
+
+  const referenceScores = useMemo(
+    () => summarizeSelectionsToScores(selectedReferencePhraseSelections),
+    [selectedReferencePhraseSelections],
   );
 
   const weekRangesInMonth = useMemo(() => {
@@ -756,6 +946,16 @@ export default function SimpleScheduleWorkspacePanel(props: Props) {
     () => new Map(weeks.map((w) => [w.weekStartDate ?? "", w])),
     [weeks],
   );
+
+  const referencePhraseLines = useMemo(() => {
+    return selectedReferencePhraseSelections
+      .map((row) => ({
+        scopeLabel: selectionScopeLabel(row.planScopeType),
+        text: s(row.phraseTextSnapshot),
+      }))
+      .filter((row) => row.text)
+      .slice(0, 8);
+  }, [selectedReferencePhraseSelections]);
 
   useEffect(() => {
     if (!expandedWeekStartDate && weekRangesInMonth[0]) {
@@ -797,6 +997,7 @@ export default function SimpleScheduleWorkspacePanel(props: Props) {
         classQuarterPlanRes,
         classMonthPlanRes,
         monthPhraseSelectionRes,
+        planPhraseSelectionRes,
         monthRes,
       ] = await Promise.all([
         client.models.Classroom.list({
@@ -845,6 +1046,13 @@ export default function SimpleScheduleWorkspacePanel(props: Props) {
           },
           limit: 10000,
         } as ListOptions),
+        client.models.ClassPlanPhraseSelection.list({
+          filter: {
+            tenantId: { eq: trimmedTenantId },
+            fiscalYear: { eq: fiscalYear },
+          },
+          limit: 20000,
+        } as ListOptions),
         client.models.ScheduleMonth.list({
           filter: {
             owner: { eq: owner },
@@ -855,12 +1063,12 @@ export default function SimpleScheduleWorkspacePanel(props: Props) {
 
       const classroomRows = classroomRes.data ?? [];
       const ageRows = ageTargetRes.data ?? [];
-      const practices = [...(practiceRes.data ?? [])].sort((a, b) =>
-        String(a.practice_code).localeCompare(String(b.practice_code)),
-      );
-      const monthRows = [...(monthRes.data ?? [])].sort((a, b) =>
-        String(b.monthKey ?? "").localeCompare(String(a.monthKey ?? "")),
-      );
+      const practices = [...(practiceRes.data ?? [])]
+        .filter(practiceActive)
+        .sort((a, b) => s(a.practice_code).localeCompare(s(b.practice_code)));
+      const monthRows = [...(monthRes.data ?? [])]
+        .filter((row) => row.monthKey === monthKey || !row.monthKey)
+        .sort((a, b) => s(b.monthKey).localeCompare(s(a.monthKey)));
 
       setTenantId(trimmedTenantId);
       setClassrooms(classroomRows);
@@ -870,12 +1078,15 @@ export default function SimpleScheduleWorkspacePanel(props: Props) {
       setClassQuarterPlans(classQuarterPlanRes.data ?? []);
       setClassMonthPlans(classMonthPlanRes.data ?? []);
       setMonthPhraseSelections(monthPhraseSelectionRes.data ?? []);
+      setPlanPhraseSelections(planPhraseSelectionRes.data ?? []);
       setMonths(monthRows);
 
       setClassroomId((prev) => prev || classroomRows[0]?.id || "");
       setAgeTargetId((prev) => prev || ageRows[0]?.id || "");
 
-      const sameMonth = monthRows.find((m) => m.monthKey === monthKey);
+      const sameMonth = monthRows.find(
+        (m) => m.monthKey === monthKey && m.owner === owner,
+      );
       if (sameMonth) {
         setSelectedMonthId(sameMonth.id);
         setClassroomId((prev) => prev || sameMonth.classroomId || "");
@@ -900,12 +1111,17 @@ export default function SimpleScheduleWorkspacePanel(props: Props) {
         filter: {
           scheduleWeekId: { eq: scheduleWeekId },
         },
+        limit: 1000,
       } as ListOptions);
 
+      if (res.errors?.length) {
+        throw new Error(formatModelErrors(res.errors));
+      }
+
       return [...(res.data ?? [])].sort((a, b) => {
-        const d = (a.dayOfWeek ?? 0) - (b.dayOfWeek ?? 0);
+        const d = n(a.dayOfWeek) - n(b.dayOfWeek);
         if (d !== 0) return d;
-        return (a.sortOrder ?? 0) - (b.sortOrder ?? 0);
+        return n(a.sortOrder) - n(b.sortOrder);
       });
     },
     [],
@@ -917,12 +1133,15 @@ export default function SimpleScheduleWorkspacePanel(props: Props) {
         filter: {
           sourceWeekId: { eq: scheduleWeekId },
         },
+        limit: 1000,
       } as ListOptions);
 
+      if (res.errors?.length) {
+        throw new Error(formatModelErrors(res.errors));
+      }
+
       return [...(res.data ?? [])].sort((a, b) => {
-        const d = String(a.targetDate ?? "").localeCompare(
-          String(b.targetDate ?? ""),
-        );
+        const d = s(a.targetDate).localeCompare(s(b.targetDate));
         if (d !== 0) return d;
         return latestIssueVersion(a, b);
       });
@@ -945,12 +1164,15 @@ export default function SimpleScheduleWorkspacePanel(props: Props) {
           filter: {
             sourceScheduleMonthId: { eq: monthId },
           },
+          limit: 1000,
         } as ListOptions);
 
+        if (weekRes.errors?.length) {
+          throw new Error(formatModelErrors(weekRes.errors));
+        }
+
         const weekRows = [...(weekRes.data ?? [])].sort((a, b) =>
-          String(a.weekStartDate ?? "").localeCompare(
-            String(b.weekStartDate ?? ""),
-          ),
+          s(a.weekStartDate).localeCompare(s(b.weekStartDate)),
         );
 
         const entries = await Promise.all(
@@ -973,7 +1195,7 @@ export default function SimpleScheduleWorkspacePanel(props: Props) {
           const grouped = new Map<string, ScheduleDayRow[]>();
 
           for (const row of dayRows) {
-            const targetDate = String(row.targetDate ?? "");
+            const targetDate = s(row.targetDate);
             if (!targetDate) continue;
 
             const list = grouped.get(targetDate) ?? [];
@@ -1014,7 +1236,7 @@ export default function SimpleScheduleWorkspacePanel(props: Props) {
     let cancelled = false;
 
     async function loadRecommendations() {
-      if (selectedPlanAbilityRows.length === 0) {
+      if (combinedAbilityRows.length === 0) {
         setPracticeRecommendations([]);
         return;
       }
@@ -1028,13 +1250,15 @@ export default function SimpleScheduleWorkspacePanel(props: Props) {
             practiceCode: string;
             practiceName: string;
             recommendScore: number;
-            matchAbilityCodes: Set<string>;
+            monthMatchCodes: Set<string>;
+            referenceMatchCodes: Set<string>;
             totalPracticeScore: number;
             matchedAbilities: Set<string>;
+            sourceLabels: Set<string>;
           }
         >();
 
-        for (const ability of selectedPlanAbilityRows) {
+        for (const ability of combinedAbilityRows) {
           const { data, errors } =
             await client.models.AbilityPracticeLink.listByAbility({
               abilityCode: ability.abilityCode,
@@ -1045,27 +1269,37 @@ export default function SimpleScheduleWorkspacePanel(props: Props) {
           }
 
           for (const link of data ?? []) {
-            const practiceCode = String(link.practiceCode ?? "").trim();
+            const practiceCode = s(link.practiceCode);
             if (!practiceCode) continue;
 
             const practice = practiceMap.get(practiceCode);
-            if (!practice) continue;
+            if (!practice || !practiceActive(practice)) continue;
 
-            const practiceScore = Number(link.score ?? 0);
-            const planWeight = Number(ability.weight || 1);
+            const practiceScore = n(link.score);
+            if (practiceScore <= 0) continue;
+
             const current = recMap.get(practiceCode) ?? {
               practiceCode,
-              practiceName: String(practice.name ?? ""),
+              practiceName: s(practice.name),
               recommendScore: 0,
-              matchAbilityCodes: new Set<string>(),
+              monthMatchCodes: new Set<string>(),
+              referenceMatchCodes: new Set<string>(),
               totalPracticeScore: 0,
               matchedAbilities: new Set<string>(),
+              sourceLabels: new Set<string>(),
             };
 
-            current.recommendScore += planWeight * practiceScore;
+            current.recommendScore += ability.recommendWeight * practiceScore;
             current.totalPracticeScore += practiceScore;
-            current.matchAbilityCodes.add(ability.abilityCode);
-            current.matchedAbilities.add(`${ability.label}+${planWeight}`);
+            if (ability.sourceKind === "MONTH") {
+              current.monthMatchCodes.add(ability.abilityCode);
+            } else {
+              current.referenceMatchCodes.add(ability.abilityCode);
+            }
+            current.matchedAbilities.add(
+              `${ability.label}+${ability.weight}（${ability.sourceLabel}）`,
+            );
+            current.sourceLabels.add(ability.sourceLabel);
 
             recMap.set(practiceCode, current);
           }
@@ -1076,11 +1310,17 @@ export default function SimpleScheduleWorkspacePanel(props: Props) {
             practiceCode: row.practiceCode,
             practiceName: row.practiceName,
             recommendScore: row.recommendScore,
-            matchAbilityCount: row.matchAbilityCodes.size,
+            matchAbilityCount:
+              row.monthMatchCodes.size + row.referenceMatchCodes.size,
             totalPracticeScore: row.totalPracticeScore,
+            monthMatchCount: row.monthMatchCodes.size,
+            referenceMatchCount: row.referenceMatchCodes.size,
             matchedAbilities: [...row.matchedAbilities],
+            sourceLabels: [...row.sourceLabels],
           }))
           .sort((a, b) => {
+            const monthDiff = b.monthMatchCount - a.monthMatchCount;
+            if (monthDiff !== 0) return monthDiff;
             const scoreDiff = b.recommendScore - a.recommendScore;
             if (scoreDiff !== 0) return scoreDiff;
             const countDiff = b.matchAbilityCount - a.matchAbilityCount;
@@ -1112,19 +1352,9 @@ export default function SimpleScheduleWorkspacePanel(props: Props) {
     return () => {
       cancelled = true;
     };
-  }, [practiceMap, selectedPlanAbilityRows, selectedPlanAbilitySignature]);
+  }, [combinedAbilityRows, practiceMap, selectedPlanAbilitySignature]);
 
-  async function issueMissingWeeksForMonth(scheduleMonthId: string) {
-    const existingWeekRes = await client.models.ScheduleWeek.list({
-      filter: {
-        sourceScheduleMonthId: { eq: scheduleMonthId },
-      },
-    } as ListOptions);
-
-    const existingStarts = new Set(
-      (existingWeekRes.data ?? []).map((w) => w.weekStartDate ?? ""),
-    );
-
+  async function runIssueWeekMutation(args: IssueScheduleWeekArgs) {
     const runner = client.mutations?.issueScheduleWeekFromScheduleMonth;
     if (!runner) {
       throw new Error(
@@ -1132,39 +1362,74 @@ export default function SimpleScheduleWorkspacePanel(props: Props) {
       );
     }
 
+    try {
+      const res = await runner(args);
+      const errors = getOperationErrors(res);
+      if (errors?.length) throw new Error(formatModelErrors(errors));
+      return getOperationData(res);
+    } catch (error) {
+      if (error instanceof Error && !error.message.includes("input")) {
+        throw error;
+      }
+
+      const res = await runner({ input: args });
+      const errors = getOperationErrors(res);
+      if (errors?.length) throw new Error(formatModelErrors(errors));
+      return getOperationData(res);
+    }
+  }
+
+  async function runIssueDayMutation(args: IssueScheduleDayArgs) {
+    const runner = client.mutations?.issueScheduleDayFromScheduleWeek;
+    if (!runner) {
+      throw new Error(
+        "issueScheduleDayFromScheduleWeek が client.mutations に見つかりません。",
+      );
+    }
+
+    try {
+      const res = await runner(args);
+      const errors = getOperationErrors(res);
+      if (errors?.length) throw new Error(formatModelErrors(errors));
+      return getOperationData(res);
+    } catch (error) {
+      if (error instanceof Error && !error.message.includes("input")) {
+        throw error;
+      }
+
+      const res = await runner({ input: args });
+      const errors = getOperationErrors(res);
+      if (errors?.length) throw new Error(formatModelErrors(errors));
+      return getOperationData(res);
+    }
+  }
+
+  async function issueMissingWeeksForMonth(scheduleMonthId: string) {
+    const existingWeekRes = await client.models.ScheduleWeek.list({
+      filter: {
+        sourceScheduleMonthId: { eq: scheduleMonthId },
+      },
+      limit: 1000,
+    } as ListOptions);
+
+    if (existingWeekRes.errors?.length) {
+      throw new Error(formatModelErrors(existingWeekRes.errors));
+    }
+
+    const existingStarts = new Set(
+      (existingWeekRes.data ?? []).map((w) => w.weekStartDate ?? ""),
+    );
+
     for (const range of weekRangesInMonth) {
       if (existingStarts.has(range.weekStartDate)) continue;
 
-      let res:
-        | OperationEnvelope<IssueScheduleWeekResult>
-        | IssueScheduleWeekResult;
-
-      try {
-        res = await runner({
-          scheduleMonthId,
-          weekStartDate: range.weekStartDate,
-          weekEndDate: range.weekEndDate,
-          weekNo: range.weekNoInMonth,
-          issueType: "MANUAL",
-        });
-      } catch {
-        res = await runner({
-          input: {
-            scheduleMonthId,
-            weekStartDate: range.weekStartDate,
-            weekEndDate: range.weekEndDate,
-            weekNo: range.weekNoInMonth,
-            issueType: "MANUAL",
-          },
-        });
-      }
-
-      const errors = getOperationErrors(res);
-      if (errors?.length) {
-        throw new Error(
-          `週案発行エラー (${range.weekStartDate}): ${formatModelErrors(errors)}`,
-        );
-      }
+      await runIssueWeekMutation({
+        scheduleMonthId,
+        weekStartDate: range.weekStartDate,
+        weekEndDate: range.weekEndDate,
+        weekNo: range.weekNoInMonth,
+        issueType: "MANUAL",
+      });
     }
   }
 
@@ -1194,6 +1459,10 @@ export default function SimpleScheduleWorkspacePanel(props: Props) {
       },
       limit: 1000,
     } as ListOptions);
+
+    if (weekRes.errors?.length) {
+      throw new Error(formatModelErrors(weekRes.errors));
+    }
 
     for (const week of weekRes.data ?? []) {
       const updateWeekRes = await client.models.ScheduleWeek.update({
@@ -1286,64 +1555,51 @@ export default function SimpleScheduleWorkspacePanel(props: Props) {
           );
         }
 
-        setSelectedMonthId(existing.id);
         await issueMissingWeeksForMonth(existing.id);
+        setSelectedMonthId(existing.id);
+        await loadInitial();
         await loadMonthDetails(existing.id);
-        setMessage(
-          selectedClassMonthPlanId
-            ? "同じ月案が既にあります。既存の月案を選択し、PLAN月計画を紐づけ、不足している週案を補完しました。"
-            : "同じ月案が既にあります。既存の月案を選択し、不足している週案を補完しました。",
-        );
+        setMessage("既存の月案を使い、不足している週案を補完しました。");
         return;
       }
 
-      const res = await client.models.ScheduleMonth.create({
+      const now = new Date().toISOString();
+      const createMonthRes = await client.models.ScheduleMonth.create({
         tenantId: tenantId.trim(),
         owner,
         classroomId,
         ageTargetId,
-        sourceClassMonthPlanId: selectedClassMonthPlanId || undefined,
+        sourceClassMonthPlanId: selectedClassMonthPlanId || null,
         monthKey,
         title: `${monthKey} 月案`,
-        notes: "",
-        status: "ACTIVE",
+        notes: selectedClassMonthPlanId
+          ? `PLAN_V2月計画と連携: ${selectedClassMonthPlanId}`
+          : "",
+        status: "DRAFT",
         issueType: "MANUAL",
         issueVersion: 1,
-        issuedAt: new Date().toISOString(),
+        issuedAt: now,
       } as MutationInput);
 
-      if (!res.data) {
+      if (!createMonthRes.data) {
         throw new Error(
-          formatModelErrors(res.errors, "月案の作成に失敗しました。"),
+          formatModelErrors(
+            createMonthRes.errors,
+            "月案の作成に失敗しました。",
+          ),
         );
       }
 
-      await issueMissingWeeksForMonth(res.data.id);
-
-      const monthRes = await client.models.ScheduleMonth.list({
-        filter: {
-          owner: { eq: owner },
-        },
-        limit: 1000,
-      } as ListOptions);
-
-      const monthRows = [...(monthRes.data ?? [])].sort((a, b) =>
-        String(b.monthKey ?? "").localeCompare(String(a.monthKey ?? "")),
-      );
-
-      setMonths(monthRows);
-      setSelectedMonthId(res.data.id);
-      await loadMonthDetails(res.data.id);
-
-      setMessage(
-        selectedClassMonthPlanId
-          ? "PLAN月計画に紐づく月案と、その月の週案を作成しました。"
-          : "月案と、その月の週案を作成しました。",
-      );
+      const createdMonth = createMonthRes.data;
+      setSelectedMonthId(createdMonth.id);
+      await issueMissingWeeksForMonth(createdMonth.id);
+      await loadInitial();
+      await loadMonthDetails(createdMonth.id);
+      setMessage("月案と週案を作成しました。");
     } catch (e) {
       console.error(e);
       setMessage(
-        `月案/週案作成エラー: ${e instanceof Error ? e.message : String(e)}`,
+        `月案＋週案作成エラー: ${e instanceof Error ? e.message : String(e)}`,
       );
     } finally {
       setLoading(false);
@@ -1351,8 +1607,8 @@ export default function SimpleScheduleWorkspacePanel(props: Props) {
   }
 
   async function fillMissingWeeksForSelectedMonth() {
-    if (!selectedMonth) {
-      setMessage("先に月案を選択してください。");
+    if (!selectedMonthId) {
+      setMessage("先にSchedule月案を選択してください。");
       return;
     }
 
@@ -1360,89 +1616,21 @@ export default function SimpleScheduleWorkspacePanel(props: Props) {
     setMessage("");
 
     try {
-      if (selectedClassMonthPlanId && !selectedMonth.sourceClassMonthPlanId) {
-        await applyClassMonthPlanToScheduleMonth(
-          selectedMonth.id,
-          selectedClassMonthPlanId,
-        );
-      }
-
-      await issueMissingWeeksForMonth(selectedMonth.id);
-      await loadMonthDetails(selectedMonth.id);
-      setMessage("不足している週案を補完しました。");
+      await issueMissingWeeksForMonth(selectedMonthId);
+      await loadInitial();
+      await loadMonthDetails(selectedMonthId);
+      setMessage("不足週案を補完しました。");
     } catch (e) {
       console.error(e);
       setMessage(
-        `週案補完エラー: ${e instanceof Error ? e.message : String(e)}`,
+        `不足週案補完エラー: ${e instanceof Error ? e.message : String(e)}`,
       );
     } finally {
       setLoading(false);
     }
   }
 
-  async function getScoresForPractice(
-    practiceCode: string | null | undefined,
-  ): Promise<ScoreSet> {
-    if (!practiceCode) return emptyScores();
-
-    const { data, errors } =
-      await client.models.AbilityPracticeLink.listByPractice({
-        practiceCode,
-      });
-
-    if (errors?.length) {
-      throw new Error(formatModelErrors(errors));
-    }
-
-    const links = data ?? [];
-    const scores = emptyScores();
-
-    for (const link of links) {
-      const abilityCode = String(link.abilityCode ?? "").trim();
-      const area = mapAbilityToArea(undefined, abilityCode);
-
-      if (area) {
-        scores[area] += Number(link.score ?? 0);
-      } else {
-        console.warn("5領域にマップできない AbilityCode:", {
-          practiceCode,
-          abilityCode,
-        });
-      }
-    }
-
-    return scores;
-  }
-
-  async function runIssueDayMutation(
-    args: IssueScheduleDayArgs,
-  ): Promise<IssueScheduleDayResult> {
-    const runner = client.mutations?.issueScheduleDayFromScheduleWeek;
-    if (!runner) {
-      throw new Error(
-        "issueScheduleDayFromScheduleWeek が client.mutations に見つかりません。",
-      );
-    }
-
-    let res: OperationEnvelope<IssueScheduleDayResult> | IssueScheduleDayResult;
-    try {
-      res = await runner(args);
-    } catch {
-      res = await runner({ input: args });
-    }
-
-    const errors = getOperationErrors(res);
-    if (errors?.length) {
-      throw new Error(formatModelErrors(errors, "日案発行に失敗しました。"));
-    }
-
-    return getOperationData(res);
-  }
-
-  function getLatestDay(
-    scheduleWeekId: string,
-    targetDate: string,
-  ): ScheduleDayRow | null {
+  function getLatestDay(scheduleWeekId: string, targetDate: string) {
     return (
       latestDaysByWeekDateKey[makeWeekDateKey(scheduleWeekId, targetDate)] ??
       null
@@ -1454,11 +1642,6 @@ export default function SimpleScheduleWorkspacePanel(props: Props) {
     row: WeekDateRow,
     issueType: "MANUAL" | "MANUAL_REISSUE",
   ) {
-    if (!row.weekItem?.practiceCode) {
-      setMessage("先に週案で Practice を登録してください。");
-      return;
-    }
-
     setLoading(true);
     setMessage("");
 
@@ -1471,8 +1654,8 @@ export default function SimpleScheduleWorkspacePanel(props: Props) {
 
       await loadMonthDetails(selectedMonthId);
 
-      const status = String(result?.status ?? "");
-      const version = Number(result?.issueVersion ?? 0);
+      const status = s(result?.status);
+      const version = n(result?.issueVersion);
 
       if (status === "ALREADY_ISSUED") {
         setMessage(
@@ -1529,11 +1712,11 @@ export default function SimpleScheduleWorkspacePanel(props: Props) {
 
       const totals = sumScoreSets(
         rows.map((r) => ({
-          health: r.weekItem?.scoreHealth ?? 0,
-          humanRelations: r.weekItem?.scoreHumanRelations ?? 0,
-          environment: r.weekItem?.scoreEnvironment ?? 0,
-          language: r.weekItem?.scoreLanguage ?? 0,
-          expression: r.weekItem?.scoreExpression ?? 0,
+          health: n(r.weekItem?.scoreHealth),
+          humanRelations: n(r.weekItem?.scoreHumanRelations),
+          environment: n(r.weekItem?.scoreEnvironment),
+          language: n(r.weekItem?.scoreLanguage),
+          expression: n(r.weekItem?.scoreExpression),
         })),
       );
 
@@ -1554,6 +1737,30 @@ export default function SimpleScheduleWorkspacePanel(props: Props) {
     [weekSummaries],
   );
 
+  async function computePracticeScores(
+    practiceCode: string,
+  ): Promise<ScoreSet> {
+    if (!practiceCode) return emptyScores();
+
+    const { data, errors } =
+      await client.models.AbilityPracticeLink.listByPractice({
+        practiceCode,
+      });
+
+    if (errors?.length) {
+      throw new Error(formatModelErrors(errors));
+    }
+
+    const scores = emptyScores();
+    for (const link of data ?? []) {
+      const key = domainKeyFromAbilityCode(link.abilityCode);
+      if (!key) continue;
+      scores[key] += n(link.score);
+    }
+
+    return scores;
+  }
+
   async function saveWeekPractice(
     scheduleWeek: ScheduleWeekRow,
     row: WeekDateRow,
@@ -1563,135 +1770,79 @@ export default function SimpleScheduleWorkspacePanel(props: Props) {
     setMessage("");
 
     try {
-      const allWeekItems = await fetchWeekItems(scheduleWeek.id);
-      const sameDayItems = allWeekItems.filter(
+      const practice = nextPracticeCode
+        ? practiceMap.get(nextPracticeCode)
+        : null;
+      const scores = await computePracticeScores(nextPracticeCode);
+      const allItems = await fetchWeekItems(scheduleWeek.id);
+      const sameDayItems = allItems.filter(
         (item) => item.dayOfWeek === row.weekday,
       );
-      const canonical = pickCanonicalWeekItem(sameDayItems);
-      const duplicates = sameDayItems.filter(
-        (item) => item.id !== canonical?.id,
-      );
+      const canonical = pickCanonicalWeekItem(sameDayItems) ?? row.weekItem;
+      const duplicateItems = canonical
+        ? sameDayItems.filter((item) => item.id !== canonical.id)
+        : [];
 
-      if (!nextPracticeCode) {
-        for (const item of sameDayItems) {
-          await client.models.ScheduleWeekItem.delete({
-            id: item.id,
-          } as MutationInput);
-        }
-
-        const nextRows = await fetchWeekItems(scheduleWeek.id);
-        setWeekItemsByWeekId((prev) => ({
-          ...prev,
-          [scheduleWeek.id]: nextRows,
-        }));
-
-        const latestDay = getLatestDay(scheduleWeek.id, row.date);
-
-        setMessage(
-          latestDay
-            ? `週案を未設定に戻しました。 ${row.date}
-既に日案 v${latestDay.issueVersion ?? 1} があるため、内容を反映するには「日案再発行」を押してください。`
-            : `週案を未設定に戻しました。 ${row.date}`,
-        );
-        return;
-      }
-
-      const nextPractice = practiceMap.get(nextPracticeCode);
-      const scores = await getScoresForPractice(nextPracticeCode);
-
-      const { data, errors } =
-        await client.models.AbilityPracticeLink.listByPractice({
-          practiceCode: nextPracticeCode,
-        });
-
-      if (errors?.length) {
-        throw new Error(formatModelErrors(errors));
-      }
-
-      const links = data ?? [];
-      const debugCodes = links
-        .map((x) => `${x.abilityCode}:${x.score}`)
-        .join(", ");
+      const basePayload = {
+        tenantId: scheduleWeek.tenantId,
+        owner: scheduleWeek.owner,
+        scheduleWeekId: scheduleWeek.id,
+        sourceMonthItemId: canonical?.sourceMonthItemId ?? null,
+        sourceClassWeekPracticeAssignmentId:
+          canonical?.sourceClassWeekPracticeAssignmentId ?? null,
+        dayOfWeek: row.weekday,
+        targetDate: row.date,
+        sourceType: canonical?.sourceType ?? "PLANNED",
+        title: practice ? s(practice.name) || nextPracticeCode : "活動未設定",
+        eventLabel: canonical?.eventLabel ?? "",
+        description: practice ? s(practice.memo) : "",
+        startTime: canonical?.startTime ?? DEFAULT_START_TIME,
+        endTime: canonical?.endTime ?? DEFAULT_END_TIME,
+        sortOrder: canonical?.sortOrder ?? row.weekday + 1,
+        practiceCode: nextPracticeCode || null,
+        practiceTitleSnapshot: practice ? s(practice.name) : "",
+        scoreHealth: scores.health,
+        scoreHumanRelations: scores.humanRelations,
+        scoreEnvironment: scores.environment,
+        scoreLanguage: scores.language,
+        scoreExpression: scores.expression,
+      };
 
       if (canonical) {
-        const res = await client.models.ScheduleWeekItem.update({
+        const updated = await client.models.ScheduleWeekItem.update({
           id: canonical.id,
-          dayOfWeek: row.weekday,
-          title: nextPractice?.name ?? canonical.title,
-          practiceCode: nextPracticeCode,
-          practiceTitleSnapshot:
-            nextPractice?.name ?? canonical.practiceTitleSnapshot ?? undefined,
-          scoreHealth: scores.health,
-          scoreHumanRelations: scores.humanRelations,
-          scoreEnvironment: scores.environment,
-          scoreLanguage: scores.language,
-          scoreExpression: scores.expression,
+          ...basePayload,
         } as MutationInput);
 
-        if (!res.data) {
+        if (!updated.data) {
           throw new Error(
-            formatModelErrors(res.errors, "週案更新に失敗しました。"),
+            formatModelErrors(updated.errors, "週案itemの更新に失敗しました。"),
           );
         }
       } else {
-        const res = await client.models.ScheduleWeekItem.create({
-          tenantId: scheduleWeek.tenantId,
-          owner,
-          scheduleWeekId: scheduleWeek.id,
-          dayOfWeek: row.weekday,
-          sourceType: "PLANNED",
-          title: nextPractice?.name ?? "Planned",
-          description: "",
-          startTime: DEFAULT_START_TIME,
-          endTime: DEFAULT_END_TIME,
-          sortOrder: 10,
-          practiceCode: nextPracticeCode,
-          practiceTitleSnapshot: nextPractice?.name ?? undefined,
-          scoreHealth: scores.health,
-          scoreHumanRelations: scores.humanRelations,
-          scoreEnvironment: scores.environment,
-          scoreLanguage: scores.language,
-          scoreExpression: scores.expression,
-        } as MutationInput);
+        const created = await client.models.ScheduleWeekItem.create(
+          basePayload as MutationInput,
+        );
 
-        if (!res.data) {
+        if (!created.data) {
           throw new Error(
-            formatModelErrors(res.errors, "週案行の作成に失敗しました。"),
+            formatModelErrors(created.errors, "週案itemの作成に失敗しました。"),
           );
         }
       }
 
-      for (const item of duplicates) {
-        await client.models.ScheduleWeekItem.delete({
-          id: item.id,
-        } as MutationInput);
-      }
-
-      const nextRows = await fetchWeekItems(scheduleWeek.id);
-      setWeekItemsByWeekId((prev) => ({
-        ...prev,
-        [scheduleWeek.id]: nextRows,
-      }));
+      await loadMonthDetails(selectedMonthId);
 
       const latestDay = getLatestDay(scheduleWeek.id, row.date);
       const duplicateNote =
-        sameDayItems.length > 1
-          ? `
-同じ曜日に重複していた ${sameDayItems.length} 件の item を 1 件に正規化しました。`
+        duplicateItems.length > 0
+          ? `\n同じ曜日に重複している item が ${sameDayItems.length} 件あります。最新1件を表示・更新しました。`
           : "";
 
       setMessage(
         latestDay
-          ? `週案を更新しました。 ${row.date}
-既に日案 v${latestDay.issueVersion ?? 1} があるため、内容を反映するには「日案再発行」を押してください。${duplicateNote}
-links=${links.length}
-codes=${debugCodes}
-scores=${scoreSummaryText(scores)}`
-          : `週案を更新しました。 ${row.date}${duplicateNote}
-必要に応じて「日案発行」を押してください。
-links=${links.length}
-codes=${debugCodes}
-scores=${scoreSummaryText(scores)}`,
+          ? `週案を更新しました。 ${row.date}\n既に日案 v${latestDay.issueVersion ?? 1} があるため、内容を反映するには「日案再発行」を押してください。${duplicateNote}\ncodes=${nextPracticeCode || "-"}\nscores=${scoreSummaryText(scores)}`
+          : `週案を更新しました。 ${row.date}${duplicateNote}\n必要に応じて「日案発行」を押してください。\ncodes=${nextPracticeCode || "-"}\nscores=${scoreSummaryText(scores)}`,
       );
     } catch (e) {
       console.error(e);
@@ -1799,55 +1950,34 @@ scores=${scoreSummaryText(scores)}`,
           }}
         >
           <label>
-            月案{" "}
+            Schedule月案{" "}
             <select
               value={selectedMonthId}
-              onChange={(e) => {
-                setSelectedMonthId(e.target.value);
-                const m = months.find((x) => x.id === e.target.value);
-                if (m?.monthKey) {
-                  setMonthKey(m.monthKey);
-                }
-                if (m?.classroomId) {
-                  setClassroomId(m.classroomId);
-                }
-                if (m?.ageTargetId) {
-                  setAgeTargetId(m.ageTargetId);
-                }
-                setSelectedClassMonthPlanId(m?.sourceClassMonthPlanId ?? "");
-              }}
-              style={{ minWidth: 420 }}
+              onChange={(e) => setSelectedMonthId(e.target.value)}
+              style={{ minWidth: 260 }}
             >
-              <option value="">選択してください</option>
-              {months.map((m) => (
-                <option key={m.id} value={m.id}>
-                  {m.monthKey} / {m.title || "月案"} / PLAN:
-                  {m.sourceClassMonthPlanId ? "あり" : "未紐づけ"} / {m.id}
-                </option>
-              ))}
+              <option value="">未選択</option>
+              {months
+                .filter((row) => row.monthKey === monthKey)
+                .map((row) => (
+                  <option key={row.id} value={row.id}>
+                    {row.monthKey} / {row.title || "月案"} / {row.status}
+                  </option>
+                ))}
             </select>
           </label>
-        </div>
 
-        <div
-          style={{
-            display: "flex",
-            gap: 12,
-            flexWrap: "wrap",
-            alignItems: "center",
-          }}
-        >
           <label>
-            PLAN_V2 月計画{" "}
+            PLAN_V2月計画{" "}
             <select
               value={selectedClassMonthPlanId}
               onChange={(e) => setSelectedClassMonthPlanId(e.target.value)}
-              style={{ minWidth: 460 }}
+              style={{ minWidth: 360 }}
             >
-              <option value="">選択してください</option>
+              <option value="">未選択</option>
               {classMonthPlanCandidates.map((row) => (
                 <option key={row.id} value={row.id}>
-                  {classMonthPlanLabel(row)} / {row.id}
+                  {classMonthPlanLabel(row)}
                 </option>
               ))}
             </select>
@@ -1855,27 +1985,26 @@ scores=${scoreSummaryText(scores)}`,
 
           <button
             onClick={() => void attachSelectedPlanToSelectedMonth()}
-            disabled={loading || !selectedMonthId || !selectedClassMonthPlanId}
+            disabled={!selectedMonthId || !selectedClassMonthPlanId || loading}
           >
-            選択中の月案へPLAN月計画を紐づけ
+            PLAN月計画を紐づけ
           </button>
-
-          <span style={{ color: "#666", fontSize: 12 }}>
-            fiscalYear={fiscalYear} / 候補={classMonthPlanCandidates.length}件
-          </span>
         </div>
 
-        <div
-          style={{
-            padding: 12,
-            borderRadius: 8,
-            background: "#f7f7f7",
-            whiteSpace: "pre-wrap",
-            wordBreak: "break-word",
-          }}
-        >
-          {message || "ここにメッセージが表示されます。"}
-        </div>
+        {message ? (
+          <pre
+            style={{
+              margin: 0,
+              whiteSpace: "pre-wrap",
+              background: "#f6fbff",
+              border: "1px solid #dbeafe",
+              borderRadius: 8,
+              padding: 12,
+            }}
+          >
+            {message}
+          </pre>
+        ) : null}
       </div>
 
       <div
@@ -1888,170 +2017,141 @@ scores=${scoreSummaryText(scores)}`,
           gap: 12,
         }}
       >
-        <h3 style={{ margin: 0 }}>PLAN_V2 月計画との接続</h3>
+        <h3 style={{ margin: 0 }}>PLAN_V2 連携状況</h3>
 
         {selectedClassMonthPlan ? (
           <div style={{ display: "grid", gap: 12 }}>
             <div style={subtleBoxStyle}>
               <div style={{ fontWeight: 700, marginBottom: 6 }}>
-                対象月計画：{selectedClassMonthPlan.title}
+                月計画のねらい・5領域スコア
               </div>
-              <div>
-                <b>monthKey:</b> {selectedClassMonthPlan.monthKey} /{" "}
-                <b>ageBand:</b> {selectedClassMonthPlan.ageBand} /{" "}
-                <b>classMonthPlanId:</b> {selectedClassMonthPlan.id}
+              <div style={smallMutedStyle}>
+                月計画はPractice候補の主材料として使います。
               </div>
               <div style={{ marginTop: 8, whiteSpace: "pre-wrap" }}>
-                <b>目標(C):</b> {selectedClassMonthPlan.goalTextC || "未入力"}
+                {selectedClassMonthPlan.goalTextC || "目標(C)は未入力です。"}
+              </div>
+              <div style={{ marginTop: 8 }}>
+                {SCORE_AREAS.map((area) => (
+                  <span key={area.key} style={{ marginRight: 12 }}>
+                    {area.label}: <b>{selectedPlanScores[area.key]}</b>
+                  </span>
+                ))}
               </div>
             </div>
 
-            <div style={{ overflowX: "auto" }}>
-              <table
-                style={{
-                  width: "100%",
-                  borderCollapse: "collapse",
-                  minWidth: 760,
-                }}
-              >
-                <thead>
-                  <tr>
-                    <th style={thStyle}>領域</th>
-                    <th style={thStyle}>PLAN月計画スコア</th>
-                    <th style={thStyle}>Schedule積上</th>
-                    <th style={thStyle}>差分</th>
-                    <th style={thStyle}>充足目安</th>
-                    <th style={thStyle}>状態</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {SCORE_AREAS.map((area) => {
-                    const planScore = selectedPlanScores[area.key];
-                    const scheduleScore = monthTotals[area.key];
-                    const diff = scheduleScore - planScore;
-
-                    return (
-                      <tr key={area.key}>
-                        <td style={tdStyle}>{area.label}</td>
-                        <td style={tdStyle}>{planScore}</td>
-                        <td style={tdStyle}>{scheduleScore}</td>
-                        <td style={tdStyle}>{diff}</td>
-                        <td style={tdStyle}>
-                          {formatRatio(scheduleScore, planScore)}
-                        </td>
-                        <td style={tdStyle}>
-                          {compareStatusLabel(diff, planScore)}
-                        </td>
-                      </tr>
-                    );
-                  })}
-                </tbody>
-              </table>
-            </div>
-
-            <div style={{ display: "grid", gap: 8 }}>
-              <div style={{ fontWeight: 700 }}>
-                選択文例とAbility{" "}
-                <span style={{ color: "#666", fontWeight: 400 }}>
-                  selections={selectedPlanPhraseSelections.length} / abilities=
-                  {selectedPlanAbilityRows.length}
-                </span>
+            <div style={subtleBoxStyle}>
+              <div style={{ fontWeight: 700, marginBottom: 6 }}>
+                年間・四半期方針の補助ヒント
               </div>
-
-              {selectedPlanPhraseSelections.length === 0 ? (
-                <div style={{ color: "#666" }}>
-                  この月計画には文例選択がありません。
-                </div>
+              <div style={smallMutedStyle}>
+                年間・四半期の選択文例は、点数には加算せず、Practice候補の補助ヒントとして弱く使います。
+              </div>
+              <div style={{ marginTop: 8 }}>
+                {domainTrendText(referenceScores)}
+              </div>
+              <div style={{ marginTop: 8 }}>
+                {SCORE_AREAS.map((area) => (
+                  <span key={area.key} style={{ marginRight: 12 }}>
+                    {area.label}: <b>{referenceScores[area.key]}</b>
+                  </span>
+                ))}
+              </div>
+              {referencePhraseLines.length > 0 ? (
+                <ul style={{ marginTop: 8, marginBottom: 0, paddingLeft: 20 }}>
+                  {referencePhraseLines.map((row, index) => (
+                    <li key={`${row.scopeLabel}-${index}`}>
+                      <b>{row.scopeLabel}</b>: {row.text}
+                    </li>
+                  ))}
+                </ul>
               ) : (
-                <div style={{ display: "grid", gap: 8 }}>
-                  {selectedPlanPhraseSelections.map((row) => (
-                    <div
-                      key={row.id}
+                <div style={{ ...smallMutedStyle, marginTop: 8 }}>
+                  年間・四半期の文例選択がまだない場合、月計画だけを使ってPractice候補を出します。
+                </div>
+              )}
+            </div>
+
+            <div style={subtleBoxStyle}>
+              <div style={{ fontWeight: 700, marginBottom: 6 }}>
+                Practice候補のもとになるAbility
+              </div>
+              {combinedAbilityRows.length > 0 ? (
+                <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+                  {combinedAbilityRows.slice(0, 16).map((row) => (
+                    <span
+                      key={`${row.abilityCode}-${row.sourceLabel}`}
                       style={{
-                        padding: 10,
-                        border: "1px solid #e5e7eb",
-                        borderRadius: 8,
-                        background: "#fafafa",
+                        border: "1px solid #d1d5db",
+                        borderRadius: 999,
+                        padding: "4px 8px",
+                        background: "#fff",
+                        fontSize: 13,
                       }}
                     >
-                      <div>
-                        <b>{row.selectedDomain || row.selectedDomainCode}</b> /{" "}
-                        {row.planPhraseId}
-                      </div>
-                      <div style={{ marginTop: 4 }}>
-                        {row.phraseTextSnapshot}
-                      </div>
-                      <div style={{ marginTop: 4, color: "#555" }}>
-                        score: 健康 {row.scoreHealth ?? 0} / 人間関係{" "}
-                        {row.scoreHumanRelations ?? 0} / 環境{" "}
-                        {row.scoreEnvironment ?? 0} / 言葉{" "}
-                        {row.scoreLanguage ?? 0} / 表現{" "}
-                        {row.scoreExpression ?? 0}
-                      </div>
-                    </div>
+                      {row.label} +{row.weight} / {row.sourceLabel}
+                    </span>
                   ))}
                 </div>
-              )}
-            </div>
-
-            <div style={{ display: "grid", gap: 8 }}>
-              <div style={{ fontWeight: 700 }}>
-                月計画からのPractice候補{" "}
-                <span style={{ color: "#666", fontWeight: 400 }}>
-                  {recommendLoading
-                    ? "推薦計算中..."
-                    : `${practiceRecommendations.length}件`}
-                </span>
-              </div>
-
-              {practiceRecommendations.length === 0 ? (
-                <div style={{ color: "#666" }}>
-                  推薦候補はありません。月計画の文例選択、Ability Link、Practice
-                  Linkを確認してください。
-                </div>
               ) : (
-                <div style={{ overflowX: "auto" }}>
-                  <table
-                    style={{
-                      width: "100%",
-                      borderCollapse: "collapse",
-                      minWidth: 900,
-                    }}
-                  >
-                    <thead>
-                      <tr>
-                        <th style={thStyle}>Practice</th>
-                        <th style={thStyle}>推薦スコア</th>
-                        <th style={thStyle}>一致Ability数</th>
-                        <th style={thStyle}>Practice側スコア合計</th>
-                        <th style={thStyle}>根拠Ability</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {practiceRecommendations.slice(0, 10).map((row) => (
-                        <tr key={row.practiceCode}>
-                          <td style={tdStyle}>
-                            {row.practiceCode} / {row.practiceName}
-                          </td>
-                          <td style={tdStyle}>{row.recommendScore}</td>
-                          <td style={tdStyle}>{row.matchAbilityCount}</td>
-                          <td style={tdStyle}>{row.totalPracticeScore}</td>
-                          <td style={tdStyle}>
-                            {row.matchedAbilities.slice(0, 6).join(" / ")}
-                            {row.matchedAbilities.length > 6 ? " ..." : ""}
-                          </td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
+                <div style={smallMutedStyle}>
+                  月計画文例または年間・四半期文例を選択すると表示されます。
                 </div>
               )}
             </div>
+
+            {recommendLoading ? (
+              <div style={smallMutedStyle}>Practice候補を読込中です...</div>
+            ) : practiceRecommendations.length > 0 ? (
+              <div style={{ overflowX: "auto" }}>
+                <table
+                  style={{
+                    width: "100%",
+                    borderCollapse: "collapse",
+                    minWidth: 900,
+                  }}
+                >
+                  <thead>
+                    <tr>
+                      <th style={thStyle}>Practice</th>
+                      <th style={thStyle}>推薦</th>
+                      <th style={thStyle}>月計画一致</th>
+                      <th style={thStyle}>方針一致</th>
+                      <th style={thStyle}>Practice score</th>
+                      <th style={thStyle}>一致Ability</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {practiceRecommendations.slice(0, 10).map((row) => (
+                      <tr key={row.practiceCode}>
+                        <td style={tdStyle}>
+                          {row.practiceCode} / {row.practiceName}
+                          <div style={smallMutedStyle}>
+                            {row.sourceLabels.join("・")}
+                          </div>
+                        </td>
+                        <td style={tdStyle}>{row.recommendScore}</td>
+                        <td style={tdStyle}>{row.monthMatchCount}</td>
+                        <td style={tdStyle}>{row.referenceMatchCount}</td>
+                        <td style={tdStyle}>{row.totalPracticeScore}</td>
+                        <td style={tdStyle}>
+                          {row.matchedAbilities.slice(0, 6).join(" / ")}
+                          {row.matchedAbilities.length > 6 ? " ..." : ""}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            ) : (
+              <div style={smallMutedStyle}>
+                月計画・年間方針・四半期方針に紐づくPractice候補はまだありません。
+              </div>
+            )}
           </div>
         ) : (
           <div style={{ color: "#666" }}>
-            PLAN_V2
-            月計画を選択すると、目標(C)、5領域スコア、Practice候補が表示されます。
+            PLAN_V2月計画を選択すると、目標(C)、5領域スコア、年間・四半期方針、Practice候補が表示されます。
           </div>
         )}
       </div>
@@ -2130,7 +2230,7 @@ scores=${scoreSummaryText(scores)}`,
 
         <div style={{ color: "#555" }}>
           週案を修正したあと、その内容を日案に反映したい場合は「日案再発行」を押してください。
-          Practice選択欄には、PLAN_V2月計画のAbilityに基づくおすすめPracticeを先頭に表示します。
+          Practice選択欄には、PLAN_V2月計画を主材料にし、年間・四半期方針を補助ヒントにしたおすすめPracticeを先頭に表示します。
         </div>
 
         <div style={{ overflowX: "auto" }}>
@@ -2175,11 +2275,79 @@ scores=${scoreSummaryText(scores)}`,
                       <td style={tdStyle}>
                         {week.weekStartDate} ～ {week.weekEndDate}
                       </td>
-                      <td style={tdStyle}>{week.totals.health}</td>
-                      <td style={tdStyle}>{week.totals.humanRelations}</td>
-                      <td style={tdStyle}>{week.totals.environment}</td>
-                      <td style={tdStyle}>{week.totals.language}</td>
-                      <td style={tdStyle}>{week.totals.expression}</td>
+                      <td style={tdStyle}>
+                        {week.totals.health}
+                        <div style={smallMutedStyle}>
+                          {formatRatio(
+                            week.totals.health,
+                            selectedPlanScores.health,
+                          )}{" "}
+                          /{" "}
+                          {compareStatusLabel(
+                            week.totals.health - selectedPlanScores.health,
+                            selectedPlanScores.health,
+                          )}
+                        </div>
+                      </td>
+                      <td style={tdStyle}>
+                        {week.totals.humanRelations}
+                        <div style={smallMutedStyle}>
+                          {formatRatio(
+                            week.totals.humanRelations,
+                            selectedPlanScores.humanRelations,
+                          )}{" "}
+                          /{" "}
+                          {compareStatusLabel(
+                            week.totals.humanRelations -
+                              selectedPlanScores.humanRelations,
+                            selectedPlanScores.humanRelations,
+                          )}
+                        </div>
+                      </td>
+                      <td style={tdStyle}>
+                        {week.totals.environment}
+                        <div style={smallMutedStyle}>
+                          {formatRatio(
+                            week.totals.environment,
+                            selectedPlanScores.environment,
+                          )}{" "}
+                          /{" "}
+                          {compareStatusLabel(
+                            week.totals.environment -
+                              selectedPlanScores.environment,
+                            selectedPlanScores.environment,
+                          )}
+                        </div>
+                      </td>
+                      <td style={tdStyle}>
+                        {week.totals.language}
+                        <div style={smallMutedStyle}>
+                          {formatRatio(
+                            week.totals.language,
+                            selectedPlanScores.language,
+                          )}{" "}
+                          /{" "}
+                          {compareStatusLabel(
+                            week.totals.language - selectedPlanScores.language,
+                            selectedPlanScores.language,
+                          )}
+                        </div>
+                      </td>
+                      <td style={tdStyle}>
+                        {week.totals.expression}
+                        <div style={smallMutedStyle}>
+                          {formatRatio(
+                            week.totals.expression,
+                            selectedPlanScores.expression,
+                          )}{" "}
+                          /{" "}
+                          {compareStatusLabel(
+                            week.totals.expression -
+                              selectedPlanScores.expression,
+                            selectedPlanScores.expression,
+                          )}
+                        </div>
+                      </td>
                       <td style={tdStyle}>
                         {week.scheduleWeek ? "週案あり" : "未発行"}
                       </td>
@@ -2253,7 +2421,7 @@ scores=${scoreSummaryText(scores)}`,
 
                                             {practiceRecommendations.length >
                                             0 ? (
-                                              <optgroup label="月計画からのおすすめ">
+                                              <optgroup label="月計画＋方針からのおすすめ">
                                                 {practiceRecommendations.map(
                                                   (p) => (
                                                     <option
@@ -2262,7 +2430,9 @@ scores=${scoreSummaryText(scores)}`,
                                                     >
                                                       {p.practiceCode} /{" "}
                                                       {p.practiceName} / 推薦{" "}
-                                                      {p.recommendScore}
+                                                      {p.recommendScore} / 月
+                                                      {p.monthMatchCount} 方針
+                                                      {p.referenceMatchCount}
                                                     </option>
                                                   ),
                                                 )}
@@ -2274,7 +2444,9 @@ scores=${scoreSummaryText(scores)}`,
                                                 (p) => (
                                                   <option
                                                     key={p.practice_code}
-                                                    value={p.practice_code}
+                                                    value={
+                                                      p.practice_code ?? ""
+                                                    }
                                                   >
                                                     {practiceLabel(p)}
                                                   </option>

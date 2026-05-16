@@ -89,18 +89,100 @@ type PracticeCodeRow = Schema["PracticeCode"]["type"] & {
   tenantId?: string | null;
 };
 
+type WeekendPlayRow = Schema["WeekendPlay"]["type"] & {
+  playId?: string | null;
+  playTitle?: string | null;
+  playType?: string | null;
+  setting?: string | null;
+  status?: string | null;
+  parentHint?: string | null;
+  sourceFile?: string | null;
+  playDescriptionDraft?: string | null;
+  sortOrder?: number | null;
+};
+
+type WeekendPlayAbilityLinkRow = Schema["WeekendPlayAbilityLink"]["type"] & {
+  linkId?: string | null;
+  playId?: string | null;
+  playTitle?: string | null;
+  sortOrder?: number | null;
+  relationType?: string | null;
+  weight?: number | null;
+  abilityCode?: string | null;
+  domain?: string | null;
+  category?: string | null;
+  abilityName?: string | null;
+  reason?: string | null;
+  status?: string | null;
+};
+
 type ClassroomRow = Schema["Classroom"]["type"];
 type ClassAnnualPlanRow = Schema["ClassAnnualPlan"]["type"];
 type ClassQuarterPlanRow = Schema["ClassQuarterPlan"]["type"];
 type ClassMonthPlanRow = Schema["ClassMonthPlan"]["type"];
+type ClassMonthPlanPhraseSelectionRow =
+  Schema["ClassMonthPlanPhraseSelection"]["type"] & {
+    classMonthPlanId?: string | null;
+    classQuarterPlanId?: string | null;
+    fiscalYear?: number | null;
+    monthKey?: string | null;
+    planPhraseId?: string | null;
+    phraseTextSnapshot?: string | null;
+    selectedDomainCode?: string | null;
+    selectedDomain?: string | null;
+    ageYears?: number | null;
+    phraseNo?: number | null;
+    abilityCodes?: (string | null)[] | null;
+    abilitySummaryJson?: string | null;
+    scoreHealth?: number | null;
+    scoreHumanRelations?: number | null;
+    scoreEnvironment?: number | null;
+    scoreLanguage?: number | null;
+    scoreExpression?: number | null;
+    status?: string | null;
+    sortOrder?: number | null;
+    selectedAt?: string | null;
+  };
+type ClassPlanPhraseSelectionRow =
+  Schema["ClassPlanPhraseSelection"]["type"] & {
+    classroomId?: string | null;
+    planScopeType?: string | null;
+    relationUse?: string | null;
+    classAnnualPlanId?: string | null;
+    classQuarterPlanId?: string | null;
+    classMonthPlanId?: string | null;
+    phraseTextSnapshot?: string | null;
+    selectedDomainCode?: string | null;
+    selectedDomain?: string | null;
+    ageYears?: number | null;
+    phraseNo?: number | null;
+    abilityCodes?: (string | null)[] | null;
+    abilitySummaryJson?: string | null;
+    relatedHealth?: number | null;
+    relatedHumanRelations?: number | null;
+    relatedEnvironment?: number | null;
+    relatedLanguage?: number | null;
+    relatedExpression?: number | null;
+    status?: string | null;
+    sortOrder?: number | null;
+    selectedAt?: string | null;
+  };
+
 type ClassWeekPlanRow = Schema["ClassWeekPlan"]["type"] & {
   abilityHealthD?: number | string | null;
   abilityHumanRelationsD?: number | string | null;
   abilityEnvironmentD?: number | string | null;
   abilityLanguageD?: number | string | null;
   abilityExpressionD?: number | string | null;
+  goalTextD?: string | null;
+  goalTextWeek?: string | null;
   goalTextC?: string | null;
+  weekStartDate?: string | null;
+  startDate?: string | null;
+  weekEndDate?: string | null;
+  endDate?: string | null;
 };
+
 type ReportArtifactRow = Schema["ReportArtifact"]["type"];
 
 type ModelError = {
@@ -139,9 +221,13 @@ export type ReportingClient = {
     AbilityPracticeLink: ModelListApi<AbilityPracticeLinkRow>;
     AbilityPracticeAgg: ModelListApi<AbilityPracticeAggRow>;
     PracticeCode: ModelListApi<PracticeCodeRow>;
+    WeekendPlay: ModelListApi<WeekendPlayRow>;
+    WeekendPlayAbilityLink: ModelListApi<WeekendPlayAbilityLinkRow>;
     ClassAnnualPlan: ModelListApi<ClassAnnualPlanRow>;
     ClassQuarterPlan: ModelListApi<ClassQuarterPlanRow>;
     ClassMonthPlan: ModelListApi<ClassMonthPlanRow>;
+    ClassMonthPlanPhraseSelection: ModelListApi<ClassMonthPlanPhraseSelectionRow>;
+    ClassPlanPhraseSelection: ModelListApi<ClassPlanPhraseSelectionRow>;
     ClassWeekPlan: ModelListApi<ClassWeekPlanRow>;
     ReportArtifact: ModelCreateUpdateApi<ReportArtifactRow>;
   };
@@ -168,6 +254,22 @@ export type RecommendedPracticeRow = {
   abilityLinkCountInPeriod: number;
 };
 
+export type WeekendPlayHintRow = {
+  playId: string;
+  playTitle: string;
+  playType: string;
+  setting: string;
+  abilityCode: string;
+  abilityName: string;
+  domain: string;
+  category: string;
+  relationType: string;
+  weight: number;
+  reason: string;
+  parentHint: string;
+  playDescriptionDraft: string;
+};
+
 export type ObservationBundle = {
   observations: ObservationRecordRow[];
   abilityLinks: ObservationAbilityLinkRow[];
@@ -183,6 +285,31 @@ export type ObservationBundle = {
 
 export type PlanBasis = "WEEK" | "MONTH" | "NONE";
 
+export type PlanReferenceScopeType = "YEAR" | "TERM";
+
+export type PlanReferenceSelectionSummary = {
+  id: string;
+  planScopeType: PlanReferenceScopeType;
+  phraseText: string;
+  domainCounts: DomainCounts;
+  abilityCodes: string[];
+  abilityNames: string[];
+  sortOrder: number;
+  selectedAt: string;
+};
+
+export type PlanReferenceSummary = {
+  planScopeType: PlanReferenceScopeType;
+  title: string;
+  phraseCount: number;
+  domainCounts: DomainCounts;
+  trendText: string;
+  topDomainLabels: string[];
+  abilityNames: string[];
+  phraseTexts: string[];
+  selections: PlanReferenceSelectionSummary[];
+};
+
 export type PlanContextBundle = {
   annualPlan: ClassAnnualPlanRow | null;
   quarterPlan: ClassQuarterPlanRow | null;
@@ -193,6 +320,9 @@ export type PlanContextBundle = {
   goalTextB: string;
   goalTextC: string;
   goalTextWeek: string;
+
+  annualReferenceSummary: PlanReferenceSummary;
+  termReferenceSummary: PlanReferenceSummary;
 
   plannedDomainsPrimary: DomainCounts;
   plannedDomainsMonth: DomainCounts;
@@ -253,6 +383,11 @@ type PracticePeriodActivity = {
   abilityLinkCount: number;
 };
 
+type WeekendPlayMaster = {
+  plays: WeekendPlayRow[];
+  links: WeekendPlayAbilityLinkRow[];
+};
+
 let abilityCodeRowsCache: AbilityCodeRow[] | null = null;
 let abilityCodeRowsPromise: Promise<AbilityCodeRow[]> | null = null;
 
@@ -261,7 +396,18 @@ let practiceRecommendationMasterCache: PracticeRecommendationMaster | null =
 let practiceRecommendationMasterPromise: Promise<PracticeRecommendationMaster> | null =
   null;
 
-function buildEqFilter(field: string, value: string): Record<string, unknown> {
+let weekendPlayMasterCache: WeekendPlayMaster | null = null;
+let weekendPlayMasterPromise: Promise<WeekendPlayMaster> | null = null;
+
+const DOMAIN_KEYS: DomainKey[] = [
+  "health",
+  "humanRelations",
+  "environment",
+  "language",
+  "expression",
+];
+
+function buildEqFilter(field: string, value: unknown): Record<string, unknown> {
   return {
     [field]: { eq: value },
   };
@@ -287,6 +433,30 @@ function errorMessages(
   }
 
   return fallback ?? "Unknown error";
+}
+
+function readRecordValue(row: unknown, key: string): unknown {
+  if (!row || typeof row !== "object") return undefined;
+  return (row as Record<string, unknown>)[key];
+}
+
+function readText(row: unknown, key: string): string {
+  const value = readRecordValue(row, key);
+  return normalizeText(
+    typeof value === "string" || typeof value === "number" ? String(value) : "",
+  );
+}
+
+function sortByTextFieldDesc<TRow>(rows: TRow[], fieldNames: string[]): TRow[] {
+  return [...rows].sort((a, b) => {
+    for (const fieldName of fieldNames) {
+      const av = readText(a, fieldName);
+      const bv = readText(b, fieldName);
+      const diff = bv.localeCompare(av);
+      if (diff !== 0) return diff;
+    }
+    return 0;
+  });
 }
 
 export function todayYYYYMMDD() {
@@ -316,8 +486,13 @@ export async function listAll<TRow>(
   do {
     const res = await modelApi.list({
       ...(options ?? {}),
+      limit: Number(options?.limit ?? 1000),
       nextToken,
     });
+
+    if (res.errors?.length) {
+      throw new Error(errorMessages(res.errors, "model list に失敗しました。"));
+    }
 
     if (Array.isArray(res.data) && res.data.length > 0) {
       rows.push(...res.data);
@@ -357,12 +532,22 @@ export function clearAbilityCodeRowsCache() {
   abilityCodeRowsPromise = null;
 }
 
+export function clearPracticeRecommendationMasterCache() {
+  practiceRecommendationMasterCache = null;
+  practiceRecommendationMasterPromise = null;
+}
+
+export function clearWeekendPlayMasterCache() {
+  weekendPlayMasterCache = null;
+  weekendPlayMasterPromise = null;
+}
+
 function normalizeNumber(value: unknown) {
   const n = Number(value ?? 0);
   return Number.isFinite(n) ? n : 0;
 }
 
-export function normalizeText(value?: string | null) {
+export function normalizeText(value?: string | number | null) {
   return String(value ?? "").trim();
 }
 
@@ -372,6 +557,16 @@ function isTranscriptSourceKind(sourceKind?: string | null) {
 
 function excludeTranscriptObservations(rows: ObservationRecordRow[]) {
   return rows.filter((row) => !isTranscriptSourceKind(row.sourceKind));
+}
+
+function isActiveStatus(value?: string | null) {
+  const status = normalizeText(value || "active").toLowerCase();
+  return status === "active";
+}
+
+function isNotArchivedStatus(value?: string | null) {
+  const status = normalizeText(value || "active").toLowerCase();
+  return status !== "archived" && status !== "deleted";
 }
 
 export function normalizeAbilityCode(value?: string | number | null) {
@@ -445,6 +640,16 @@ export function emptyDomainCounts(): DomainCounts {
     environment: 0,
     language: 0,
     expression: 0,
+  };
+}
+
+function addDomainCounts(a: DomainCounts, b: DomainCounts): DomainCounts {
+  return {
+    health: a.health + b.health,
+    humanRelations: a.humanRelations + b.humanRelations,
+    environment: a.environment + b.environment,
+    language: a.language + b.language,
+    expression: a.expression + b.expression,
   };
 }
 
@@ -807,7 +1012,7 @@ function resolveAbilityDisplayMeta(
 
   let abilityName = linkAbilityName;
   let domain = linkDomain;
-  let category = "";
+  let category = linkCategory;
   let currentCode = normalizedAbilityCode;
 
   for (let depth = 0; depth < 10 && currentCode; depth += 1) {
@@ -816,7 +1021,7 @@ function resolveAbilityDisplayMeta(
 
     const rowName = normalizeText(row.name);
 
-    if (!abilityName && rowName) {
+    if (!abilityName && rowName && isLeafAbilityRow(row)) {
       abilityName = rowName;
     }
 
@@ -837,623 +1042,181 @@ function resolveAbilityDisplayMeta(
     currentCode = nextParent;
   }
 
-  if (!category && linkCategory) {
-    const normalizedCategoryCode = normalizeAbilityCode(linkCategory);
-
-    if (normalizedCategoryCode.length === 4) {
-      const categoryRow = abilityCodeMap.get(normalizedCategoryCode);
-      const categoryName = normalizeText(categoryRow?.name);
-      if (categoryName) {
-        category = categoryName;
-      }
-    }
-
-    if (!category && !/^\d{4}$/.test(linkCategory)) {
-      category = linkCategory;
-    }
-  }
-
   if (!abilityName) {
-    const abilityRow = abilityCodeMap.get(normalizedAbilityCode);
-    const rowName = normalizeText(abilityRow?.name);
-    if (rowName) {
-      abilityName = rowName;
-    }
+    abilityName = normalizedAbilityCode || "(ability未設定)";
   }
 
   if (!domain) {
-    const abilityRow = abilityCodeMap.get(normalizedAbilityCode);
-    domain =
-      (abilityRow ? resolveDomainFromAbilityRow(abilityRow) : undefined) ||
-      domainFromAbilityPrefix(normalizedAbilityCode);
+    domain = domainFromAbilityPrefix(normalizedAbilityCode);
   }
 
   if (!category) {
-    const categoryCode = categoryFromAbilityPrefix(normalizedAbilityCode);
-    const categoryRow = abilityCodeMap.get(categoryCode);
-    const categoryName = normalizeText(categoryRow?.name);
-
-    category = categoryName || categoryCode;
+    category = categoryFromAbilityPrefix(normalizedAbilityCode);
   }
 
-  const domainKey = detectDomainKey(domain, normalizedAbilityCode);
-
   return {
-    abilityCode: normalizedAbilityCode || "(unknown)",
-    abilityName:
-      abilityName ||
-      normalizeText(link.abilityName) ||
-      normalizedAbilityCode ||
-      "(名称未設定)",
-    domain: domain || (domainKey ? domainLabel(domainKey) : "-"),
-    category: category || "(category未設定)",
-    domainKey,
+    abilityCode: normalizedAbilityCode,
+    abilityName,
+    domain,
+    category,
+    domainKey: detectDomainKey(domain, normalizedAbilityCode),
   };
 }
 
-function buildAbilityDisplayMap(
-  abilityLinks: ObservationAbilityLinkRow[],
-  abilityCodeRows: AbilityCodeRow[],
-): Record<string, AbilityDisplayMeta> {
+function buildAbilityAggregates(args: {
+  abilityLinks: ObservationAbilityLinkRow[];
+  abilityCodeRows: AbilityCodeRow[];
+}) {
+  const { abilityLinks, abilityCodeRows } = args;
   const abilityCodeMap = buildAbilityCodeMap(abilityCodeRows);
-  const result: Record<string, AbilityDisplayMeta> = {};
-
-  const representativeByCode = new Map<string, ObservationAbilityLinkRow>();
-
-  for (const row of abilityLinks) {
-    const code = normalizeAbilityCode(row.abilityCode);
-    if (!code) continue;
-
-    const current = representativeByCode.get(code);
-    const currentHasName = current
-      ? Boolean(normalizeText(current.abilityName))
-      : false;
-    const nextHasName = Boolean(normalizeText(row.abilityName));
-
-    if (!current || (!currentHasName && nextHasName)) {
-      representativeByCode.set(code, row);
-    }
-  }
-
-  for (const [code, row] of representativeByCode.entries()) {
-    result[code] = resolveAbilityDisplayMeta(row, abilityCodeMap);
-  }
-
-  return result;
-}
-
-function sortAbilityRows(rows: AbilityAggregateRow[]) {
-  const order: DomainKey[] = [
-    "health",
-    "humanRelations",
-    "environment",
-    "language",
-    "expression",
-  ];
-
-  return [...rows].sort((a, b) => {
-    if (b.count !== a.count) return b.count - a.count;
-
-    const aKey = detectDomainKey(a.domain, a.abilityCode);
-    const bKey = detectDomainKey(b.domain, b.abilityCode);
-
-    const aOrder = aKey === null ? 999 : order.findIndex((x) => x === aKey);
-    const bOrder = bKey === null ? 999 : order.findIndex((x) => x === bKey);
-
-    if (aOrder !== bOrder) return aOrder - bOrder;
-
-    const categoryDiff = a.category.localeCompare(b.category);
-    if (categoryDiff !== 0) return categoryDiff;
-
-    return a.abilityCode.localeCompare(b.abilityCode);
-  });
-}
-
-function buildAbilitySummaries(
-  abilityLinks: ObservationAbilityLinkRow[],
-  abilityDisplayMap: Record<string, AbilityDisplayMeta>,
-) {
   const domainCounts = emptyDomainCounts();
   const abilityMap = new Map<string, AbilityAggregateRow>();
+  const abilityDisplayMap: Record<string, AbilityDisplayMeta> = {};
 
-  for (const row of abilityLinks) {
-    const abilityCode = normalizeAbilityCode(row.abilityCode) || "(unknown)";
-    const display = abilityDisplayMap[abilityCode] ?? {
-      abilityCode,
-      abilityName:
-        normalizeText(row.abilityName) || abilityCode || "(名称未設定)",
-      domain: normalizeText(row.domain) || domainFromAbilityPrefix(abilityCode),
-      category:
-        normalizeText(row.category) || categoryFromAbilityPrefix(abilityCode),
-      domainKey: detectDomainKey(row.domain, abilityCode),
-    };
+  for (const link of abilityLinks) {
+    const abilityCode = normalizeAbilityCode(link.abilityCode);
+    if (!abilityCode) continue;
 
-    if (display.domainKey) {
-      domainCounts[display.domainKey] += 1;
+    const meta = resolveAbilityDisplayMeta(link, abilityCodeMap);
+    abilityDisplayMap[abilityCode] = meta;
+
+    if (meta.domainKey) {
+      domainCounts[meta.domainKey] += 1;
     }
 
-    const key = `${display.domain}__${display.category}__${display.abilityCode}__${display.abilityName}`;
-    const current = abilityMap.get(key) ?? {
-      abilityCode: display.abilityCode,
-      abilityName: display.abilityName,
-      domain: display.domain,
-      category: display.category,
-      count: 0,
-    };
+    const current =
+      abilityMap.get(abilityCode) ??
+      ({
+        abilityCode,
+        abilityName: meta.abilityName,
+        domain: meta.domain,
+        category: meta.category,
+        count: 0,
+      } satisfies AbilityAggregateRow);
 
     current.count += 1;
-    abilityMap.set(key, current);
+    current.abilityName = meta.abilityName || current.abilityName;
+    current.domain = meta.domain || current.domain;
+    current.category = meta.category || current.category;
+
+    abilityMap.set(abilityCode, current);
   }
 
-  const abilityRows = sortAbilityRows([...abilityMap.values()]);
+  const abilityRows = [...abilityMap.values()].sort((a, b) => {
+    const countDiff = b.count - a.count;
+    if (countDiff !== 0) return countDiff;
+    return a.abilityCode.localeCompare(b.abilityCode);
+  });
 
-  const domainMap = new Map<
-    string,
-    {
-      domainKey: DomainKey | null;
-      domain: string;
-      totalCount: number;
-      categories: Map<string, AbilityCategoryGroup>;
-    }
-  >();
-
-  for (const row of abilityRows) {
-    const key = detectDomainKey(row.domain, row.abilityCode);
-    const domainName = row.domain || (key ? domainLabel(key) : "-");
-
-    const domainEntry = domainMap.get(domainName) ?? {
-      domainKey: key,
-      domain: domainName,
-      totalCount: 0,
-      categories: new Map<string, AbilityCategoryGroup>(),
-    };
-
-    domainEntry.totalCount += row.count;
-
-    const categoryEntry = domainEntry.categories.get(row.category) ?? {
-      category: row.category,
-      totalCount: 0,
-      rows: [],
-    };
-
-    categoryEntry.totalCount += row.count;
-    categoryEntry.rows.push(row);
-
-    domainEntry.categories.set(row.category, categoryEntry);
-    domainMap.set(domainName, domainEntry);
-  }
-
-  const domainOrder: DomainKey[] = [
-    "health",
-    "humanRelations",
-    "environment",
-    "language",
-    "expression",
-  ];
-
-  const abilityGroups: AbilityDomainGroup[] = [...domainMap.values()]
-    .map((domainEntry) => ({
-      domainKey: domainEntry.domainKey,
-      domain: domainEntry.domain,
-      totalCount: domainEntry.totalCount,
-      categories: [...domainEntry.categories.values()]
-        .map((categoryEntry) => ({
-          category: categoryEntry.category,
-          totalCount: categoryEntry.totalCount,
-          rows: sortAbilityRows(categoryEntry.rows),
-        }))
-        .sort((a, b) => {
-          if (b.totalCount !== a.totalCount) return b.totalCount - a.totalCount;
-          return a.category.localeCompare(b.category);
-        }),
-    }))
-    .sort((a, b) => {
-      const aOrder =
-        a.domainKey === null
-          ? 999
-          : domainOrder.findIndex((x) => x === a.domainKey);
-      const bOrder =
-        b.domainKey === null
-          ? 999
-          : domainOrder.findIndex((x) => x === b.domainKey);
-
-      if (aOrder !== bOrder) return aOrder - bOrder;
-      if (b.totalCount !== a.totalCount) return b.totalCount - a.totalCount;
-      return a.domain.localeCompare(b.domain);
-    });
+  const abilityGroups = buildAbilityGroups(abilityRows);
 
   return {
     domainCounts,
     abilityRows,
     abilityGroups,
+    abilityDisplayMap,
   };
 }
 
-function buildChildRows(observations: ObservationRecordRow[]) {
-  const childMap = new Map<string, ChildAggregateRow>();
-
-  for (const row of observations) {
-    const childName = normalizeText(row.childName);
-    if (!childName) continue;
-
-    const current = childMap.get(childName) ?? {
-      childName,
-      count: 0,
-    };
-    current.count += 1;
-    childMap.set(childName, current);
-  }
-
-  return [...childMap.values()].sort((a, b) => {
-    if (b.count !== a.count) return b.count - a.count;
-    return a.childName.localeCompare(b.childName);
-  });
-}
-
-function isPracticeCodeActiveLike(status?: string | null) {
-  const value = normalizeText(status).toUpperCase();
-  if (!value) return true;
-  return value !== "ARCHIVED" && value !== "DELETED" && value !== "INACTIVE";
-}
-
-async function loadPracticeRecommendationMaster(
-  client: ReportingClient,
-): Promise<PracticeRecommendationMaster> {
-  if (practiceRecommendationMasterCache) {
-    return practiceRecommendationMasterCache;
-  }
-
-  if (practiceRecommendationMasterPromise) {
-    return practiceRecommendationMasterPromise;
-  }
-
-  practiceRecommendationMasterPromise = Promise.all([
-    listAll(client.models.AbilityPracticeLink),
-    listAll(client.models.AbilityPracticeAgg),
-    listAll(client.models.PracticeCode),
-  ])
-    .then(([abilityPracticeLinks, abilityPracticeAggs, practiceCodeRows]) => {
-      const value: PracticeRecommendationMaster = {
-        abilityPracticeLinks,
-        abilityPracticeAggs,
-        practiceCodeRows: practiceCodeRows.filter((row) =>
-          isPracticeCodeActiveLike(row.status),
-        ),
-      };
-      practiceRecommendationMasterCache = value;
-      return value;
-    })
-    .finally(() => {
-      practiceRecommendationMasterPromise = null;
-    });
-
-  return practiceRecommendationMasterPromise;
-}
-
-export function clearPracticeRecommendationCache() {
-  practiceRecommendationMasterCache = null;
-  practiceRecommendationMasterPromise = null;
-}
-
-function buildObservedAbilityCountMap(
-  abilityLinks: ObservationAbilityLinkRow[],
-): Map<string, number> {
-  const map = new Map<string, number>();
-
-  for (const row of abilityLinks) {
-    const code = normalizeAbilityCode(row.abilityCode);
-    if (!code) continue;
-    map.set(code, (map.get(code) ?? 0) + 1);
-  }
-
-  return map;
-}
-
-function buildPracticePeriodActivityMap(
-  rows: PracticeImpactRow[],
-): Map<string, PracticePeriodActivity> {
-  const map = new Map<string, PracticePeriodActivity>();
+function buildAbilityGroups(rows: AbilityAggregateRow[]): AbilityDomainGroup[] {
+  const domainMap = new Map<string, AbilityDomainGroup>();
 
   for (const row of rows) {
-    const practiceCode = normalizeText(row.practiceCode);
-    if (!practiceCode) continue;
+    const domainKey = detectDomainKey(row.domain, row.abilityCode);
+    const domain = row.domain || (domainKey ? domainLabel(domainKey) : "-");
+    const domainMapKey = domainKey ?? domain;
 
-    map.set(practiceCode, {
-      practiceTitle: normalizeText(row.practiceTitle) || practiceCode,
-      observationCount: normalizeNumber(row.observationCount),
-      abilityLinkCount: normalizeNumber(row.abilityLinkCount),
-    });
-  }
-
-  return map;
-}
-
-function buildPracticeCodeMap(rows: PracticeCodeRow[]) {
-  const map = new Map<string, PracticeCodeRow>();
-
-  for (const row of rows) {
-    const code = normalizeText(row.practice_code);
-    if (!code) continue;
-
-    const current = map.get(code);
-    if (!current) {
-      map.set(code, row);
-      continue;
-    }
-
-    const currentHasTenant = Boolean(normalizeText(current.tenantId));
-    const nextHasTenant = Boolean(normalizeText(row.tenantId));
-
-    if (!currentHasTenant && nextHasTenant) {
-      map.set(code, row);
-    }
-  }
-
-  return map;
-}
-
-function formatRecommendedPracticeLabel(row: RecommendedPracticeRow) {
-  const title = normalizeText(row.practiceTitle);
-  const code = normalizeText(row.practiceCode);
-
-  if (title && title !== code) {
-    return title;
-  }
-
-  return code;
-}
-
-function buildRecommendedPracticeNote(
-  rows: RecommendedPracticeRow[],
-  limit = 4,
-) {
-  if (rows.length === 0) {
-    return "";
-  }
-
-  return `候補Practice: ${rows
-    .slice(0, limit)
-    .map((row) => formatRecommendedPracticeLabel(row))
-    .join("、")}`;
-}
-
-function recommendPracticesForWeakDomains(args: {
-  comparison: PlanActualComparison;
-  observation: ObservationBundle;
-  master: PracticeRecommendationMaster;
-  limit?: number;
-}): RecommendedPracticeRow[] {
-  const { comparison, observation, master, limit = 5 } = args;
-
-  const underRows = comparison.rows.filter((row) => row.status === "UNDER");
-  if (underRows.length === 0) {
-    return [];
-  }
-
-  const weakDomainKeySet = new Set<DomainKey>(
-    underRows.map((row) => row.domainKey),
-  );
-
-  const gapWeightByDomain = new Map<DomainKey, number>(
-    underRows.map((row) => [row.domainKey, 1 + Math.abs(row.gapShare) * 5]),
-  );
-
-  const observedAbilityCountMap = buildObservedAbilityCountMap(
-    observation.abilityLinks,
-  );
-  const practicePeriodActivityMap = buildPracticePeriodActivityMap(
-    observation.practiceRows,
-  );
-  const practiceCodeMap = buildPracticeCodeMap(master.practiceCodeRows);
-
-  const aggByAbility = new Map<string, AbilityPracticeAggRow[]>();
-  for (const row of master.abilityPracticeAggs) {
-    const abilityCode = normalizeAbilityCode(row.abilityCode);
-    if (!abilityCode) continue;
-    const current = aggByAbility.get(abilityCode) ?? [];
-    current.push(row);
-    aggByAbility.set(abilityCode, current);
-  }
-
-  const linkByAbility = new Map<string, AbilityPracticeLinkRow[]>();
-  for (const row of master.abilityPracticeLinks) {
-    const abilityCode = normalizeAbilityCode(row.abilityCode);
-    if (!abilityCode) continue;
-    const current = linkByAbility.get(abilityCode) ?? [];
-    current.push(row);
-    linkByAbility.set(abilityCode, current);
-  }
-
-  const targetAbilities = observation.abilityCodeRows
-    .map((row) => {
-      const abilityCode = normalizeAbilityCode(row.code);
-      if (!abilityCode) return null;
-      if (!isLeafAbilityRow(row)) return null;
-
-      const domainKey = detectDomainKey(row.domain, abilityCode);
-      if (!domainKey || !weakDomainKeySet.has(domainKey)) return null;
-
-      return {
-        abilityCode,
-        abilityName: normalizeText(row.name) || abilityCode,
+    const domainGroup =
+      domainMap.get(domainMapKey) ??
+      ({
         domainKey,
-        domainLabel: domainLabel(domainKey),
-        observedCount: observedAbilityCountMap.get(abilityCode) ?? 0,
+        domain,
+        totalCount: 0,
+        categories: [],
+      } satisfies AbilityDomainGroup);
+
+    let categoryGroup = domainGroup.categories.find(
+      (group) => group.category === row.category,
+    );
+    if (!categoryGroup) {
+      categoryGroup = {
+        category: row.category || "(category未設定)",
+        totalCount: 0,
+        rows: [],
       };
-    })
-    .filter(
-      (
-        value,
-      ): value is {
-        abilityCode: string;
-        abilityName: string;
-        domainKey: DomainKey;
-        domainLabel: string;
-        observedCount: number;
-      } => Boolean(value),
-    )
-    .sort((a, b) => {
-      if (a.observedCount !== b.observedCount) {
-        return a.observedCount - b.observedCount;
-      }
-      return a.abilityCode.localeCompare(b.abilityCode);
-    });
-
-  if (targetAbilities.length === 0) {
-    return [];
-  }
-
-  type WorkRow = {
-    practiceCode: string;
-    practiceTitle: string;
-    rawScore: number;
-    matchedAbilityCodes: Set<string>;
-    matchedAbilityNames: Set<string>;
-    weakDomainKeys: Set<DomainKey>;
-    observedThisWeek: boolean;
-    observationCountInPeriod: number;
-    abilityLinkCountInPeriod: number;
-  };
-
-  const workMap = new Map<string, WorkRow>();
-
-  const accumulate = (input: {
-    practiceCode: string;
-    baseScore: number;
-    abilityCode: string;
-    abilityName: string;
-    domainKey: DomainKey;
-  }) => {
-    const { practiceCode, baseScore, abilityCode, abilityName, domainKey } =
-      input;
-
-    const periodActivity = practicePeriodActivityMap.get(practiceCode);
-    const observedCount = observedAbilityCountMap.get(abilityCode) ?? 0;
-
-    const deficitBoost =
-      observedCount <= 0
-        ? 2.4
-        : observedCount === 1
-          ? 1.8
-          : observedCount === 2
-            ? 1.3
-            : 1.0;
-
-    const gapWeight = gapWeightByDomain.get(domainKey) ?? 1;
-
-    const alreadyObservedPenalty = periodActivity
-      ? Math.max(
-          0.45,
-          1 -
-            periodActivity.abilityLinkCount * 0.12 -
-            periodActivity.observationCount * 0.08,
-        )
-      : 1.1;
-
-    const contribution =
-      baseScore * deficitBoost * gapWeight * alreadyObservedPenalty;
-
-    const current = workMap.get(practiceCode) ?? {
-      practiceCode,
-      practiceTitle:
-        normalizeText(practiceCodeMap.get(practiceCode)?.name) ||
-        normalizeText(periodActivity?.practiceTitle) ||
-        practiceCode,
-      rawScore: 0,
-      matchedAbilityCodes: new Set<string>(),
-      matchedAbilityNames: new Set<string>(),
-      weakDomainKeys: new Set<DomainKey>(),
-      observedThisWeek: Boolean(periodActivity),
-      observationCountInPeriod: periodActivity?.observationCount ?? 0,
-      abilityLinkCountInPeriod: periodActivity?.abilityLinkCount ?? 0,
-    };
-
-    current.rawScore += contribution;
-    current.matchedAbilityCodes.add(abilityCode);
-    current.matchedAbilityNames.add(abilityName);
-    current.weakDomainKeys.add(domainKey);
-
-    workMap.set(practiceCode, current);
-  };
-
-  for (const ability of targetAbilities) {
-    const aggRows = aggByAbility.get(ability.abilityCode) ?? [];
-
-    if (aggRows.length > 0) {
-      for (const row of aggRows) {
-        const practiceCode = normalizeText(row.practiceCode);
-        if (!practiceCode) continue;
-
-        const baseScore =
-          normalizeNumber(row.scoreSum) * 1.5 +
-          normalizeNumber(row.scoreMax) * 2 +
-          normalizeNumber(row.linkCount);
-
-        if (baseScore <= 0) continue;
-
-        accumulate({
-          practiceCode,
-          baseScore,
-          abilityCode: ability.abilityCode,
-          abilityName: ability.abilityName,
-          domainKey: ability.domainKey,
-        });
-      }
-      continue;
+      domainGroup.categories.push(categoryGroup);
     }
 
-    const linkRows = linkByAbility.get(ability.abilityCode) ?? [];
-    for (const row of linkRows) {
-      const practiceCode = normalizeText(row.practiceCode);
-      if (!practiceCode) continue;
+    domainGroup.totalCount += row.count;
+    categoryGroup.totalCount += row.count;
+    categoryGroup.rows.push(row);
+    domainMap.set(domainMapKey, domainGroup);
+  }
 
-      const baseScore = Math.max(1, normalizeNumber(row.score) * 3);
+  const groups = [...domainMap.values()].sort((a, b) => {
+    const ai = a.domainKey ? DOMAIN_KEYS.indexOf(a.domainKey) : 999;
+    const bi = b.domainKey ? DOMAIN_KEYS.indexOf(b.domainKey) : 999;
+    if (ai !== bi) return ai - bi;
+    return a.domain.localeCompare(b.domain);
+  });
 
-      accumulate({
-        practiceCode,
-        baseScore,
-        abilityCode: ability.abilityCode,
-        abilityName: ability.abilityName,
-        domainKey: ability.domainKey,
+  for (const group of groups) {
+    group.categories.sort((a, b) => {
+      const totalDiff = b.totalCount - a.totalCount;
+      if (totalDiff !== 0) return totalDiff;
+      return a.category.localeCompare(b.category);
+    });
+
+    for (const category of group.categories) {
+      category.rows.sort((a, b) => {
+        const countDiff = b.count - a.count;
+        if (countDiff !== 0) return countDiff;
+        return a.abilityCode.localeCompare(b.abilityCode);
       });
     }
   }
 
-  return [...workMap.values()]
-    .map((row) => {
-      const coverageBoost = 1 + Math.max(0, row.weakDomainKeys.size - 1) * 0.25;
-      const score = row.rawScore * coverageBoost;
-      const weakDomainKeys = [...row.weakDomainKeys.values()];
-      const weakDomainLabels = weakDomainKeys.map((key) => domainLabel(key));
+  return groups;
+}
 
-      return {
-        practiceCode: row.practiceCode,
-        practiceTitle: row.practiceTitle,
-        score,
-        weakDomainKeys,
-        weakDomainLabels,
-        matchedAbilityCodes: [...row.matchedAbilityCodes.values()],
-        matchedAbilityNames: [...row.matchedAbilityNames.values()],
-        observedThisWeek: row.observedThisWeek,
-        observationCountInPeriod: row.observationCountInPeriod,
-        abilityLinkCountInPeriod: row.abilityLinkCountInPeriod,
-      } satisfies RecommendedPracticeRow;
-    })
-    .filter((row) => normalizeText(row.practiceCode) !== "(practice未設定)")
+function buildChildRows(observations: ObservationRecordRow[]) {
+  const map = new Map<string, number>();
+
+  for (const row of observations) {
+    const childName = normalizeText(row.childName);
+    if (!childName) continue;
+    map.set(childName, (map.get(childName) ?? 0) + 1);
+  }
+
+  return [...map.entries()]
+    .map(([childName, count]) => ({ childName, count }))
     .sort((a, b) => {
-      if (b.score !== a.score) return b.score - a.score;
-      if (a.observedThisWeek !== b.observedThisWeek) {
-        return a.observedThisWeek ? 1 : -1;
-      }
-      if (a.abilityLinkCountInPeriod !== b.abilityLinkCountInPeriod) {
-        return a.abilityLinkCountInPeriod - b.abilityLinkCountInPeriod;
-      }
-      if (a.observationCountInPeriod !== b.observationCountInPeriod) {
-        return a.observationCountInPeriod - b.observationCountInPeriod;
-      }
-      return a.practiceTitle.localeCompare(b.practiceTitle);
-    })
-    .slice(0, limit);
+      const countDiff = b.count - a.count;
+      if (countDiff !== 0) return countDiff;
+      return a.childName.localeCompare(b.childName);
+    });
+}
+
+function filterActiveAbilityLinks(rows: ObservationAbilityLinkRow[]) {
+  return rows.filter((row) => isNotArchivedStatus(row.status));
+}
+
+function filterAbilityLinksByObservationIds(
+  abilityLinks: ObservationAbilityLinkRow[],
+  observations: ObservationRecordRow[],
+) {
+  const observationIds = new Set(
+    observations.map((row) => normalizeText(row.id)).filter(Boolean),
+  );
+
+  if (observationIds.size === 0) {
+    return abilityLinks;
+  }
+
+  return abilityLinks.filter((row) => {
+    const observationId = abilityLinkObservationId(row);
+    return !observationId || observationIds.has(observationId);
+  });
 }
 
 export async function loadObservationBundle(
@@ -1462,54 +1225,49 @@ export async function loadObservationBundle(
   fromDate: string,
   toDate: string,
 ): Promise<ObservationBundle> {
-  const rawObservations = await listAll(client.models.ObservationRecord, {
-    filter: {
-      and: [
-        buildEqFilter("classroomId", classroomId),
-        ...buildDateRangeFilters(fromDate, toDate),
-        buildEqFilter("status", "ACTIVE"),
-      ],
-    },
-  });
+  const [abilityCodeRows, observationRows, rawAbilityLinks] = await Promise.all(
+    [
+      loadAbilityCodeRows(client),
+      listAll(client.models.ObservationRecord, {
+        filter: {
+          and: [
+            buildEqFilter("classroomId", classroomId),
+            ...buildDateRangeFilters(fromDate, toDate),
+          ],
+        },
+      }),
+      listAll(client.models.ObservationAbilityLink, {
+        filter: {
+          and: [
+            buildEqFilter("classroomId", classroomId),
+            ...buildDateRangeFilters(fromDate, toDate),
+          ],
+        },
+      }),
+    ],
+  );
 
-  const abilityLinks = await listAll(client.models.ObservationAbilityLink, {
-    filter: {
-      and: [
-        buildEqFilter("classroomId", classroomId),
-        ...buildDateRangeFilters(fromDate, toDate),
-        buildEqFilter("status", "ACTIVE"),
-      ],
-    },
-  });
+  const observations = excludeTranscriptObservations(observationRows);
+  const abilityLinks = filterAbilityLinksByObservationIds(
+    filterActiveAbilityLinks(rawAbilityLinks),
+    observations,
+  );
 
-  const abilityCodeRows = await loadAbilityCodeRows(client);
-
-  const observations = excludeTranscriptObservations(rawObservations);
-  const abilityDisplayMap = buildAbilityDisplayMap(
+  const abilityAgg = buildAbilityAggregates({
     abilityLinks,
     abilityCodeRows,
-  );
-  const { domainCounts, abilityRows, abilityGroups } = buildAbilitySummaries(
-    abilityLinks,
-    abilityDisplayMap,
-  );
-  const childRows = buildChildRows(observations);
-  const evidenceRows = buildEvidenceRows(observations, abilityLinks);
-  const practiceRows = buildPracticeImpactRows({
-    observations,
-    abilityLinks,
   });
 
   return {
     observations,
     abilityLinks,
-    domainCounts,
-    abilityRows,
-    abilityGroups,
-    childRows,
-    evidenceRows,
-    practiceRows,
-    abilityDisplayMap,
+    domainCounts: abilityAgg.domainCounts,
+    abilityRows: abilityAgg.abilityRows,
+    abilityGroups: abilityAgg.abilityGroups,
+    childRows: buildChildRows(observations),
+    evidenceRows: buildEvidenceRows(observations, abilityLinks),
+    practiceRows: buildPracticeImpactRows({ observations, abilityLinks }),
+    abilityDisplayMap: abilityAgg.abilityDisplayMap,
     abilityCodeRows,
   };
 }
@@ -1524,193 +1282,529 @@ export function filterBundleByChild(
     (row) => normalizeText(row.childName) === normalizedChildName,
   );
 
-  const abilityLinks = bundle.abilityLinks.filter(
-    (row) => abilityLinkChildName(row) === normalizedChildName,
+  const observationIds = new Set(
+    observations.map((row) => normalizeText(row.id)).filter(Boolean),
   );
 
-  const { domainCounts, abilityRows, abilityGroups } = buildAbilitySummaries(
-    abilityLinks,
-    bundle.abilityDisplayMap,
-  );
+  const abilityLinks = bundle.abilityLinks.filter((row) => {
+    const linkChildName = normalizeText(row.childName);
+    const observationId = abilityLinkObservationId(row);
 
-  const childRows: ChildAggregateRow[] =
-    normalizedChildName === ""
-      ? []
-      : [
-          {
-            childName: normalizedChildName,
-            count: observations.length,
-          },
-        ];
+    return (
+      linkChildName === normalizedChildName ||
+      (!!observationId && observationIds.has(observationId))
+    );
+  });
 
-  const evidenceRows = buildEvidenceRows(observations, abilityLinks);
-  const practiceRows = buildPracticeImpactRows({
-    observations,
+  const abilityAgg = buildAbilityAggregates({
     abilityLinks,
+    abilityCodeRows: bundle.abilityCodeRows,
   });
 
   return {
     observations,
     abilityLinks,
-    domainCounts,
-    abilityRows,
-    abilityGroups,
-    childRows,
-    evidenceRows,
-    practiceRows,
-    abilityDisplayMap: bundle.abilityDisplayMap,
+    domainCounts: abilityAgg.domainCounts,
+    abilityRows: abilityAgg.abilityRows,
+    abilityGroups: abilityAgg.abilityGroups,
+    childRows: buildChildRows(observations),
+    evidenceRows: buildEvidenceRows(observations, abilityLinks),
+    practiceRows: buildPracticeImpactRows({ observations, abilityLinks }),
+    abilityDisplayMap: abilityAgg.abilityDisplayMap,
     abilityCodeRows: bundle.abilityCodeRows,
   };
 }
 
-function sumDomainCounts(value: DomainCounts) {
+function buildPlanDomainCounts(row: unknown, suffixes: string[]): DomainCounts {
+  const out = emptyDomainCounts();
+
+  const readFirst = (fields: string[]) => {
+    for (const field of fields) {
+      const value = readRecordValue(row, field);
+      if (
+        value !== undefined &&
+        value !== null &&
+        String(value).trim() !== ""
+      ) {
+        return normalizeNumber(value);
+      }
+    }
+    return 0;
+  };
+
+  out.health = readFirst(suffixes.map((suffix) => `abilityHealth${suffix}`));
+  out.humanRelations = readFirst(
+    suffixes.map((suffix) => `abilityHumanRelations${suffix}`),
+  );
+  out.environment = readFirst(
+    suffixes.map((suffix) => `abilityEnvironment${suffix}`),
+  );
+  out.language = readFirst(
+    suffixes.map((suffix) => `abilityLanguage${suffix}`),
+  );
+  out.expression = readFirst(
+    suffixes.map((suffix) => `abilityExpression${suffix}`),
+  );
+
+  return out;
+}
+
+function hasAnyDomainValue(counts: DomainCounts) {
+  return Object.values(counts).some((value) => value > 0);
+}
+
+function pickLatestByDate<TRow>(
+  rows: TRow[],
+  dateFields: string[],
+): TRow | null {
   return (
-    value.health +
-    value.humanRelations +
-    value.environment +
-    value.language +
-    value.expression
+    sortByTextFieldDesc(rows, [
+      ...dateFields,
+      "updatedAt",
+      "createdAt",
+      "id",
+    ])[0] ?? null
   );
 }
 
-function toPlanDomainCountsFromMonth(
-  monthPlan?: ClassMonthPlanRow | null,
-): DomainCounts {
-  return {
-    health: Number(monthPlan?.abilityHealthC ?? 0),
-    humanRelations: Number(monthPlan?.abilityHumanRelationsC ?? 0),
-    environment: Number(monthPlan?.abilityEnvironmentC ?? 0),
-    language: Number(monthPlan?.abilityLanguageC ?? 0),
-    expression: Number(monthPlan?.abilityExpressionC ?? 0),
-  };
-}
-
-function toPlanDomainCountsFromWeek(
-  weekPlan?: ClassWeekPlanRow | null,
-): DomainCounts {
-  return {
-    health: Number(weekPlan?.abilityHealthD ?? 0),
-    humanRelations: Number(weekPlan?.abilityHumanRelationsD ?? 0),
-    environment: Number(weekPlan?.abilityEnvironmentD ?? 0),
-    language: Number(weekPlan?.abilityLanguageD ?? 0),
-    expression: Number(weekPlan?.abilityExpressionD ?? 0),
-  };
-}
-
-function overlaps(
-  periodStart?: string | null,
-  periodEnd?: string | null,
-  fromDate?: string | null,
-  toDate?: string | null,
+function overlapsPeriod(
+  row: unknown,
+  fromDate: string,
+  toDate: string,
+  startFields: string[],
+  endFields: string[],
 ) {
-  const start = normalizeText(periodStart);
-  const end = normalizeText(periodEnd);
-  const from = normalizeText(fromDate);
-  const to = normalizeText(toDate);
-
-  if (!from || !to) return false;
-
-  const normalizedStart = start || "0000-01-01";
-  const normalizedEnd = end || "9999-12-31";
-
-  return normalizedStart <= to && normalizedEnd >= from;
+  const start = startFields.map((field) => readText(row, field)).find(Boolean);
+  const end = endFields.map((field) => readText(row, field)).find(Boolean);
+  if (!start && !end) return true;
+  return (!start || start <= toDate) && (!end || end >= fromDate);
 }
 
-function pickBestOverlapping<
-  T extends { periodStart?: string | null; periodEnd?: string | null },
->(rows: T[], fromDate: string, toDate: string): T | null {
-  const candidates = rows.filter((row) =>
-    overlaps(row.periodStart, row.periodEnd, fromDate, toDate),
-  );
+function parseAbilitySummaryDomainCounts(json?: string | null): DomainCounts {
+  const out = emptyDomainCounts();
+  if (!json) return out;
 
-  if (candidates.length === 0) {
-    return null;
+  try {
+    const parsed: unknown = JSON.parse(json);
+    if (!Array.isArray(parsed)) return out;
+
+    for (const item of parsed) {
+      if (!item || typeof item !== "object") continue;
+      const row = item as Record<string, unknown>;
+      const abilityCode = normalizeAbilityCode(
+        typeof row.abilityCode === "string" ||
+          typeof row.abilityCode === "number"
+          ? row.abilityCode
+          : undefined,
+      );
+      const abilityDomain = normalizeText(
+        typeof row.abilityDomain === "string" ||
+          typeof row.abilityDomain === "number"
+          ? row.abilityDomain
+          : undefined,
+      );
+      const key = detectDomainKey(abilityDomain, abilityCode);
+      if (!key) continue;
+      out[key] += Math.max(0, normalizeNumber(row.weight));
+    }
+  } catch {
+    return out;
   }
 
-  return [...candidates].sort((a, b) => {
-    const aStart = normalizeText(a.periodStart);
-    const bStart = normalizeText(b.periodStart);
-    const startDiff = bStart.localeCompare(aStart);
-    if (startDiff !== 0) return startDiff;
-
-    const aEnd = normalizeText(a.periodEnd);
-    const bEnd = normalizeText(b.periodEnd);
-    return bEnd.localeCompare(aEnd);
-  })[0];
+  return out;
 }
 
-export async function loadPlanContext(
+function parseAbilitySummaryAbilityNames(json?: string | null): string[] {
+  if (!json) return [];
+
+  try {
+    const parsed: unknown = JSON.parse(json);
+    if (!Array.isArray(parsed)) return [];
+
+    return Array.from(
+      new Set(
+        parsed
+          .map((item) => {
+            if (!item || typeof item !== "object") return "";
+            const row = item as Record<string, unknown>;
+            return normalizeText(
+              typeof row.abilityName === "string" ||
+                typeof row.abilityName === "number"
+                ? row.abilityName
+                : "",
+            );
+          })
+          .filter(Boolean),
+      ),
+    ).sort((a, b) => a.localeCompare(b));
+  } catch {
+    return [];
+  }
+}
+
+function buildReferenceDomainCounts(
+  row: ClassPlanPhraseSelectionRow,
+): DomainCounts {
+  const direct = {
+    health: normalizeNumber(row.relatedHealth),
+    humanRelations: normalizeNumber(row.relatedHumanRelations),
+    environment: normalizeNumber(row.relatedEnvironment),
+    language: normalizeNumber(row.relatedLanguage),
+    expression: normalizeNumber(row.relatedExpression),
+  } satisfies DomainCounts;
+
+  if (hasAnyDomainValue(direct)) return direct;
+  return parseAbilitySummaryDomainCounts(row.abilitySummaryJson);
+}
+
+function buildReferenceSummary(
+  planScopeType: PlanReferenceScopeType,
+  rows: ClassPlanPhraseSelectionRow[],
+): PlanReferenceSummary {
+  const title = planScopeType === "YEAR" ? "年間方針" : "四半期方針";
+  const activeRows = [...rows]
+    .filter((row) => isNotArchivedStatus(row.status))
+    .filter(
+      (row) => normalizeText(row.planScopeType).toUpperCase() === planScopeType,
+    )
+    .sort((a, b) => Number(a.sortOrder ?? 0) - Number(b.sortOrder ?? 0));
+
+  const selections: PlanReferenceSelectionSummary[] = activeRows.map((row) => {
+    const domainCounts = buildReferenceDomainCounts(row);
+    const rawAbilityCodes: unknown[] = Array.isArray(row.abilityCodes)
+      ? row.abilityCodes
+      : [];
+    const normalizedAbilityCodes: string[] = rawAbilityCodes
+      .map((code: unknown) =>
+        normalizeAbilityCode(
+          typeof code === "string" || typeof code === "number" ? code : "",
+        ),
+      )
+      .filter((code): code is string => code.length > 0);
+    const abilityCodes: string[] = Array.from(
+      new Set<string>(normalizedAbilityCodes),
+    ).sort((a: string, b: string) => a.localeCompare(b));
+
+    return {
+      id: String(row.id ?? ""),
+      planScopeType,
+      phraseText: normalizeText(row.phraseTextSnapshot),
+      domainCounts,
+      abilityCodes,
+      abilityNames: parseAbilitySummaryAbilityNames(row.abilitySummaryJson),
+      sortOrder: Number(row.sortOrder ?? 0),
+      selectedAt: normalizeText(row.selectedAt),
+    };
+  });
+
+  const domainCounts = selections.reduce(
+    (acc, row) => addDomainCounts(acc, row.domainCounts),
+    emptyDomainCounts(),
+  );
+
+  const sortedDomains = DOMAIN_KEYS.map((key) => ({
+    key,
+    label: domainLabel(key),
+    value: domainCounts[key],
+  }))
+    .filter((row) => row.value > 0)
+    .sort((a, b) => b.value - a.value);
+
+  const topDomainLabels = sortedDomains.slice(0, 3).map((row) => row.label);
+  const trendText = buildReferenceTrendText(domainCounts, planScopeType);
+
+  return {
+    planScopeType,
+    title,
+    phraseCount: selections.length,
+    domainCounts,
+    trendText,
+    topDomainLabels,
+    abilityNames: Array.from(
+      new Set(selections.flatMap((row) => row.abilityNames)),
+    )
+      .sort((a, b) => a.localeCompare(b))
+      .slice(0, 12),
+    phraseTexts: selections.map((row) => row.phraseText).filter(Boolean),
+    selections,
+  };
+}
+
+function buildReferenceTrendText(
+  counts: DomainCounts,
+  planScopeType: PlanReferenceScopeType,
+): string {
+  const label = planScopeType === "YEAR" ? "年間方針" : "四半期方針";
+  const rows = DOMAIN_KEYS.map((key) => ({
+    key,
+    label: domainLabel(key),
+    value: counts[key],
+  }))
+    .filter((row) => row.value > 0)
+    .sort((a, b) => b.value - a.value);
+
+  if (rows.length === 0) {
+    return `${label}として関連する育ちはまだ選択されていません。`;
+  }
+
+  const top = rows[0];
+  const related = rows.slice(1, 4).map((row) => row.label);
+
+  if (related.length === 0) {
+    return `${top.label}を中心とした${label}の構成です。`;
+  }
+
+  return `${top.label}を中心に、${related.join("・")}にも広がる${label}の構成です。`;
+}
+
+function buildMonthSelectionDomainCounts(
+  row: ClassMonthPlanPhraseSelectionRow,
+): DomainCounts {
+  const direct = {
+    health: normalizeNumber(row.scoreHealth),
+    humanRelations: normalizeNumber(row.scoreHumanRelations),
+    environment: normalizeNumber(row.scoreEnvironment),
+    language: normalizeNumber(row.scoreLanguage),
+    expression: normalizeNumber(row.scoreExpression),
+  } satisfies DomainCounts;
+
+  if (hasAnyDomainValue(direct)) return direct;
+  return parseAbilitySummaryDomainCounts(row.abilitySummaryJson);
+}
+
+function buildMonthSelectionsDomainCounts(
+  rows: ClassMonthPlanPhraseSelectionRow[],
+): DomainCounts {
+  return rows
+    .filter((row) => isNotArchivedStatus(row.status))
+    .reduce(
+      (acc, row) => addDomainCounts(acc, buildMonthSelectionDomainCounts(row)),
+      emptyDomainCounts(),
+    );
+}
+
+function buildMonthSelectionsGoalText(
+  rows: ClassMonthPlanPhraseSelectionRow[],
+): string {
+  return [...rows]
+    .filter((row) => isNotArchivedStatus(row.status))
+    .sort((a, b) => Number(a.sortOrder ?? 0) - Number(b.sortOrder ?? 0))
+    .map((row) => normalizeText(row.phraseTextSnapshot))
+    .filter(Boolean)
+    .join("\n");
+}
+
+async function loadMonthPhraseSelections(
+  client: ReportingClient,
+  monthPlan?: ClassMonthPlanRow | null,
+): Promise<ClassMonthPlanPhraseSelectionRow[]> {
+  const monthPlanId = normalizeText(monthPlan?.id);
+  if (!monthPlanId) return [];
+
+  return listAll(client.models.ClassMonthPlanPhraseSelection, {
+    filter: buildEqFilter("classMonthPlanId", monthPlanId),
+  }).catch(() => [] as ClassMonthPlanPhraseSelectionRow[]);
+}
+
+async function loadReferenceSelections(
+  client: ReportingClient,
+  classroomId: string,
+  fiscalYear: number | null,
+  annualPlanId?: string | null,
+  quarterPlanId?: string | null,
+): Promise<ClassPlanPhraseSelectionRow[]> {
+  const candidateRows = await listAll(
+    client.models.ClassPlanPhraseSelection,
+  ).catch(() => [] as ClassPlanPhraseSelectionRow[]);
+
+  return candidateRows.filter((row) => {
+    if (!isNotArchivedStatus(row.status)) return false;
+
+    const rowFiscalYear = Number(row.fiscalYear ?? 0);
+    if (fiscalYear && rowFiscalYear && rowFiscalYear !== fiscalYear)
+      return false;
+
+    const rowClassroomId = normalizeText(row.classroomId);
+    if (rowClassroomId && rowClassroomId !== classroomId) return false;
+
+    const scope = normalizeText(row.planScopeType).toUpperCase();
+    if (scope === "YEAR") {
+      return !!annualPlanId && row.classAnnualPlanId === annualPlanId;
+    }
+    if (scope === "TERM") {
+      return !!quarterPlanId && row.classQuarterPlanId === quarterPlanId;
+    }
+    return false;
+  });
+}
+
+async function loadPlanContext(
   client: ReportingClient,
   classroomId: string,
   fromDate: string,
   toDate: string,
 ): Promise<PlanContextBundle> {
-  const annualPlans = await listAll(client.models.ClassAnnualPlan, {
+  const annualRows = await listAll(client.models.ClassAnnualPlan, {
     filter: buildEqFilter("classroomId", classroomId),
-  });
+  }).catch(() => [] as ClassAnnualPlanRow[]);
 
-  const annualPlan = pickBestOverlapping(annualPlans, fromDate, toDate);
+  const annualPlan =
+    pickLatestByDate(
+      annualRows.filter((row) =>
+        overlapsPeriod(row, fromDate, toDate, ["periodStart"], ["periodEnd"]),
+      ),
+      ["periodStart", "periodEnd"],
+    ) ?? pickLatestByDate(annualRows, ["periodStart", "periodEnd"]);
 
-  let quarterPlan: ClassQuarterPlanRow | null = null;
-  let monthPlan: ClassMonthPlanRow | null = null;
-  let weekPlan: ClassWeekPlanRow | null = null;
+  const quarterRows = annualPlan
+    ? await listAll(client.models.ClassQuarterPlan, {
+        filter: buildEqFilter("classAnnualPlanId", annualPlan.id),
+      }).catch(() => [] as ClassQuarterPlanRow[])
+    : [];
 
-  if (annualPlan?.id) {
-    const quarterPlans = await listAll(client.models.ClassQuarterPlan, {
-      filter: buildEqFilter("classAnnualPlanId", annualPlan.id),
-    });
+  const quarterPlan =
+    pickLatestByDate(
+      quarterRows.filter((row) =>
+        overlapsPeriod(row, fromDate, toDate, ["periodStart"], ["periodEnd"]),
+      ),
+      ["periodStart", "periodEnd", "termNo"],
+    ) ?? pickLatestByDate(quarterRows, ["periodStart", "periodEnd", "termNo"]);
 
-    quarterPlan = pickBestOverlapping(quarterPlans, fromDate, toDate);
-
-    if (quarterPlan?.id) {
-      const monthPlans = await listAll(client.models.ClassMonthPlan, {
+  const monthRows = quarterPlan
+    ? await listAll(client.models.ClassMonthPlan, {
         filter: buildEqFilter("classQuarterPlanId", quarterPlan.id),
-      });
+      }).catch(() => [] as ClassMonthPlanRow[])
+    : [];
 
-      monthPlan = pickBestOverlapping(monthPlans, fromDate, toDate);
+  const monthPlan =
+    pickLatestByDate(
+      monthRows.filter((row) =>
+        overlapsPeriod(row, fromDate, toDate, ["periodStart"], ["periodEnd"]),
+      ),
+      ["periodStart", "periodEnd", "monthKey"],
+    ) ??
+    pickLatestByDate(monthRows, ["monthStartDate", "targetMonth", "monthKey"]);
 
-      if (monthPlan?.id) {
-        const weekPlans = await listAll(client.models.ClassWeekPlan, {
-          filter: buildEqFilter("classMonthPlanId", monthPlan.id),
-        });
+  const weekRows = monthPlan
+    ? await listAll(client.models.ClassWeekPlan, {
+        filter: buildEqFilter("classMonthPlanId", monthPlan.id),
+      }).catch(() => [] as ClassWeekPlanRow[])
+    : [];
 
-        weekPlan = pickBestOverlapping(weekPlans, fromDate, toDate);
-      }
-    }
-  }
+  const weekPlan =
+    pickLatestByDate(
+      weekRows.filter((row) => {
+        const weekStart =
+          readText(row, "periodStart") ||
+          readText(row, "weekStartDate") ||
+          readText(row, "startDate");
+        const weekEnd =
+          readText(row, "periodEnd") ||
+          readText(row, "weekEndDate") ||
+          readText(row, "endDate");
+        if (!weekStart && !weekEnd) return true;
+        return (
+          (!weekStart || weekStart <= toDate) &&
+          (!weekEnd || weekEnd >= fromDate)
+        );
+      }),
+      ["periodStart", "weekStartDate", "startDate", "updatedAt", "createdAt"],
+    ) ??
+    pickLatestByDate(weekRows, ["periodStart", "weekStartDate", "startDate"]);
 
-  const plannedDomainsMonth = toPlanDomainCountsFromMonth(monthPlan);
+  const monthPhraseSelections = await loadMonthPhraseSelections(
+    client,
+    monthPlan,
+  );
+
+  const plannedDomainsFromMonthPlan = monthPlan
+    ? buildPlanDomainCounts(monthPlan, ["C", ""])
+    : emptyDomainCounts();
+  const plannedDomainsFromMonthSelections = buildMonthSelectionsDomainCounts(
+    monthPhraseSelections,
+  );
+  const plannedDomainsMonth = hasAnyDomainValue(plannedDomainsFromMonthPlan)
+    ? plannedDomainsFromMonthPlan
+    : plannedDomainsFromMonthSelections;
+
   const plannedDomainsWeek = weekPlan
-    ? toPlanDomainCountsFromWeek(weekPlan)
+    ? buildPlanDomainCounts(weekPlan, ["D", "C", ""])
     : null;
 
-  const hasWeekPlan =
-    Boolean(weekPlan) &&
-    sumDomainCounts(plannedDomainsWeek ?? emptyDomainCounts()) > 0;
+  const plannedDomainsPrimary =
+    plannedDomainsWeek && hasAnyDomainValue(plannedDomainsWeek)
+      ? plannedDomainsWeek
+      : plannedDomainsMonth;
 
-  const hasMonthPlan =
-    Boolean(monthPlan) && sumDomainCounts(plannedDomainsMonth) > 0;
+  const planBasis: PlanBasis =
+    plannedDomainsWeek && hasAnyDomainValue(plannedDomainsWeek)
+      ? "WEEK"
+      : hasAnyDomainValue(plannedDomainsMonth)
+        ? "MONTH"
+        : "NONE";
 
-  let plannedDomainsPrimary = emptyDomainCounts();
-  let planBasis: PlanBasis = "NONE";
+  const fiscalYear =
+    Number(
+      readRecordValue(annualPlan, "fiscalYear") ??
+        readRecordValue(quarterPlan, "fiscalYear") ??
+        readRecordValue(monthPlan, "fiscalYear") ??
+        0,
+    ) || null;
 
-  if (hasWeekPlan) {
-    plannedDomainsPrimary = plannedDomainsWeek ?? emptyDomainCounts();
-    planBasis = "WEEK";
-  } else if (hasMonthPlan) {
-    plannedDomainsPrimary = plannedDomainsMonth;
-    planBasis = "MONTH";
-  }
+  const referenceRows = await loadReferenceSelections(
+    client,
+    classroomId,
+    fiscalYear,
+    annualPlan ? String(annualPlan.id ?? "") : null,
+    quarterPlan ? String(quarterPlan.id ?? "") : null,
+  );
+
+  const annualReferenceSummary = buildReferenceSummary(
+    "YEAR",
+    referenceRows.filter(
+      (row) => row.classAnnualPlanId === String(annualPlan?.id ?? ""),
+    ),
+  );
+  const termReferenceSummary = buildReferenceSummary(
+    "TERM",
+    referenceRows.filter(
+      (row) => row.classQuarterPlanId === String(quarterPlan?.id ?? ""),
+    ),
+  );
+
+  const monthGoalTextFromSelections = buildMonthSelectionsGoalText(
+    monthPhraseSelections,
+  );
 
   return {
     annualPlan,
     quarterPlan,
     monthPlan,
     weekPlan,
-    goalTextA: normalizeText(annualPlan?.goalTextA),
-    goalTextB: normalizeText(quarterPlan?.goalTextB),
-    goalTextC: normalizeText(monthPlan?.goalTextC),
-    goalTextWeek: normalizeText(weekPlan?.goalTextC),
+    goalTextA: annualPlan
+      ? readText(annualPlan, "goalTextA") ||
+        readText(annualPlan, "goalText") ||
+        readText(annualPlan, "title")
+      : "",
+    goalTextB: quarterPlan
+      ? readText(quarterPlan, "goalTextB") ||
+        readText(quarterPlan, "goalText") ||
+        readText(quarterPlan, "title")
+      : "",
+    goalTextC: monthPlan
+      ? readText(monthPlan, "goalTextC") ||
+        monthGoalTextFromSelections ||
+        readText(monthPlan, "goalText") ||
+        readText(monthPlan, "title")
+      : monthGoalTextFromSelections,
+    goalTextWeek: weekPlan
+      ? readText(weekPlan, "goalTextD") ||
+        readText(weekPlan, "goalTextWeek") ||
+        readText(weekPlan, "goalTextC") ||
+        readText(weekPlan, "title")
+      : "",
+    annualReferenceSummary,
+    termReferenceSummary,
     plannedDomainsPrimary,
     plannedDomainsMonth,
     plannedDomainsWeek,
@@ -1723,18 +1817,16 @@ export function buildPlanVsActualComparison(
   actualDomains: DomainCounts,
   basis: PlanBasis,
 ): PlanActualComparison {
-  const plannedTotal = sumDomainCounts(plannedDomains);
-  const actualTotal = sumDomainCounts(actualDomains);
+  const plannedTotal = Object.values(plannedDomains).reduce(
+    (sum, value) => sum + value,
+    0,
+  );
+  const actualTotal = Object.values(actualDomains).reduce(
+    (sum, value) => sum + value,
+    0,
+  );
 
-  const domainKeys: DomainKey[] = [
-    "health",
-    "humanRelations",
-    "environment",
-    "language",
-    "expression",
-  ];
-
-  const rows: DomainComparisonRow[] = domainKeys.map((key) => {
+  const rows: DomainComparisonRow[] = DOMAIN_KEYS.map((key) => {
     const plannedValue = plannedDomains[key];
     const actualValue = actualDomains[key];
 
@@ -1744,7 +1836,7 @@ export function buildPlanVsActualComparison(
 
     let status: DomainComparisonStatus = "ALIGNED";
 
-    if (plannedTotal <= 0) {
+    if (plannedTotal <= 0 || basis === "NONE") {
       status = "NO_PLAN";
     } else if (actualTotal <= 0) {
       status = "NO_ACTUAL";
@@ -1768,7 +1860,7 @@ export function buildPlanVsActualComparison(
 
   let summaryStatus: "ALIGNED" | "MIXED" | "NO_PLAN" = "ALIGNED";
 
-  if (plannedTotal <= 0) {
+  if (plannedTotal <= 0 || basis === "NONE") {
     summaryStatus = "NO_PLAN";
   } else if (
     rows.some((row) => row.status === "OVER" || row.status === "UNDER")
@@ -1780,17 +1872,17 @@ export function buildPlanVsActualComparison(
     .filter((row) => row.status === "OVER" || row.status === "UNDER")
     .sort((a, b) => Math.abs(b.gapShare) - Math.abs(a.gapShare));
 
-  const highlights =
-    sortedByGap.length === 0
-      ? summaryStatus === "NO_PLAN"
-        ? ["計画値が未設定のため、定量比較は参考表示です。"]
-        : ["5領域の構成比は概ね計画通りです。"]
-      : sortedByGap.slice(0, 3).map((row) => {
-          if (row.status === "OVER") {
-            return `${row.domainLabel}は計画比で強く現れました。`;
-          }
-          return `${row.domainLabel}は計画比で弱く、次の補強候補です。`;
-        });
+  const highlights = sortedByGap.slice(0, 3).map((row) => {
+    const direction = row.status === "OVER" ? "多く" : "少なく";
+    return `${row.domainLabel}は計画比率より${direction}記録されています。`;
+  });
+
+  if (highlights.length === 0 && summaryStatus === "ALIGNED") {
+    highlights.push("5領域の記録は、計画値と概ね整合しています。");
+  }
+  if (summaryStatus === "NO_PLAN") {
+    highlights.push("比較できる計画値がまだ登録されていません。");
+  }
 
   return {
     basis,
@@ -1800,111 +1892,260 @@ export function buildPlanVsActualComparison(
   };
 }
 
-export function buildPlanReflection(args: {
+async function loadPracticeRecommendationMaster(
+  client: ReportingClient,
+): Promise<PracticeRecommendationMaster> {
+  if (practiceRecommendationMasterCache) {
+    return practiceRecommendationMasterCache;
+  }
+
+  if (practiceRecommendationMasterPromise) {
+    return practiceRecommendationMasterPromise;
+  }
+
+  practiceRecommendationMasterPromise = Promise.all([
+    listAll(client.models.AbilityPracticeLink),
+    listAll(client.models.AbilityPracticeAgg),
+    listAll(client.models.PracticeCode),
+  ])
+    .then(([abilityPracticeLinks, abilityPracticeAggs, practiceCodeRows]) => {
+      const master = {
+        abilityPracticeLinks,
+        abilityPracticeAggs,
+        practiceCodeRows,
+      };
+      practiceRecommendationMasterCache = master;
+      return master;
+    })
+    .finally(() => {
+      practiceRecommendationMasterPromise = null;
+    });
+
+  return practiceRecommendationMasterPromise;
+}
+
+function practiceCodeFromPracticeRow(row: PracticeCodeRow): string {
+  return normalizeText(row.practice_code);
+}
+
+function isPracticeActive(row: PracticeCodeRow): boolean {
+  const status = normalizeText(row.status || "active").toUpperCase();
+  return status !== "ARCHIVED" && status !== "DELETED";
+}
+
+function buildPracticePeriodActivityMap(
+  observation: ObservationBundle,
+): Map<string, PracticePeriodActivity> {
+  const map = new Map<string, PracticePeriodActivity>();
+
+  for (const row of observation.practiceRows) {
+    const code = normalizeText(row.practiceCode);
+    if (!code) continue;
+    map.set(code, {
+      practiceTitle: row.practiceTitle,
+      observationCount: row.observationCount,
+      abilityLinkCount: row.abilityLinkCount,
+    });
+  }
+
+  return map;
+}
+
+function recommendPracticesForWeakDomains(args: {
+  comparison: PlanActualComparison;
+  observation: ObservationBundle;
+  master: PracticeRecommendationMaster;
+  limit?: number;
+}): RecommendedPracticeRow[] {
+  const { comparison, observation, master, limit = 5 } = args;
+  const weakDomainKeys = comparison.rows
+    .filter((row) => row.status === "UNDER")
+    .map((row) => row.domainKey);
+
+  if (weakDomainKeys.length === 0) {
+    return [];
+  }
+
+  const weakDomainSet = new Set(weakDomainKeys);
+  const abilityDisplayMap = observation.abilityDisplayMap;
+  const periodActivityMap = buildPracticePeriodActivityMap(observation);
+
+  const practiceTitleMap = new Map<string, string>();
+  for (const row of master.practiceCodeRows) {
+    const practiceCode = practiceCodeFromPracticeRow(row);
+    if (!practiceCode || !isPracticeActive(row)) continue;
+    practiceTitleMap.set(practiceCode, normalizeText(row.name) || practiceCode);
+  }
+
+  const aggScoreMap = new Map<string, number>();
+  for (const row of master.abilityPracticeAggs) {
+    const abilityCode = normalizeAbilityCode(row.abilityCode);
+    const practiceCode = normalizeText(row.practiceCode);
+    if (!abilityCode || !practiceCode) continue;
+    const key = `${abilityCode}::${practiceCode}`;
+    aggScoreMap.set(
+      key,
+      Math.max(normalizeNumber(row.scoreMax), normalizeNumber(row.scoreSum)),
+    );
+  }
+
+  const candidateMap = new Map<
+    string,
+    {
+      practiceCode: string;
+      score: number;
+      weakDomainKeys: Set<DomainKey>;
+      matchedAbilityCodes: Set<string>;
+      matchedAbilityNames: Set<string>;
+    }
+  >();
+
+  for (const link of master.abilityPracticeLinks) {
+    const abilityCode = normalizeAbilityCode(link.abilityCode);
+    const practiceCode = normalizeText(link.practiceCode);
+    if (!abilityCode || !practiceCode) continue;
+
+    const domainKey = detectDomainKey(undefined, abilityCode);
+    if (!domainKey || !weakDomainSet.has(domainKey)) continue;
+
+    if (practiceTitleMap.size > 0 && !practiceTitleMap.has(practiceCode)) {
+      continue;
+    }
+
+    const current =
+      candidateMap.get(practiceCode) ??
+      ({
+        practiceCode,
+        score: 0,
+        weakDomainKeys: new Set<DomainKey>(),
+        matchedAbilityCodes: new Set<string>(),
+        matchedAbilityNames: new Set<string>(),
+      } satisfies {
+        practiceCode: string;
+        score: number;
+        weakDomainKeys: Set<DomainKey>;
+        matchedAbilityCodes: Set<string>;
+        matchedAbilityNames: Set<string>;
+      });
+
+    const aggScore = aggScoreMap.get(`${abilityCode}::${practiceCode}`) ?? 0;
+    current.score += normalizeNumber(link.score) + aggScore;
+    current.weakDomainKeys.add(domainKey);
+    current.matchedAbilityCodes.add(abilityCode);
+
+    const abilityName =
+      normalizeText(abilityDisplayMap[abilityCode]?.abilityName) || abilityCode;
+    current.matchedAbilityNames.add(abilityName);
+
+    candidateMap.set(practiceCode, current);
+  }
+
+  return [...candidateMap.values()]
+    .map((row) => {
+      const activity = periodActivityMap.get(row.practiceCode);
+      const weakKeys = [...row.weakDomainKeys];
+
+      return {
+        practiceCode: row.practiceCode,
+        practiceTitle:
+          practiceTitleMap.get(row.practiceCode) ||
+          activity?.practiceTitle ||
+          row.practiceCode,
+        score: row.score,
+        weakDomainKeys: weakKeys,
+        weakDomainLabels: weakKeys.map((key) => domainLabel(key)),
+        matchedAbilityCodes: [...row.matchedAbilityCodes].sort(),
+        matchedAbilityNames: [...row.matchedAbilityNames].sort((a, b) =>
+          a.localeCompare(b),
+        ),
+        observedThisWeek: !!activity,
+        observationCountInPeriod: activity?.observationCount ?? 0,
+        abilityLinkCountInPeriod: activity?.abilityLinkCount ?? 0,
+      } satisfies RecommendedPracticeRow;
+    })
+    .sort((a, b) => {
+      if (a.observedThisWeek !== b.observedThisWeek) {
+        return a.observedThisWeek ? 1 : -1;
+      }
+      const scoreDiff = b.score - a.score;
+      if (scoreDiff !== 0) return scoreDiff;
+      return a.practiceCode.localeCompare(b.practiceCode);
+    })
+    .slice(0, limit);
+}
+
+function buildPlanReflection(args: {
   planContext: PlanContextBundle;
   comparison: PlanActualComparison;
   observation: ObservationBundle;
-  recommendedPracticeRows?: RecommendedPracticeRow[];
+  recommendedPracticeRows: RecommendedPracticeRow[];
 }): PlanReflection {
-  const {
-    planContext,
-    comparison,
-    observation,
-    recommendedPracticeRows = [],
-  } = args;
-
+  const { planContext, comparison, observation, recommendedPracticeRows } =
+    args;
   const alignmentNotes: string[] = [];
   const gapNotes: string[] = [];
   const nextActionNotes: string[] = [];
 
-  if (planContext.goalTextA) {
-    alignmentNotes.push(`年の目標(A): ${planContext.goalTextA}`);
-  }
-  if (planContext.goalTextB) {
-    alignmentNotes.push(`期の目標(B): ${planContext.goalTextB}`);
-  }
-  if (planContext.goalTextC) {
-    alignmentNotes.push(`月の目標(C): ${planContext.goalTextC}`);
-  }
-
-  const alignedRows = comparison.rows.filter((row) => row.status === "ALIGNED");
-  const underRows = comparison.rows.filter((row) => row.status === "UNDER");
-  const overRows = comparison.rows.filter((row) => row.status === "OVER");
-
-  if (alignedRows.length > 0 && comparison.summaryStatus !== "NO_PLAN") {
-    alignmentNotes.push(
-      `計画と整合していた領域: ${alignedRows
-        .map((row) => row.domainLabel)
-        .join("、")}`,
-    );
-  }
-
-  if (observation.practiceRows.length > 0) {
-    const topPractices = observation.practiceRows
-      .slice(0, 3)
-      .map((row) => row.practiceTitle)
-      .join("、");
-    alignmentNotes.push(`主に確認された Practice: ${topPractices}`);
-  }
-
-  if (underRows.length > 0) {
-    underRows.forEach((row) => {
-      gapNotes.push(
-        `${row.domainLabel}は計画比で弱く、planned=${row.plannedValue} / actual=${row.actualValue} でした。`,
-      );
-    });
-  }
-
-  if (overRows.length > 0) {
-    overRows.forEach((row) => {
-      gapNotes.push(
-        `${row.domainLabel}は計画比で強く現れ、planned=${row.plannedValue} / actual=${row.actualValue} でした。`,
-      );
-    });
-  }
-
-  if (comparison.summaryStatus === "NO_PLAN") {
-    gapNotes.push(
-      "週または月の5領域計画値が未設定のため、定量比較は参考表示です。",
-    );
-  }
-
-  if (underRows.length > 0) {
-    nextActionNotes.push(
-      `${underRows
-        .map((row) => row.domainLabel)
-        .join("、")} を意識した Practice と記録場面を次週で補強する。`,
-    );
-
-    const recommendedNote = buildRecommendedPracticeNote(
-      recommendedPracticeRows,
-      4,
-    );
-
-    if (recommendedNote) {
-      nextActionNotes.push(recommendedNote);
-    } else if (observation.practiceRows.length === 0) {
-      nextActionNotes.push(
-        "Practice と観察記録の蓄積を進め、計画との比較精度を高める。",
-      );
+  for (const highlight of comparison.highlights) {
+    if (comparison.summaryStatus === "MIXED") {
+      gapNotes.push(highlight);
     } else {
-      nextActionNotes.push(
-        "観察が多かった Practice を継続しつつ、目標との乖離が大きい領域へ接続する。",
-      );
+      alignmentNotes.push(highlight);
     }
-  } else if (observation.practiceRows.length === 0) {
-    nextActionNotes.push(
-      "Practice と観察記録の蓄積を進め、計画との比較精度を高める。",
+  }
+
+  if (planContext.annualReferenceSummary.phraseCount > 0) {
+    alignmentNotes.push(
+      `年間方針は、${planContext.annualReferenceSummary.trendText}`,
     );
-  } else {
-    nextActionNotes.push(
-      "観察が多かった Practice を継続しつつ、計画と実践のつながりを維持する。",
+  }
+
+  if (planContext.termReferenceSummary.phraseCount > 0) {
+    alignmentNotes.push(
+      `今期の方針は、${planContext.termReferenceSummary.trendText}`,
     );
+  }
+
+  const actualTop = DOMAIN_KEYS.map((key) => ({
+    key,
+    label: domainLabel(key),
+    value: observation.domainCounts[key],
+  }))
+    .filter((row) => row.value > 0)
+    .sort((a, b) => b.value - a.value)
+    .slice(0, 2)
+    .map((row) => row.label);
+
+  if (actualTop.length > 0) {
+    alignmentNotes.push(
+      `実際の観察では、${actualTop.join("・")}に関わる姿が多く見られました。`,
+    );
+  }
+
+  if (recommendedPracticeRows.length > 0) {
+    const labels = recommendedPracticeRows
+      .slice(0, 3)
+      .map(
+        (row) => `${row.practiceTitle}（${row.weakDomainLabels.join("・")}）`,
+      );
+    nextActionNotes.push(
+      `不足気味の領域に対して、${labels.join("、")} などを次週の候補として検討できます。`,
+    );
+  }
+
+  if (alignmentNotes.length === 0) {
+    alignmentNotes.push(
+      "今週の記録から、子どもの姿を継続して把握するための材料が蓄積されています。",
+    );
+  }
+
+  if (gapNotes.length === 0) {
+    gapNotes.push("大きな乖離は見られません。引き続き記録を重ねて確認します。");
   }
 
   if (nextActionNotes.length === 0) {
     nextActionNotes.push(
-      "次週も計画と実践のつながりを意識しながら記録を継続する。",
+      "今週の育ちを継続して見守りながら、子どもの興味が広がる場面を次週の活動に接続します。",
     );
   }
 
@@ -1966,21 +2207,182 @@ export async function loadCheckActionReportBundle(
   };
 }
 
-function buildDomainSummaryLine(domainCounts: DomainCounts) {
-  const ordered: DomainKey[] = [
-    "health",
-    "humanRelations",
-    "environment",
-    "language",
-    "expression",
-  ];
+async function loadWeekendPlayMaster(
+  client: ReportingClient,
+): Promise<WeekendPlayMaster> {
+  if (weekendPlayMasterCache) {
+    return weekendPlayMasterCache;
+  }
 
-  return ordered
-    .map((key) => `${domainLabel(key)} ${domainCounts[key]}件`)
-    .join(" / ");
+  if (weekendPlayMasterPromise) {
+    return weekendPlayMasterPromise;
+  }
+
+  weekendPlayMasterPromise = Promise.all([
+    listAll(client.models.WeekendPlay),
+    listAll(client.models.WeekendPlayAbilityLink),
+  ])
+    .then(([plays, links]) => {
+      const master = { plays, links };
+      weekendPlayMasterCache = master;
+      return master;
+    })
+    .finally(() => {
+      weekendPlayMasterPromise = null;
+    });
+
+  return weekendPlayMasterPromise;
 }
 
-function buildTopAbilitiesLine(rows: AbilityAggregateRow[], limit = 5) {
+function seededHash(value: string): number {
+  let hash = 2166136261;
+
+  for (let i = 0; i < value.length; i += 1) {
+    hash ^= value.charCodeAt(i);
+    hash = Math.imul(hash, 16777619);
+  }
+
+  return hash >>> 0;
+}
+
+function seededScore(seed: string, key: string): number {
+  return seededHash(`${seed}::${key}`) / 4294967295;
+}
+
+export async function recommendWeekendPlayHints(args: {
+  client: ReportingClient;
+  bundle: ObservationBundle;
+  seedKey: string;
+  limit?: number;
+}): Promise<WeekendPlayHintRow[]> {
+  const { client, bundle, seedKey, limit = 3 } = args;
+
+  if (bundle.abilityRows.length === 0) {
+    return [];
+  }
+
+  const master = await loadWeekendPlayMaster(client);
+
+  const playMap = new Map<string, WeekendPlayRow>();
+  for (const play of master.plays) {
+    const playId = normalizeText(play.playId);
+    if (!playId || !isActiveStatus(play.status)) continue;
+    playMap.set(playId, play);
+  }
+
+  const abilityCountMap = new Map<string, AbilityAggregateRow>();
+  for (const row of bundle.abilityRows) {
+    const abilityCode = normalizeAbilityCode(row.abilityCode);
+    if (!abilityCode) continue;
+    abilityCountMap.set(abilityCode, row);
+  }
+
+  const candidateMap = new Map<
+    string,
+    WeekendPlayHintRow & { score: number }
+  >();
+
+  for (const link of master.links) {
+    if (!isActiveStatus(link.status)) continue;
+
+    const abilityCode = normalizeAbilityCode(link.abilityCode);
+    if (!abilityCode || !abilityCountMap.has(abilityCode)) continue;
+
+    const playId = normalizeText(link.playId);
+    const play = playMap.get(playId);
+    if (!play) continue;
+
+    const abilityRow = abilityCountMap.get(abilityCode);
+    const baseWeight = Math.max(1, normalizeNumber(link.weight));
+    const countBoost = abilityRow?.count ?? 0;
+    const randomTieBreak = seededScore(seedKey, `${playId}::${abilityCode}`);
+    const score = baseWeight * 10 + countBoost * 3 + randomTieBreak;
+
+    const existing = candidateMap.get(playId);
+    if (existing && existing.score >= score) continue;
+
+    candidateMap.set(playId, {
+      playId,
+      playTitle:
+        normalizeText(link.playTitle) ||
+        normalizeText(play.playTitle) ||
+        playId,
+      playType: normalizeText(play.playType),
+      setting: normalizeText(play.setting),
+      abilityCode,
+      abilityName:
+        normalizeText(link.abilityName) ||
+        abilityRow?.abilityName ||
+        abilityCode,
+      domain: normalizeText(link.domain) || abilityRow?.domain || "",
+      category: normalizeText(link.category) || abilityRow?.category || "",
+      relationType: normalizeText(link.relationType),
+      weight: normalizeNumber(link.weight),
+      reason: normalizeText(link.reason),
+      parentHint: normalizeText(play.parentHint),
+      playDescriptionDraft: normalizeText(play.playDescriptionDraft),
+      score,
+    });
+  }
+
+  return [...candidateMap.values()]
+    .sort((a, b) => b.score - a.score)
+    .slice(0, limit)
+    .map((row) => ({
+      playId: row.playId,
+      playTitle: row.playTitle,
+      playType: row.playType,
+      setting: row.setting,
+      abilityCode: row.abilityCode,
+      abilityName: row.abilityName,
+      domain: row.domain,
+      category: row.category,
+      relationType: row.relationType,
+      weight: row.weight,
+      reason: row.reason,
+      parentHint: row.parentHint,
+      playDescriptionDraft: row.playDescriptionDraft,
+    }));
+}
+
+function buildDomainSummaryLine(counts: DomainCounts) {
+  return DOMAIN_KEYS.map((key) => `${domainLabel(key)}=${counts[key]}`).join(
+    " / ",
+  );
+}
+
+function buildReferenceSummaryLine(summary: PlanReferenceSummary) {
+  if (summary.phraseCount === 0) {
+    return `- ${summary.title}: 未選択`;
+  }
+
+  return `- ${summary.title}: ${summary.trendText} 関連領域=${buildDomainSummaryLine(summary.domainCounts)}`;
+}
+
+function buildReferenceMarkdownLines(summary: PlanReferenceSummary) {
+  if (summary.phraseCount === 0) {
+    return [`- ${summary.title}: 未選択`];
+  }
+
+  const lines = [
+    `- ${summary.title}: ${summary.trendText}`,
+    `- 関連領域: ${buildDomainSummaryLine(summary.domainCounts)}`,
+  ];
+
+  if (summary.abilityNames.length > 0) {
+    lines.push(
+      `- 関連する育ち: ${summary.abilityNames.slice(0, 8).join("、")}`,
+    );
+  }
+
+  summary.phraseTexts.slice(0, 4).forEach((text) => {
+    lines.push(`  - ${text}`);
+  });
+
+  return lines;
+}
+
+function buildTopAbilitiesLine(rows: AbilityAggregateRow[], limit: number) {
   if (rows.length === 0) return "該当なし";
   return rows
     .slice(0, limit)
@@ -1988,7 +2390,7 @@ function buildTopAbilitiesLine(rows: AbilityAggregateRow[], limit = 5) {
     .join("、");
 }
 
-function buildTopChildrenLine(rows: ChildAggregateRow[], limit = 5) {
+function buildTopChildrenLine(rows: ChildAggregateRow[], limit: number) {
   if (rows.length === 0) return "該当なし";
   return rows
     .slice(0, limit)
@@ -2009,6 +2411,17 @@ function buildPracticeMarkdownLines(rows: PracticeImpactRow[], limit: number) {
           row.domainCounts,
         )}`,
     );
+}
+
+function buildRecommendedPracticeMarkdownLines(rows: RecommendedPracticeRow[]) {
+  if (rows.length === 0) {
+    return ["- 該当なし"];
+  }
+
+  return rows.map(
+    (row) =>
+      `- ${row.practiceTitle} [${row.practiceCode}] / 補いたい領域=${row.weakDomainLabels.join("・")} / 関連する育ち=${row.matchedAbilityNames.slice(0, 5).join("、")}`,
+  );
 }
 
 function buildComparisonMarkdownLines(comparison: PlanActualComparison) {
@@ -2074,6 +2487,25 @@ function buildEvidenceMarkdownLines(rows: EvidenceRow[], limit: number) {
     );
 }
 
+function buildWeekendPlayHintMarkdownLines(rows: WeekendPlayHintRow[]) {
+  if (rows.length === 0) {
+    return [
+      "- 今週は、家庭向けの週末あそび候補を表示できる育ちのデータがまだ十分ではありません。",
+    ];
+  }
+
+  return rows.flatMap((row, index) => {
+    const meta = [row.playType, row.setting].filter(Boolean).join(" / ");
+    return [
+      `### ${index + 1}. ${row.playTitle}`,
+      `- 種別: ${meta || "-"}`,
+      `- 関連する育ち: ${row.abilityName}（${row.domain || "-"} / ${row.category || "-"}）`,
+      `- 説明: ${row.playDescriptionDraft || row.parentHint || row.reason || "家庭で無理なく楽しめる遊びです。"}`,
+      "",
+    ];
+  });
+}
+
 function buildChildClosingMessage(
   bundle: ObservationBundle,
   childName: string,
@@ -2126,6 +2558,12 @@ export function buildClassWeeklyMarkdown(args: {
     `- 期の目標(B): ${bundle.planContext.goalTextB || "未設定"}`,
     `- 月の目標(C): ${bundle.planContext.goalTextC || "未設定"}`,
     `- 週の補足: ${bundle.planContext.goalTextWeek || "未設定"}`,
+    buildReferenceSummaryLine(bundle.planContext.annualReferenceSummary),
+    buildReferenceSummaryLine(bundle.planContext.termReferenceSummary),
+    ``,
+    `## 年間・四半期方針との関係`,
+    ...buildReferenceMarkdownLines(bundle.planContext.annualReferenceSummary),
+    ...buildReferenceMarkdownLines(bundle.planContext.termReferenceSummary),
     ``,
     `## 今週の概要`,
     headline,
@@ -2160,6 +2598,11 @@ export function buildClassWeeklyMarkdown(args: {
       ? bundle.reflection.nextActionNotes.map((item) => `- ${item}`)
       : ["- 該当なし"]),
     ``,
+    `### 候補Practice`,
+    ...buildRecommendedPracticeMarkdownLines(
+      bundle.reflection.recommendedPracticeRows,
+    ),
+    ``,
   ].join("\n");
 }
 
@@ -2169,8 +2612,16 @@ export function buildChildWeekendMarkdown(args: {
   fromDate: string;
   toDate: string;
   bundle: ObservationBundle;
+  weekendPlayHints?: WeekendPlayHintRow[];
 }) {
-  const { classroomName, childName, fromDate, toDate, bundle } = args;
+  const {
+    classroomName,
+    childName,
+    fromDate,
+    toDate,
+    bundle,
+    weekendPlayHints = [],
+  } = args;
 
   return [
     `# ${childName}さん 週末だより`,
@@ -2190,6 +2641,9 @@ export function buildChildWeekendMarkdown(args: {
     ``,
     `## 園で見られた Practice とのつながり`,
     ...buildPracticeMarkdownLines(bundle.practiceRows, 10),
+    ``,
+    `## 週末の過ごし方のヒント`,
+    ...buildWeekendPlayHintMarkdownLines(weekendPlayHints),
     ``,
     `## 印象的だった場面`,
     ...buildEvidenceMarkdownLines(bundle.evidenceRows, 5),

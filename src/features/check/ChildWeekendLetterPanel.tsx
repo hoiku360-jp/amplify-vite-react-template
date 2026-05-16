@@ -10,12 +10,14 @@ import {
   formatDateTime,
   loadClassrooms,
   loadObservationBundle,
+  recommendWeekendPlayHints,
   todayYYYYMMDD,
   truncateText,
   upsertReportArtifact,
   type AbilityDomainGroup,
   type ChildAggregateRow,
   type ObservationBundle,
+  type WeekendPlayHintRow,
 } from "./reporting";
 
 type Props = {
@@ -51,6 +53,9 @@ export default function ChildWeekendLetterPanel(props: Props) {
   );
   const [sourceBundleKey, setSourceBundleKey] = useState("");
   const [bundle, setBundle] = useState<ObservationBundle | null>(null);
+  const [weekendPlayHints, setWeekendPlayHints] = useState<
+    WeekendPlayHintRow[]
+  >([]);
   const [markdownText, setMarkdownText] = useState("");
 
   const selectedClassroom = useMemo(
@@ -67,7 +72,7 @@ export default function ChildWeekendLetterPanel(props: Props) {
       setClassrooms(rows);
 
       if (!selectedClassroomId && rows.length > 0) {
-        setSelectedClassroomId(rows[0].id);
+        setSelectedClassroomId(rows[0]?.id ?? "");
       }
 
       if (rows.length === 0) {
@@ -100,6 +105,9 @@ export default function ChildWeekendLetterPanel(props: Props) {
 
     setLoadingChildren(true);
     setMessage("");
+    setBundle(null);
+    setWeekendPlayHints([]);
+    setMarkdownText("");
 
     try {
       const nextBundle = await loadObservationBundle(
@@ -123,7 +131,7 @@ export default function ChildWeekendLetterPanel(props: Props) {
         nextBundle.childRows.length > 0 &&
         !nextBundle.childRows.some((row) => row.childName === selectedChildName)
       ) {
-        setSelectedChildName(nextBundle.childRows[0].childName);
+        setSelectedChildName(nextBundle.childRows[0]?.childName ?? "");
       }
 
       if (nextBundle.childRows.length === 0) {
@@ -181,20 +189,29 @@ export default function ChildWeekendLetterPanel(props: Props) {
       const childBundle = filterBundleByChild(baseBundle, selectedChildName);
       const classroomName = selectedClassroom?.name ?? "(クラス未選択)";
 
+      const nextWeekendPlayHints = await recommendWeekendPlayHints({
+        client,
+        bundle: childBundle,
+        seedKey: `${selectedChildName}:${fromDate}:${toDate}`,
+        limit: 3,
+      });
+
       const nextMarkdown = buildChildWeekendMarkdown({
         classroomName,
         childName: selectedChildName,
         fromDate,
         toDate,
         bundle: childBundle,
+        weekendPlayHints: nextWeekendPlayHints,
       });
 
       setSourceBundle(baseBundle);
       setSourceBundleKey(currentKey);
       setBundle(childBundle);
+      setWeekendPlayHints(nextWeekendPlayHints);
       setMarkdownText(nextMarkdown);
       setMessage(
-        `子ども週末だよりを作成しました。 child=${selectedChildName} / observation=${childBundle.observations.length}`,
+        `子ども週末だよりを作成しました。 child=${selectedChildName} / observation=${childBundle.observations.length} / weekendPlay=${nextWeekendPlayHints.length}`,
       );
     } catch (e) {
       console.error(e);
@@ -250,6 +267,7 @@ export default function ChildWeekendLetterPanel(props: Props) {
             practiceRows: bundle.practiceRows,
             abilityRows: bundle.abilityRows,
             abilityGroups: bundle.abilityGroups,
+            weekendPlayHints,
             evidenceRows: bundle.evidenceRows.slice(0, 20),
           },
         },
@@ -444,6 +462,8 @@ export default function ChildWeekendLetterPanel(props: Props) {
 
           <PracticeImpactSection rows={bundle.practiceRows} />
 
+          <WeekendPlayHintSection rows={weekendPlayHints} />
+
           <div
             style={{
               padding: 16,
@@ -533,10 +553,19 @@ export default function ChildWeekendLetterPanel(props: Props) {
 }
 
 function StatCard(props: { label: string; value: number }) {
+  const { label, value } = props;
+
   return (
-    <div style={{ padding: 12, borderRadius: 8, background: "#fff" }}>
-      <div>{props.label}</div>
-      <b style={{ fontSize: 20 }}>{props.value}</b>
+    <div
+      style={{
+        padding: 12,
+        border: "1px solid #e5e7eb",
+        borderRadius: 8,
+        background: "#fff",
+      }}
+    >
+      <div style={{ color: "#555", fontSize: 12 }}>{label}</div>
+      <div style={{ marginTop: 6, fontSize: 22, fontWeight: 700 }}>{value}</div>
     </div>
   );
 }
@@ -545,6 +574,8 @@ function AbilityHierarchySection(props: {
   title: string;
   groups: AbilityDomainGroup[];
 }) {
+  const { title, groups } = props;
+
   return (
     <div
       style={{
@@ -554,163 +585,143 @@ function AbilityHierarchySection(props: {
         background: "#fff",
       }}
     >
-      <h3 style={{ marginTop: 0, marginBottom: 12 }}>{props.title}</h3>
+      <h3 style={{ marginTop: 0, marginBottom: 12 }}>{title}</h3>
 
-      {props.groups.length === 0 ? (
+      {groups.length === 0 ? (
         <div style={{ color: "#666" }}>データがありません。</div>
       ) : (
-        <div style={{ display: "grid", gap: 14 }}>
-          {props.groups.map((domainGroup) => (
-            <section
-              key={domainGroup.domain}
-              style={{
-                border: "1px solid #d8dee4",
-                borderRadius: 10,
-                background: "#f8fafc",
-                padding: 12,
-              }}
-            >
-              {/* 第1階層: domain */}
+        <div style={{ display: "grid", gap: 12 }}>
+          {groups.map((domainGroup) => (
+            <div key={domainGroup.domain}>
               <div
                 style={{
-                  display: "flex",
-                  alignItems: "center",
-                  gap: 8,
-                  marginBottom: 10,
+                  fontWeight: 700,
+                  borderLeft: "4px solid #2563eb",
+                  paddingLeft: 8,
+                  marginBottom: 8,
                 }}
               >
-                <span
-                  style={{
-                    fontSize: 11,
-                    color: "#666",
-                    background: "#eef2f7",
-                    border: "1px solid #d8dee4",
-                    borderRadius: 999,
-                    padding: "2px 8px",
-                    flexShrink: 0,
-                  }}
-                >
-                  領域
-                </span>
-                <div style={{ fontWeight: 800, fontSize: 16 }}>
-                  {domainGroup.domain}
-                </div>
-                <span style={{ color: "#666", fontSize: 13 }}>
-                  {domainGroup.totalCount}件
-                </span>
+                {domainGroup.domain}（{domainGroup.totalCount}件）
               </div>
 
-              <div style={{ display: "grid", gap: 10 }}>
+              <div style={{ display: "grid", gap: 8 }}>
                 {domainGroup.categories.map((categoryGroup) => (
-                  <section
-                    key={`${domainGroup.domain}_${categoryGroup.category}`}
+                  <div
+                    key={`${domainGroup.domain}:${categoryGroup.category}`}
                     style={{
-                      marginLeft: 16,
                       padding: 10,
-                      borderLeft: "4px solid #d8dee4",
                       borderRadius: 8,
-                      background: "#fff",
+                      background: "#f8fafc",
+                      border: "1px solid #e5e7eb",
                     }}
                   >
-                    {/* 第2階層: category */}
-                    <div
-                      style={{
-                        display: "flex",
-                        alignItems: "center",
-                        gap: 8,
-                        marginBottom: 8,
-                      }}
-                    >
-                      <span
-                        style={{
-                          fontSize: 11,
-                          color: "#666",
-                          background: "#f3f4f6",
-                          border: "1px solid #e5e7eb",
-                          borderRadius: 999,
-                          padding: "2px 8px",
-                          flexShrink: 0,
-                        }}
-                      >
-                        カテゴリ
-                      </span>
-                      <div style={{ fontWeight: 700, fontSize: 14 }}>
-                        {categoryGroup.category}
-                      </div>
-                      <span style={{ color: "#666", fontSize: 12 }}>
-                        {categoryGroup.totalCount}件
-                      </span>
+                    <div style={{ fontWeight: 700, marginBottom: 6 }}>
+                      {categoryGroup.category}（{categoryGroup.totalCount}件）
                     </div>
 
-                    {/* 第3階層: ability */}
-                    <div style={{ display: "grid", gap: 4, marginLeft: 12 }}>
+                    <div style={{ display: "grid", gap: 4 }}>
                       {categoryGroup.rows.map((row) => (
                         <div
-                          key={`${row.abilityCode}_${row.abilityName}`}
+                          key={`${row.abilityCode}:${row.abilityName}`}
                           style={{
-                            display: "grid",
-                            gridTemplateColumns: "1fr auto",
-                            alignItems: "center",
-                            columnGap: 8,
-                            padding: "4px 0",
-                            borderBottom: "1px solid #f3f4f6",
+                            display: "flex",
+                            justifyContent: "space-between",
+                            gap: 12,
+                            fontSize: 13,
                           }}
                         >
-                          <div
-                            style={{
-                              display: "flex",
-                              alignItems: "center",
-                              gap: 8,
-                              minWidth: 0,
-                            }}
-                          >
-                            <span
-                              style={{
-                                fontSize: 11,
-                                color: "#666",
-                                background: "#fafafa",
-                                border: "1px solid #ececec",
-                                borderRadius: 999,
-                                padding: "1px 6px",
-                                flexShrink: 0,
-                              }}
-                            >
-                              育ち
-                            </span>
-                            <span
-                              style={{
-                                fontSize: 14,
-                                lineHeight: 1.5,
-                                wordBreak: "break-word",
-                              }}
-                            >
-                              {row.abilityName}
-                            </span>
-                          </div>
-
-                          <span
-                            style={{
-                              justifySelf: "end",
-                              minWidth: 40,
-                              textAlign: "center",
-                              fontSize: 12,
-                              fontWeight: 700,
-                              color: "#374151",
-                              background: "#f3f4f6",
-                              borderRadius: 999,
-                              padding: "2px 8px",
-                              flexShrink: 0,
-                            }}
-                          >
+                          <span>
+                            {row.abilityCode} {row.abilityName}
+                          </span>
+                          <span style={{ whiteSpace: "nowrap" }}>
                             {row.count}件
                           </span>
                         </div>
                       ))}
                     </div>
-                  </section>
+                  </div>
                 ))}
               </div>
-            </section>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function WeekendPlayHintSection(props: { rows: WeekendPlayHintRow[] }) {
+  const { rows } = props;
+
+  return (
+    <div
+      style={{
+        padding: 16,
+        border: "1px solid #d0d7de",
+        borderRadius: 8,
+        background: "#fffdf5",
+      }}
+    >
+      <h3 style={{ marginTop: 0, marginBottom: 12 }}>週末の過ごし方のヒント</h3>
+
+      {rows.length === 0 ? (
+        <div style={{ color: "#666" }}>
+          家庭向けの週末あそび候補はまだありません。
+        </div>
+      ) : (
+        <div style={{ display: "grid", gap: 12 }}>
+          {rows.map((row, index) => (
+            <div
+              key={`${row.playId}:${row.abilityCode}`}
+              style={{
+                padding: 12,
+                border: "1px solid #e5e7eb",
+                borderRadius: 8,
+                background: "#fff",
+              }}
+            >
+              <div
+                style={{
+                  display: "flex",
+                  gap: 8,
+                  flexWrap: "wrap",
+                  alignItems: "baseline",
+                  marginBottom: 6,
+                }}
+              >
+                <div style={{ fontWeight: 700 }}>
+                  {index + 1}. {row.playTitle}
+                </div>
+                <div style={{ color: "#666", fontSize: 12 }}>
+                  {[row.playType, row.setting].filter(Boolean).join(" / ")}
+                </div>
+              </div>
+
+              {row.playDescriptionDraft ? (
+                <div style={{ marginBottom: 8, lineHeight: 1.7 }}>
+                  {row.playDescriptionDraft}
+                </div>
+              ) : null}
+
+              <div style={{ fontSize: 13, color: "#444", marginBottom: 6 }}>
+                育ちのつながり:{" "}
+                <b>
+                  {row.domain} / {row.category} / {row.abilityName}
+                </b>
+              </div>
+
+              {row.reason ? (
+                <div style={{ fontSize: 13, color: "#444", marginBottom: 6 }}>
+                  おすすめ理由: {row.reason}
+                </div>
+              ) : null}
+
+              {row.parentHint ? (
+                <div style={{ fontSize: 13, color: "#666", lineHeight: 1.6 }}>
+                  保護者へのヒント: {row.parentHint}
+                </div>
+              ) : null}
+            </div>
           ))}
         </div>
       )}

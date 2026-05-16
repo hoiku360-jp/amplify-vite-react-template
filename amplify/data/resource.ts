@@ -1169,17 +1169,18 @@ const schema = a
 
     // =========================
     // PLAN v2 文例マスター
+    // YEAR / TERM / MONTH 共通
     // =========================
 
     PlanPhrase: a
       .model({
         planPhraseId: a.string().required(),
-        planPeriodType: a.string().required(), // MONTH
-        domainCode: a.string().required(), // 11 / 21 / 31 / 41 / 51
-        domain: a.string().required(), // 健康 / 人間関係 / 環境 / 言葉 / 表現
+        planPeriodType: a.string().required(), // YEAR / TERM / MONTH
+        domainCode: a.string().required(), // YEAR/TERM は 0、MONTH は 11 / 21 / 31 / 41 / 51
+        domain: a.string().required(), // YEAR/TERM は 総合、MONTH は 健康 / 人間関係 / 環境 / 言葉 / 表現
         ageYears: a.integer().required(), // 3 / 4 / 5
         phraseNo: a.integer(),
-        phraseType: a.string(), // 月のねらい
+        phraseType: a.string(), // 年間目標 / 四半期のねらい / 月のねらい
         phraseText: a.string().required(),
         source: a.string(),
         status: a.string().required(), // active / archived
@@ -1206,9 +1207,9 @@ const schema = a
       .model({
         linkId: a.string().required(),
         planPhraseId: a.string().required(),
-        planPeriodType: a.string().required(), // MONTH
-        phraseDomainCode: a.string(),
-        phraseDomain: a.string(),
+        planPeriodType: a.string().required(), // YEAR / TERM / MONTH
+        phraseDomainCode: a.string(), // YEAR/TERM は 0、MONTH は 11 / 21 / 31 / 41 / 51
+        phraseDomain: a.string(), // YEAR/TERM は 総合、MONTH は 健康 / 人間関係 / 環境 / 言葉 / 表現
         ageYears: a.integer(),
         phraseNo: a.integer(),
 
@@ -1217,7 +1218,7 @@ const schema = a
         categoryCode: a.string(),
         categoryName: a.string(),
         abilityName: a.string(),
-        relationType: a.string(), // PRIMARY / RELATED
+        relationType: a.string(), // PRIMARY / RELATED / YEAR_DIRECTION / TERM_DIRECTION
         weight: a.integer().required(),
         status: a.string().required(), // active / archived
         sortOrder: a.integer(),
@@ -1237,6 +1238,72 @@ const schema = a
         index("status")
           .sortKeys(["planPeriodType", "phraseDomainCode", "ageYears"])
           .queryField("listPlanPhraseAbilityLinksByStatusPeriodDomainAge"),
+      ])
+      .authorization((allow) => [
+        allow.authenticated().to(["create", "read", "update", "delete"]),
+      ]),
+
+    // =========================
+    // 週末あそびマスター
+    // =========================
+
+    WeekendPlay: a
+      .model({
+        playId: a.string().required(),
+        playTitle: a.string().required(),
+        playType: a.string(),
+        setting: a.string(),
+        status: a.string().required(), // active / archived
+        parentHint: a.string(),
+        sourceFile: a.string(),
+        playDescriptionDraft: a.string(),
+        sortOrder: a.integer(),
+      })
+      .identifier(["playId"])
+      .secondaryIndexes((index) => [
+        index("status")
+          .sortKeys(["sortOrder"])
+          .queryField("listWeekendPlaysByStatus"),
+        index("playType")
+          .sortKeys(["sortOrder"])
+          .queryField("listWeekendPlaysByType"),
+        index("setting")
+          .sortKeys(["sortOrder"])
+          .queryField("listWeekendPlaysBySetting"),
+      ])
+      .authorization((allow) => [
+        allow.authenticated().to(["create", "read", "update", "delete"]),
+      ]),
+
+    WeekendPlayAbilityLink: a
+      .model({
+        linkId: a.string().required(),
+        playId: a.string().required(),
+        playTitle: a.string(),
+        sortOrder: a.integer(),
+
+        relationType: a.string(), // PRIMARY / RELATED
+        weight: a.integer(),
+
+        abilityCode: a.string().required(),
+        domain: a.string(),
+        category: a.string(),
+        abilityName: a.string(),
+
+        reason: a.string(),
+        status: a.string().required(), // active / archived
+      })
+      .identifier(["linkId"])
+      .secondaryIndexes((index) => [
+        index("abilityCode")
+          .sortKeys(["playId", "sortOrder"])
+          .queryField("listWeekendPlayAbilityLinksByAbility"),
+        index("playId")
+          .sortKeys(["sortOrder"])
+          .queryField("listWeekendPlayAbilityLinksByPlay"),
+        index("status")
+          .sortKeys(["abilityCode", "playId"])
+          .queryField("listWeekendPlayAbilityLinksByStatusAbility"),
       ])
       .authorization((allow) => [
         allow.authenticated().to(["create", "read", "update", "delete"]),
@@ -1506,6 +1573,65 @@ const schema = a
         index("planPhraseId")
           .sortKeys(["classMonthPlanId"])
           .queryField("listClassMonthPlanPhraseSelectionsByPhrase"),
+      ])
+      .authorization((allow) => [
+        allow.authenticated().to(["create", "read", "update", "delete"]),
+      ]),
+
+    ClassPlanPhraseSelection: a
+      .model({
+        tenantId: a.string().required(),
+
+        fiscalYear: a.integer().required(),
+        classroomId: a.id(),
+
+        planScopeType: a.string().required(), // YEAR / TERM / MONTH
+        relationUse: a.string().required(), // REFERENCE / SCORE
+
+        classAnnualPlanId: a.id(),
+        classQuarterPlanId: a.id(),
+        classMonthPlanId: a.id(),
+
+        termNo: a.integer(),
+        monthKey: a.string(),
+
+        planPhraseId: a.string().required(),
+        phraseTextSnapshot: a.string().required(),
+
+        selectedDomainCode: a.string(), // YEAR/TERM は 0、MONTH は 11 / 21 / 31 / 41 / 51
+        selectedDomain: a.string(), // YEAR/TERM は 総合
+        ageYears: a.integer(),
+        phraseNo: a.integer(),
+
+        abilityCodes: a.string().array(),
+        abilitySummaryJson: a.string(),
+
+        relatedHealth: a.integer(),
+        relatedHumanRelations: a.integer(),
+        relatedEnvironment: a.integer(),
+        relatedLanguage: a.integer(),
+        relatedExpression: a.integer(),
+
+        status: a.string().required(), // ACTIVE / ARCHIVED
+        sortOrder: a.integer(),
+        selectedAt: a.datetime(),
+      })
+      .secondaryIndexes((index) => [
+        index("tenantId")
+          .sortKeys(["fiscalYear", "planScopeType", "sortOrder"])
+          .queryField("listClassPlanPhraseSelectionsByTenantYearScope"),
+        index("classAnnualPlanId")
+          .sortKeys(["status", "sortOrder"])
+          .queryField("listClassPlanPhraseSelectionsByAnnualPlan"),
+        index("classQuarterPlanId")
+          .sortKeys(["status", "sortOrder"])
+          .queryField("listClassPlanPhraseSelectionsByQuarterPlan"),
+        index("classMonthPlanId")
+          .sortKeys(["status", "sortOrder"])
+          .queryField("listClassPlanPhraseSelectionsByMonthPlan"),
+        index("planPhraseId")
+          .sortKeys(["tenantId", "fiscalYear"])
+          .queryField("listClassPlanPhraseSelectionsByPhrase"),
       ])
       .authorization((allow) => [
         allow.authenticated().to(["create", "read", "update", "delete"]),
