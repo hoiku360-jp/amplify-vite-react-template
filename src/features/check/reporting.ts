@@ -85,6 +85,7 @@ type AbilityPracticeAggRow = Schema["AbilityPracticeAgg"]["type"] & {
 type PracticeCodeRow = Schema["PracticeCode"]["type"] & {
   practice_code?: string | null;
   name?: string | null;
+  memo?: string | null;
   status?: string | null;
   tenantId?: string | null;
 };
@@ -244,6 +245,7 @@ type AbilityDisplayMeta = {
 export type RecommendedPracticeRow = {
   practiceCode: string;
   practiceTitle: string;
+  practiceMemo: string;
   score: number;
   weakDomainKeys: DomainKey[];
   weakDomainLabels: string[];
@@ -381,6 +383,11 @@ type PracticePeriodActivity = {
   practiceTitle: string;
   observationCount: number;
   abilityLinkCount: number;
+};
+
+type PracticeRecommendationInfo = {
+  practiceTitle: string;
+  practiceMemo: string;
 };
 
 type WeekendPlayMaster = {
@@ -1970,11 +1977,15 @@ function recommendPracticesForWeakDomains(args: {
   const abilityDisplayMap = observation.abilityDisplayMap;
   const periodActivityMap = buildPracticePeriodActivityMap(observation);
 
-  const practiceTitleMap = new Map<string, string>();
+  const practiceInfoMap = new Map<string, PracticeRecommendationInfo>();
   for (const row of master.practiceCodeRows) {
     const practiceCode = practiceCodeFromPracticeRow(row);
     if (!practiceCode || !isPracticeActive(row)) continue;
-    practiceTitleMap.set(practiceCode, normalizeText(row.name) || practiceCode);
+
+    practiceInfoMap.set(practiceCode, {
+      practiceTitle: normalizeText(row.name) || practiceCode,
+      practiceMemo: normalizeText(row.memo),
+    });
   }
 
   const aggScoreMap = new Map<string, number>();
@@ -2008,7 +2019,7 @@ function recommendPracticesForWeakDomains(args: {
     const domainKey = detectDomainKey(undefined, abilityCode);
     if (!domainKey || !weakDomainSet.has(domainKey)) continue;
 
-    if (practiceTitleMap.size > 0 && !practiceTitleMap.has(practiceCode)) {
+    if (practiceInfoMap.size > 0 && !practiceInfoMap.has(practiceCode)) {
       continue;
     }
 
@@ -2044,13 +2055,15 @@ function recommendPracticesForWeakDomains(args: {
     .map((row) => {
       const activity = periodActivityMap.get(row.practiceCode);
       const weakKeys = [...row.weakDomainKeys];
+      const practiceInfo = practiceInfoMap.get(row.practiceCode);
 
       return {
         practiceCode: row.practiceCode,
         practiceTitle:
-          practiceTitleMap.get(row.practiceCode) ||
+          practiceInfo?.practiceTitle ||
           activity?.practiceTitle ||
           row.practiceCode,
+        practiceMemo: practiceInfo?.practiceMemo ?? "",
         score: row.score,
         weakDomainKeys: weakKeys,
         weakDomainLabels: weakKeys.map((key) => domainLabel(key)),
@@ -2418,10 +2431,19 @@ function buildRecommendedPracticeMarkdownLines(rows: RecommendedPracticeRow[]) {
     return ["- 該当なし"];
   }
 
-  return rows.map(
-    (row) =>
+  return rows.flatMap((row) => {
+    const lines = [
       `- ${row.practiceTitle} [${row.practiceCode}] / 補いたい領域=${row.weakDomainLabels.join("・")} / 関連する育ち=${row.matchedAbilityNames.slice(0, 5).join("、")}`,
-  );
+    ];
+
+    if (row.practiceMemo) {
+      lines.push(`  - 概要: ${row.practiceMemo}`);
+    } else {
+      lines.push("  - 概要: 概要メモ未登録");
+    }
+
+    return lines;
+  });
 }
 
 function buildComparisonMarkdownLines(comparison: PlanActualComparison) {

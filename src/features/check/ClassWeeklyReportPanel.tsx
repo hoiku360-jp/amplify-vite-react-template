@@ -15,6 +15,7 @@ import {
   upsertReportArtifact,
   type AbilityDomainGroup,
   type CheckActionReportBundle,
+  type RecommendedPracticeRow,
 } from "./reporting";
 
 type Props = {
@@ -548,9 +549,12 @@ export default function ClassWeeklyReportPanel(props: Props) {
               title="乖離していた点"
               items={bundle.reflection.gapNotes}
             />
-            <ReflectionBlock
+            <NextActionBlock
               title="次週への action"
               items={bundle.reflection.nextActionNotes}
+              recommendedPracticeRows={
+                bundle.reflection.recommendedPracticeRows
+              }
             />
           </div>
 
@@ -656,6 +660,137 @@ function PlanGoalCard(props: { label: string; text: string }) {
       <div style={{ marginTop: 4, whiteSpace: "pre-wrap" }}>
         {props.text || "未設定"}
       </div>
+    </div>
+  );
+}
+
+function NextActionBlock(props: {
+  title: string;
+  items: string[];
+  recommendedPracticeRows: RecommendedPracticeRow[];
+}) {
+  const [openPracticeCodes, setOpenPracticeCodes] = useState<string[]>([]);
+
+  const recommendedRows = props.recommendedPracticeRows.slice(0, 3);
+  const hasRecommendedRows = recommendedRows.length > 0;
+
+  const visibleItems = hasRecommendedRows
+    ? props.items.filter((item) => !item.startsWith("不足気味の領域に対して、"))
+    : props.items;
+
+  function togglePracticeMemo(practiceCode: string) {
+    setOpenPracticeCodes((current) =>
+      current.includes(practiceCode)
+        ? current.filter((code) => code !== practiceCode)
+        : [...current, practiceCode],
+    );
+  }
+
+  return (
+    <div style={{ marginTop: 12 }}>
+      <div style={{ fontWeight: 700, marginBottom: 8 }}>{props.title}</div>
+
+      {visibleItems.length > 0 ? (
+        <div style={{ display: "grid", gap: 8, marginBottom: 8 }}>
+          {visibleItems.map((item, index) => (
+            <div
+              key={`${props.title}_note_${index}`}
+              style={{
+                padding: 10,
+                borderRadius: 8,
+                background: "#f8fafc",
+                border: "1px solid #e5e7eb",
+              }}
+            >
+              {item}
+            </div>
+          ))}
+        </div>
+      ) : null}
+
+      {hasRecommendedRows ? (
+        <div
+          style={{
+            padding: 10,
+            borderRadius: 8,
+            background: "#f8fafc",
+            border: "1px solid #e5e7eb",
+          }}
+        >
+          <div style={{ lineHeight: 1.8 }}>
+            不足気味の領域に対して、
+            {recommendedRows.map((row, index) => {
+              const isOpen = openPracticeCodes.includes(row.practiceCode);
+
+              return (
+                <span key={row.practiceCode}>
+                  {index > 0 ? "、" : ""}
+                  <button
+                    type="button"
+                    onClick={() => togglePracticeMemo(row.practiceCode)}
+                    aria-expanded={isOpen}
+                    style={{
+                      border: "none",
+                      background: "transparent",
+                      color: "#0969da",
+                      textDecoration: "underline",
+                      cursor: "pointer",
+                      padding: 0,
+                      font: "inherit",
+                    }}
+                  >
+                    {row.practiceTitle}
+                  </button>
+                  （{row.weakDomainLabels.join("・")}）
+                </span>
+              );
+            })}
+            などを次週の候補として検討できます。
+          </div>
+
+          <div style={{ display: "grid", gap: 8, marginTop: 10 }}>
+            {recommendedRows
+              .filter((row) => openPracticeCodes.includes(row.practiceCode))
+              .map((row) => (
+                <div
+                  key={`${row.practiceCode}_memo`}
+                  style={{
+                    padding: 12,
+                    borderRadius: 8,
+                    background: "#fff",
+                    border: "1px solid #d0d7de",
+                  }}
+                >
+                  <div style={{ fontWeight: 700 }}>{row.practiceTitle}</div>
+                  <div
+                    style={{
+                      marginTop: 4,
+                      fontSize: 12,
+                      color: "#666",
+                    }}
+                  >
+                    {row.practiceCode} / 補いたい領域:{" "}
+                    {row.weakDomainLabels.join("・")}
+                  </div>
+                  <div
+                    style={{
+                      marginTop: 8,
+                      whiteSpace: "pre-wrap",
+                      lineHeight: 1.7,
+                      color: "#333",
+                    }}
+                  >
+                    {row.practiceMemo
+                      ? truncateText(row.practiceMemo, 900)
+                      : "概要メモ未登録"}
+                  </div>
+                </div>
+              ))}
+          </div>
+        </div>
+      ) : visibleItems.length === 0 ? (
+        <div style={{ color: "#666" }}>該当なし</div>
+      ) : null}
     </div>
   );
 }
