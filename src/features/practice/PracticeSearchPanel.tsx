@@ -99,11 +99,13 @@ type PracticeLinkSuggestionRow = Schema["PracticeLinkSuggestion"]["type"] & {
 type PracticeLite = {
   id?: string | null;
   practice_code: string;
+  category_code?: string | null;
   category_name?: string | null;
   name?: string | null;
   memo?: string | null;
-  source_url?: string | null;
   source_type?: string | null;
+  source_ref?: string | null;
+  source_url?: string | null;
   status?: string | null;
   version?: number | null;
   tenantId?: string | null;
@@ -146,10 +148,25 @@ function chunk<T>(arr: T[], size: number): T[][] {
   return out;
 }
 
+function normalizeDisplayText(v: unknown): string {
+  return s(v).replace(/\s+/g, " ");
+}
+
 function previewText(v: unknown, max = 120): string {
-  const text = s(v).replace(/\s+/g, " ");
+  const text = normalizeDisplayText(v);
   if (!text) return "";
   return text.length <= max ? text : `${text.slice(0, max)}…`;
+}
+
+function practiceMemoDisplay(
+  memo: unknown,
+  transcriptText: unknown,
+  transcriptMax = 240,
+): string {
+  const memoText = normalizeDisplayText(memo);
+  if (memoText) return memoText;
+
+  return previewText(transcriptText, transcriptMax);
 }
 
 function errorText(errors?: GraphqlErrorLike[] | null): string {
@@ -164,6 +181,11 @@ function isRecord(v: unknown): v is Record<string, unknown> {
 function readValue(obj: unknown, key: string): unknown {
   if (!isRecord(obj)) return undefined;
   return obj[key];
+}
+
+function isAcceptedSuggestion(row: PracticeLinkSuggestionRow): boolean {
+  const st = s(row.status).toLowerCase();
+  return st === "accepted" || st === "edited";
 }
 
 async function listAll<T, TArgs>(
@@ -201,11 +223,13 @@ function toPracticeLite(row: PracticeCodeRow): PracticeLite | null {
   return {
     id: row.id ?? null,
     practice_code: practiceCode,
+    category_code: row.category_code ?? null,
     category_name: row.category_name ?? null,
     name: row.name ?? null,
     memo: row.memo ?? null,
-    source_url: row.source_url ?? null,
     source_type: row.source_type ?? null,
+    source_ref: row.source_ref ?? null,
+    source_url: row.source_url ?? null,
     status: row.status ?? null,
     version: row.version ?? null,
     tenantId: row.tenantId ?? null,
@@ -749,10 +773,7 @@ export default function PracticeSearchPanel(props: { owner?: string }) {
   );
 
   const acceptedCount = useMemo(() => {
-    return suggestions.filter((x) => {
-      const st = s(x.status).toLowerCase();
-      return st === "accepted" || st === "edited";
-    }).length;
+    return suggestions.filter(isAcceptedSuggestion).length;
   }, [suggestions]);
 
   const loading =
@@ -941,7 +962,7 @@ export default function PracticeSearchPanel(props: { owner?: string }) {
 
   async function handleCleanupPracticeByCode(
     practiceCode: string,
-    practiceRow?: PracticeCodeRow | null,
+    practiceRow?: PracticeLite | PracticeCodeRow | null,
   ) {
     const normalizedPracticeCode = s(practiceCode);
     if (!normalizedPracticeCode) {
@@ -969,27 +990,27 @@ export default function PracticeSearchPanel(props: { owner?: string }) {
       const confirmed = window.confirm(
         hasPracticeRow
           ? [
-              `Practice をアーカイブして関連データを整理します。`,
+              "Practice をアーカイブして関連データを整理します。",
               `${normalizedPracticeCode}${practiceName ? ` / ${practiceName}` : ""}`,
-              ``,
-              `- PracticeCode.status を ARCHIVED に変更`,
-              `- AbilityPracticeLink を削除`,
-              `- AbilityPracticeAgg を削除`,
-              `- PracticeLinkSuggestion を削除`,
-              ``,
-              `過去の ObservationRecord / ObservationAbilityLink / Schedule は削除しません。`,
-              `実行してよろしいですか？`,
+              "",
+              "- PracticeCode.status を ARCHIVED に変更",
+              "- AbilityPracticeLink を削除",
+              "- AbilityPracticeAgg を削除",
+              "- PracticeLinkSuggestion を削除",
+              "",
+              "過去の ObservationRecord / ObservationAbilityLink / Schedule は削除しません。",
+              "実行してよろしいですか？",
             ].join("\n")
           : [
-              `PracticeCode が見つからないため、孤児データを整理します。`,
-              `${normalizedPracticeCode}`,
-              ``,
-              `- AbilityPracticeLink を削除`,
-              `- AbilityPracticeAgg を削除`,
-              `- PracticeLinkSuggestion を削除`,
-              ``,
-              `PracticeCode 本体は存在しないため更新しません。`,
-              `実行してよろしいですか？`,
+              "PracticeCode が見つからないため、孤児データを整理します。",
+              normalizedPracticeCode,
+              "",
+              "- AbilityPracticeLink を削除",
+              "- AbilityPracticeAgg を削除",
+              "- PracticeLinkSuggestion を削除",
+              "",
+              "PracticeCode 本体は存在しないため更新しません。",
+              "実行してよろしいですか？",
             ].join("\n"),
       );
 
@@ -1008,14 +1029,21 @@ export default function PracticeSearchPanel(props: { owner?: string }) {
       ]);
 
       if (resolvedPractice && currentStatus !== "ARCHIVED") {
+        const practiceId = s(resolvedPractice.id);
+        if (!practiceId) {
+          throw new Error(
+            `PracticeCode の id が空のためアーカイブできません: ${normalizedPracticeCode}`,
+          );
+        }
+
         const updatePayload = {
-          id: resolvedPractice.id ?? undefined,
+          id: practiceId,
           practice_code:
             resolvedPractice.practice_code ?? normalizedPracticeCode,
           category_code: resolvedPractice.category_code ?? undefined,
           category_name: resolvedPractice.category_name ?? undefined,
           name: resolvedPractice.name ?? "",
-          memo: resolvedPractice.memo ?? undefined,
+          memo: resolvedPractice.memo ?? "",
           source_type: resolvedPractice.source_type ?? undefined,
           source_ref: resolvedPractice.source_ref ?? undefined,
           source_url: resolvedPractice.source_url ?? undefined,
@@ -1109,9 +1137,9 @@ export default function PracticeSearchPanel(props: { owner?: string }) {
           `PracticeLinkSuggestion 削除: ${suggestionRows.length}件`,
           hasPracticeRow
             ? currentStatus === "ARCHIVED"
-              ? `PracticeCode 更新: 0件（既に ARCHIVED）`
-              : `PracticeCode 更新: 1件`
-            : `PracticeCode 更新: 0件（本体なし）`,
+              ? "PracticeCode 更新: 0件（既に ARCHIVED）"
+              : "PracticeCode 更新: 1件"
+            : "PracticeCode 更新: 0件（本体なし）",
         ].join("\n"),
       );
 
@@ -1147,6 +1175,36 @@ export default function PracticeSearchPanel(props: { owner?: string }) {
 
   async function handleCleanupFromAbilityRow(practiceCode: string) {
     await handleCleanupPracticeByCode(practiceCode);
+  }
+
+  function renderPagination() {
+    return (
+      <div
+        style={{
+          display: "flex",
+          gap: 8,
+          alignItems: "center",
+          justifyContent: "flex-end",
+          flexWrap: "wrap",
+        }}
+      >
+        <button
+          onClick={() => setPage((p) => Math.max(0, p - 1))}
+          disabled={clampedPage <= 0}
+        >
+          前へ
+        </button>
+        <span style={{ fontSize: 12 }}>
+          {from}〜{to} / {totalRows}（ページ {clampedPage + 1} / {totalPages}）
+        </span>
+        <button
+          onClick={() => setPage((p) => Math.min(totalPages - 1, p + 1))}
+          disabled={clampedPage >= totalPages - 1}
+        >
+          次へ
+        </button>
+      </div>
+    );
   }
 
   return (
@@ -1197,49 +1255,50 @@ export default function PracticeSearchPanel(props: { owner?: string }) {
             }}
           >
             <label style={{ display: "flex", alignItems: "center", gap: 8 }}>
-              Ability（大/中分類）
+              Ability
               <select
                 value={selectedAbility}
-                onChange={(e) => setSelectedAbility(e.target.value)}
-                style={{ minWidth: 420 }}
-                disabled={loadingAbility || abilityOptions.length === 0}
+                onChange={(e) => {
+                  setSelectedAbility(e.target.value);
+                  setPage(0);
+                  setSelectedPracticeCode("");
+                }}
+                disabled={loadingAbility}
+                style={{ minWidth: 360 }}
               >
-                {abilityOptions.length === 0 ? (
-                  <option value="">（AbilityCodeが取得できていません）</option>
-                ) : (
-                  abilityGroups.parents.map((parent) => {
-                    const parentCode = s(parent.code);
-                    const label = `【大】${s(parent.name)}（${parentCode}）`;
-                    const kids =
-                      abilityGroups.childrenByParent.get(parentCode) ?? [];
+                {abilityGroups.parents.map((parent) => {
+                  const parentCode = s(parent.code);
+                  const children =
+                    abilityGroups.childrenByParent.get(parentCode) ?? [];
 
-                    return (
-                      <optgroup key={parentCode} label={label}>
-                        {kids.length === 0 ? (
-                          <option value={parentCode}>{label}</option>
-                        ) : (
-                          kids.map((child) => (
-                            <option key={s(child.code)} value={s(child.code)}>
-                              {`【中】${s(child.name)}（${s(child.code)}）`}
-                            </option>
-                          ))
-                        )}
-                      </optgroup>
-                    );
-                  })
-                )}
+                  return (
+                    <optgroup
+                      key={parentCode}
+                      label={`${s(parent.code)}_${s(parent.name)}`}
+                    >
+                      {children.map((child) => (
+                        <option key={s(child.code)} value={s(child.code)}>
+                          {s(child.code)}_{s(child.name)}
+                        </option>
+                      ))}
+                    </optgroup>
+                  );
+                })}
               </select>
             </label>
 
             <label style={{ display: "flex", alignItems: "center", gap: 8 }}>
-              ソート
+              並び替え
               <select
                 value={sortKey}
-                onChange={(e) => setSortKey(e.target.value as SortKey)}
+                onChange={(e) => {
+                  setSortKey(e.target.value as SortKey);
+                  setPage(0);
+                }}
               >
-                <option value="scoreSum">scoreSum（合計）</option>
-                <option value="scoreMax">scoreMax（最大）</option>
-                <option value="linkCount">linkCount（件数）</option>
+                <option value="scoreSum">scoreSum</option>
+                <option value="scoreMax">scoreMax</option>
+                <option value="linkCount">linkCount</option>
               </select>
             </label>
 
@@ -1291,7 +1350,7 @@ export default function PracticeSearchPanel(props: { owner?: string }) {
                   setDebugFilter(e.target.value);
                   setPage(0);
                 }}
-                placeholder="practice_code / name / transcript で検索"
+                placeholder="practice_code / name / memo / transcript で検索"
                 style={{ minWidth: 360 }}
               />
             </label>
@@ -1351,7 +1410,7 @@ export default function PracticeSearchPanel(props: { owner?: string }) {
           style={{
             margin: 0,
             padding: 10,
-            background: "#ecfdf5",
+            background: "#f0fdf4",
             border: "1px solid #bbf7d0",
             borderRadius: 8,
             whiteSpace: "pre-wrap",
@@ -1422,6 +1481,8 @@ export default function PracticeSearchPanel(props: { owner?: string }) {
         </pre>
       ) : null}
 
+      {renderPagination()}
+
       <div
         style={{
           border: "1px solid #ddd",
@@ -1451,7 +1512,7 @@ export default function PracticeSearchPanel(props: { owner?: string }) {
                     <th style={{ padding: 8 }}>scoreMax</th>
                     <th style={{ padding: 8 }}>linkCount</th>
                     <th style={{ padding: 8 }}>status</th>
-                    <th style={{ padding: 8 }}>メモ</th>
+                    <th style={{ padding: 8, minWidth: 360 }}>メモ</th>
                     <th style={{ padding: 8 }}>操作</th>
                   </tr>
                 </thead>
@@ -1474,6 +1535,7 @@ export default function PracticeSearchPanel(props: { owner?: string }) {
                             padding: 8,
                             borderBottom: "1px solid #f0f0f0",
                             minWidth: 260,
+                            verticalAlign: "top",
                           }}
                         >
                           <div style={{ fontWeight: 700 }}>{practiceCode}</div>
@@ -1485,6 +1547,7 @@ export default function PracticeSearchPanel(props: { owner?: string }) {
                           style={{
                             padding: 8,
                             borderBottom: "1px solid #f0f0f0",
+                            verticalAlign: "top",
                           }}
                         >
                           {s(practice?.category_name) ||
@@ -1495,6 +1558,7 @@ export default function PracticeSearchPanel(props: { owner?: string }) {
                           style={{
                             padding: 8,
                             borderBottom: "1px solid #f0f0f0",
+                            verticalAlign: "top",
                           }}
                         >
                           {n(row.scoreSum)}
@@ -1503,6 +1567,7 @@ export default function PracticeSearchPanel(props: { owner?: string }) {
                           style={{
                             padding: 8,
                             borderBottom: "1px solid #f0f0f0",
+                            verticalAlign: "top",
                           }}
                         >
                           {n(row.scoreMax)}
@@ -1511,6 +1576,7 @@ export default function PracticeSearchPanel(props: { owner?: string }) {
                           style={{
                             padding: 8,
                             borderBottom: "1px solid #f0f0f0",
+                            verticalAlign: "top",
                           }}
                         >
                           {n(row.linkCount)}
@@ -1519,6 +1585,7 @@ export default function PracticeSearchPanel(props: { owner?: string }) {
                           style={{
                             padding: 8,
                             borderBottom: "1px solid #f0f0f0",
+                            verticalAlign: "top",
                           }}
                         >
                           {s(practice?.status) || "-"}
@@ -1528,17 +1595,22 @@ export default function PracticeSearchPanel(props: { owner?: string }) {
                             padding: 8,
                             borderBottom: "1px solid #f0f0f0",
                             fontSize: 12,
+                            lineHeight: 1.65,
                             whiteSpace: "pre-wrap",
+                            minWidth: 360,
+                            verticalAlign: "top",
                           }}
                         >
-                          {previewText(
-                            practice?.memo || practice?.transcriptText,
+                          {practiceMemoDisplay(
+                            practice?.memo,
+                            practice?.transcriptText,
                           ) || "-"}
                         </td>
                         <td
                           style={{
                             padding: 8,
                             borderBottom: "1px solid #f0f0f0",
+                            verticalAlign: "top",
                           }}
                         >
                           <div style={{ display: "grid", gap: 6 }}>
@@ -1608,7 +1680,7 @@ export default function PracticeSearchPanel(props: { owner?: string }) {
                                 practice
                                   ? handleCleanupPracticeByCode(
                                       practiceCode,
-                                      practice as PracticeCodeRow,
+                                      practice,
                                     )
                                   : handleCleanupFromAbilityRow(practiceCode)
                               }
@@ -1661,7 +1733,7 @@ export default function PracticeSearchPanel(props: { owner?: string }) {
                   <th style={{ padding: 8 }}>visibility</th>
                   <th style={{ padding: 8 }}>recordedAt</th>
                   <th style={{ padding: 8 }}>transcript</th>
-                  <th style={{ padding: 8 }}>memo</th>
+                  <th style={{ padding: 8, minWidth: 320 }}>memo</th>
                   <th style={{ padding: 8 }}>操作</th>
                 </tr>
               </thead>
@@ -1682,6 +1754,7 @@ export default function PracticeSearchPanel(props: { owner?: string }) {
                         style={{
                           padding: 8,
                           borderBottom: "1px solid #f0f0f0",
+                          verticalAlign: "top",
                         }}
                       >
                         {practiceCode || "-"}
@@ -1690,6 +1763,8 @@ export default function PracticeSearchPanel(props: { owner?: string }) {
                         style={{
                           padding: 8,
                           borderBottom: "1px solid #f0f0f0",
+                          minWidth: 220,
+                          verticalAlign: "top",
                         }}
                       >
                         {s(practice.name) || "-"}
@@ -1698,6 +1773,7 @@ export default function PracticeSearchPanel(props: { owner?: string }) {
                         style={{
                           padding: 8,
                           borderBottom: "1px solid #f0f0f0",
+                          verticalAlign: "top",
                         }}
                       >
                         {s(practice.status) || "-"}
@@ -1706,6 +1782,7 @@ export default function PracticeSearchPanel(props: { owner?: string }) {
                         style={{
                           padding: 8,
                           borderBottom: "1px solid #f0f0f0",
+                          verticalAlign: "top",
                         }}
                       >
                         {s(practice.aiStatus) || "-"}
@@ -1714,6 +1791,7 @@ export default function PracticeSearchPanel(props: { owner?: string }) {
                         style={{
                           padding: 8,
                           borderBottom: "1px solid #f0f0f0",
+                          verticalAlign: "top",
                         }}
                       >
                         {s(practice.transcribeStatus) || "-"}
@@ -1722,24 +1800,30 @@ export default function PracticeSearchPanel(props: { owner?: string }) {
                         style={{
                           padding: 8,
                           borderBottom: "1px solid #f0f0f0",
+                          verticalAlign: "top",
                         }}
                       >
-                        {s(practice.practiceCategory) ||
-                          s(practice.category_name) ||
+                        {s(practice.category_name) ||
+                          s(practice.practiceCategory) ||
                           "-"}
                       </td>
                       <td
                         style={{
                           padding: 8,
                           borderBottom: "1px solid #f0f0f0",
+                          verticalAlign: "top",
                         }}
                       >
-                        {s(practice.visibility) || "-"}
+                        {s(practice.visibility) ||
+                          s(practice.publishScope) ||
+                          "-"}
                       </td>
                       <td
                         style={{
                           padding: 8,
                           borderBottom: "1px solid #f0f0f0",
+                          minWidth: 180,
+                          verticalAlign: "top",
                         }}
                       >
                         {s(practice.recordedAt) || "-"}
@@ -1749,25 +1833,31 @@ export default function PracticeSearchPanel(props: { owner?: string }) {
                           padding: 8,
                           borderBottom: "1px solid #f0f0f0",
                           fontSize: 12,
+                          minWidth: 260,
                           whiteSpace: "pre-wrap",
+                          verticalAlign: "top",
                         }}
                       >
-                        {previewText(practice.transcriptText) || "-"}
+                        {previewText(practice.transcriptText, 160) || "-"}
                       </td>
                       <td
                         style={{
                           padding: 8,
                           borderBottom: "1px solid #f0f0f0",
                           fontSize: 12,
+                          lineHeight: 1.65,
+                          minWidth: 320,
                           whiteSpace: "pre-wrap",
+                          verticalAlign: "top",
                         }}
                       >
-                        {previewText(practice.memo) || "-"}
+                        {practiceMemoDisplay(practice.memo, "") || "-"}
                       </td>
                       <td
                         style={{
                           padding: 8,
                           borderBottom: "1px solid #f0f0f0",
+                          verticalAlign: "top",
                         }}
                       >
                         <div style={{ display: "grid", gap: 6 }}>
@@ -1805,7 +1895,7 @@ export default function PracticeSearchPanel(props: { owner?: string }) {
                                 current === practiceCode ? "" : practiceCode,
                               )
                             }
-                            disabled={isArchived}
+                            disabled={!practiceCode || isArchived}
                           >
                             {isSelected ? "候補一覧を閉じる" : "候補一覧を開く"}
                           </button>
@@ -1859,23 +1949,7 @@ export default function PracticeSearchPanel(props: { owner?: string }) {
         )}
       </div>
 
-      <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
-        <button
-          onClick={() => setPage((p) => Math.max(0, p - 1))}
-          disabled={clampedPage <= 0}
-        >
-          前へ
-        </button>
-        <span style={{ fontSize: 12 }}>
-          {clampedPage + 1} / {totalPages}
-        </span>
-        <button
-          onClick={() => setPage((p) => Math.min(totalPages - 1, p + 1))}
-          disabled={clampedPage >= totalPages - 1}
-        >
-          次へ
-        </button>
-      </div>
+      {renderPagination()}
 
       {selectedPracticeCode ? (
         <div
@@ -1887,161 +1961,174 @@ export default function PracticeSearchPanel(props: { owner?: string }) {
         >
           <div
             style={{
-              padding: 12,
+              display: "flex",
+              gap: 12,
+              justifyContent: "space-between",
+              alignItems: "center",
+              padding: 10,
               background: "#fafafa",
               borderBottom: "1px solid #eee",
+              flexWrap: "wrap",
             }}
           >
-            Ability候補（{selectedPracticeCode}）
-          </div>
+            <div>
+              <strong>Ability候補一覧</strong>
+              <span style={{ marginLeft: 8, fontSize: 12, opacity: 0.75 }}>
+                {selectedPracticeCode} / 採用候補 {acceptedCount}件 / 表示{" "}
+                {suggestionFrom}〜{suggestionTo} / {suggestionTotalRows}
+              </span>
+            </div>
 
-          <div style={{ padding: 12, fontSize: 12, opacity: 0.85 }}>
-            候補件数：{suggestionTotalRows} / accepted + edited：
-            {acceptedCount}
-            <br />
-            表示範囲：{suggestionFrom}〜{suggestionTo} / {suggestionTotalRows}
+            <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+              <button
+                onClick={() => setSuggestionPage((p) => Math.max(0, p - 1))}
+                disabled={suggestionClampedPage <= 0}
+              >
+                前へ
+              </button>
+              <span style={{ fontSize: 12 }}>
+                {suggestionClampedPage + 1} / {suggestionTotalPages}
+              </span>
+              <button
+                onClick={() =>
+                  setSuggestionPage((p) =>
+                    Math.min(suggestionTotalPages - 1, p + 1),
+                  )
+                }
+                disabled={suggestionClampedPage >= suggestionTotalPages - 1}
+              >
+                次へ
+              </button>
+              <button
+                onClick={() =>
+                  handleRegisterPracticeLinks(selectedPracticeCode)
+                }
+                disabled={
+                  registeringPracticeCode === selectedPracticeCode ||
+                  acceptedCount === 0
+                }
+              >
+                {registeringPracticeCode === selectedPracticeCode
+                  ? "本登録中..."
+                  : `本登録する（${acceptedCount}件）`}
+              </button>
+            </div>
           </div>
 
           {loadingSuggestions ? (
             <div style={{ padding: 12 }}>Loading suggestions...</div>
-          ) : suggestionTotalRows === 0 ? (
-            <div style={{ padding: 12 }}>候補データがありません。</div>
+          ) : suggestions.length === 0 ? (
+            <div style={{ padding: 12 }}>
+              候補がありません。「Ability候補を生成」を実行してください。
+            </div>
           ) : (
-            <>
-              <div style={{ overflowX: "auto" }}>
-                <table
-                  style={{
-                    width: "100%",
-                    minWidth: 900,
-                    borderCollapse: "collapse",
-                  }}
-                >
-                  <thead>
-                    <tr style={{ textAlign: "left", background: "#fafafa" }}>
-                      <th style={{ padding: 8 }}>採用</th>
-                      <th style={{ padding: 8 }}>Ability</th>
-                      <th style={{ padding: 8 }}>親分類</th>
-                      <th style={{ padding: 8 }}>score</th>
-                      <th style={{ padding: 8 }}>status</th>
-                      <th style={{ padding: 8 }}>reason</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {pagedSuggestions.map((row) => {
-                      const abilityCode = s(row.abilityCode);
-                      const status = s(row.status).toLowerCase();
-                      const checked =
-                        status === "accepted" || status === "edited";
-                      const saving = savingSuggestionId === row.id;
-
-                      return (
-                        <tr key={row.id}>
-                          <td
-                            style={{
-                              padding: 8,
-                              borderBottom: "1px solid #f0f0f0",
-                            }}
-                          >
-                            <input
-                              type="checkbox"
-                              checked={checked}
-                              disabled={saving}
-                              onChange={(e) =>
-                                updateSuggestionStatus(row, e.target.checked)
-                              }
-                            />
-                          </td>
-                          <td
-                            style={{
-                              padding: 8,
-                              borderBottom: "1px solid #f0f0f0",
-                            }}
-                          >
-                            {buildCodeName(abilityCode)}
-                          </td>
-                          <td
-                            style={{
-                              padding: 8,
-                              borderBottom: "1px solid #f0f0f0",
-                            }}
-                          >
-                            {buildParentLabel(abilityCode)}
-                          </td>
-                          <td
-                            style={{
-                              padding: 8,
-                              borderBottom: "1px solid #f0f0f0",
-                            }}
-                          >
-                            <select
-                              value={n(row.score, 1)}
-                              disabled={saving}
-                              onChange={(e) =>
-                                updateSuggestionScore(
-                                  row,
-                                  Number(e.target.value),
-                                )
-                              }
-                            >
-                              <option value={1}>1 弱</option>
-                              <option value={2}>2 中</option>
-                              <option value={3}>3 強</option>
-                            </select>
-                          </td>
-                          <td
-                            style={{
-                              padding: 8,
-                              borderBottom: "1px solid #f0f0f0",
-                            }}
-                          >
-                            {s(row.status) || "-"}
-                          </td>
-                          <td
-                            style={{
-                              padding: 8,
-                              borderBottom: "1px solid #f0f0f0",
-                              fontSize: 12,
-                              whiteSpace: "pre-wrap",
-                            }}
-                          >
-                            {s(row.reason) || "-"}
-                          </td>
-                        </tr>
-                      );
-                    })}
-                  </tbody>
-                </table>
-              </div>
-
-              <div
+            <div style={{ overflowX: "auto" }}>
+              <table
                 style={{
-                  display: "flex",
-                  gap: 8,
-                  alignItems: "center",
-                  padding: 12,
+                  width: "100%",
+                  minWidth: 920,
+                  borderCollapse: "collapse",
                 }}
               >
-                <button
-                  onClick={() => setSuggestionPage((p) => Math.max(0, p - 1))}
-                  disabled={suggestionClampedPage <= 0}
-                >
-                  前へ
-                </button>
-                <span style={{ fontSize: 12 }}>
-                  {suggestionClampedPage + 1} / {suggestionTotalPages}
-                </span>
-                <button
-                  onClick={() =>
-                    setSuggestionPage((p) =>
-                      Math.min(suggestionTotalPages - 1, p + 1),
-                    )
-                  }
-                  disabled={suggestionClampedPage >= suggestionTotalPages - 1}
-                >
-                  次へ
-                </button>
-              </div>
-            </>
+                <thead>
+                  <tr style={{ textAlign: "left", background: "#fafafa" }}>
+                    <th style={{ padding: 8 }}>採用</th>
+                    <th style={{ padding: 8 }}>Ability</th>
+                    <th style={{ padding: 8 }}>親</th>
+                    <th style={{ padding: 8 }}>score</th>
+                    <th style={{ padding: 8 }}>reason</th>
+                    <th style={{ padding: 8 }}>status</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {pagedSuggestions.map((row) => {
+                    const checked = isAcceptedSuggestion(row);
+                    const disabled = savingSuggestionId === row.id;
+                    const abilityCode = s(row.abilityCode);
+
+                    return (
+                      <tr key={row.id}>
+                        <td
+                          style={{
+                            padding: 8,
+                            borderBottom: "1px solid #f0f0f0",
+                            verticalAlign: "top",
+                          }}
+                        >
+                          <input
+                            type="checkbox"
+                            checked={checked}
+                            disabled={disabled}
+                            onChange={(e) =>
+                              updateSuggestionStatus(row, e.target.checked)
+                            }
+                          />
+                        </td>
+                        <td
+                          style={{
+                            padding: 8,
+                            borderBottom: "1px solid #f0f0f0",
+                            minWidth: 240,
+                            verticalAlign: "top",
+                          }}
+                        >
+                          {buildCodeName(abilityCode)}
+                        </td>
+                        <td
+                          style={{
+                            padding: 8,
+                            borderBottom: "1px solid #f0f0f0",
+                            minWidth: 180,
+                            verticalAlign: "top",
+                          }}
+                        >
+                          {buildParentLabel(abilityCode)}
+                        </td>
+                        <td
+                          style={{
+                            padding: 8,
+                            borderBottom: "1px solid #f0f0f0",
+                            verticalAlign: "top",
+                          }}
+                        >
+                          <select
+                            value={n(row.score, 1)}
+                            disabled={disabled}
+                            onChange={(e) =>
+                              updateSuggestionScore(row, Number(e.target.value))
+                            }
+                          >
+                            <option value={1}>1</option>
+                            <option value={2}>2</option>
+                            <option value={3}>3</option>
+                          </select>
+                        </td>
+                        <td
+                          style={{
+                            padding: 8,
+                            borderBottom: "1px solid #f0f0f0",
+                            minWidth: 320,
+                            whiteSpace: "pre-wrap",
+                            verticalAlign: "top",
+                          }}
+                        >
+                          {s(row.reason) || "-"}
+                        </td>
+                        <td
+                          style={{
+                            padding: 8,
+                            borderBottom: "1px solid #f0f0f0",
+                            verticalAlign: "top",
+                          }}
+                        >
+                          {s(row.status) || "-"}
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
           )}
         </div>
       ) : null}

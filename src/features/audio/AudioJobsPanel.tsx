@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { generateClient } from "aws-amplify/data";
-import { getUrl } from "aws-amplify/storage";
+import { getUrl, uploadData } from "aws-amplify/storage";
 
 import outputs from "../../../amplify_outputs.json";
 import type { Schema } from "../../../amplify/data/resource";
@@ -132,8 +132,6 @@ function isPracticeAudioJob(job: AudioJobWithOptionalFields): boolean {
     return true;
   }
 
-  // AudioUpload.tsx で作成した従来Jobは sourceEntityType: "PracticeCode"
-  // Practice登録側の古いパス形式にも対応する
   const audioPath = String(job.audioPath ?? "");
   return audioPath.startsWith("practice-audio/");
 }
@@ -174,6 +172,10 @@ function getRunBlockReason(job: AudioJobWithOptionalFields): string {
   return "";
 }
 
+function canReplaceAudio(job: AudioJobWithOptionalFields): boolean {
+  return isPracticeAudioJob(job) && normalize(job.status) === "FAILED";
+}
+
 function unwrapSummarizeResult(result: SummarizeAudioResult): {
   body: SummarizeAudioBody | null;
   errors: GraphQLErrorLike[];
@@ -211,6 +213,43 @@ function toDisplayDate(value: string | null | undefined): string {
   return date.toLocaleString();
 }
 
+function sanitizeFileName(fileName: string): string {
+  const base = fileName.trim() || "audio";
+  return base
+    .replace(/[\\/:*?"<>|#%{}^~[\]`]/g, "_")
+    .replace(/\s+/g, "_")
+    .slice(0, 120);
+}
+
+function getParentPath(path: string | null | undefined): string {
+  const normalized = String(path ?? "").replace(/^\/+/, "");
+  const index = normalized.lastIndexOf("/");
+  if (index < 0) return "";
+  return normalized.slice(0, index);
+}
+
+function buildReplacementAudioPath(
+  job: AudioJobWithOptionalFields,
+  file: File,
+  fallbackTenantId: string,
+  fallbackOwner: string,
+): string {
+  const currentParentPath = getParentPath(job.audioPath);
+  const safeFileName = sanitizeFileName(file.name);
+  const suffix = crypto.randomUUID().slice(0, 8);
+  const timestamp = new Date()
+    .toISOString()
+    .replace(/[-:]/g, "")
+    .replace(/\..+$/, "");
+
+  if (currentParentPath) {
+    return `${currentParentPath}/replace-${timestamp}-${suffix}-${safeFileName}`;
+  }
+
+  const sourceEntityId = String(job.sourceEntityId ?? "unknown-practice");
+  return `practice-audio/${fallbackTenantId}/${fallbackOwner}/${sourceEntityId}/replace-${timestamp}-${suffix}-${safeFileName}`;
+}
+
 export default function AudioJobsPanel(props: Props) {
   const { tenantId, owner } = props;
 
@@ -229,7 +268,9 @@ export default function AudioJobsPanel(props: Props) {
   const [items, setItems] = useState<AudioJob[]>([]);
   const [loading, setLoading] = useState(false);
   const [running, setRunning] = useState<string>("");
+  const [replacing, setReplacing] = useState<string>("");
   const [error, setError] = useState<string>("");
+  const [message, setMessage] = useState<string>("");
 
   const [currentToken, setCurrentToken] = useState<string | undefined>(
     undefined,
@@ -270,11 +311,10 @@ export default function AudioJobsPanel(props: Props) {
         setNextToken(nt ?? undefined);
         setCurrentToken(token);
       } catch (caught) {
-        const message =
-          caught instanceof Error ? caught.message : String(caught);
+        const text = caught instanceof Error ? caught.message : String(caught);
 
         console.error(caught);
-        setError(message);
+        setError(text);
         setItems([]);
         setNextToken(undefined);
       } finally {
@@ -305,6 +345,114 @@ export default function AudioJobsPanel(props: Props) {
     await loadPage(prev || undefined);
   }
 
+  async function replaceAudioFile(job: AudioJob, file: File | null) {
+    if (!file) return;
+
+    const initialJob = job as AudioJobWithOptionalFields;
+
+    if (!initialJob.id) return;
+
+    setReplacing(initialJob.id);
+    setError("");
+    setMessage("");
+
+    try {
+      const latestResult = await client.models.AudioJob.get({
+        id: initialJob.id,
+      });
+
+      if (latestResult.errors?.length) {
+        throw new Error(joinErrors(latestResult.errors));
+      }
+
+      if (!latestResult.data) {
+        throw new Error(
+          "AudioJob が見つかりません。画面を再読込してください。",
+        );
+      }
+
+      const latest = latestResult.data as AudioJobWithOptionalFields;
+
+      if (!canReplaceAudio(latest)) {
+        await refresh();
+        throw new Error(
+          "音声ファイルを差し替えできるのはFAILEDのPractice用AudioJobだけです。",
+        );
+      }
+
+      const newAudioPath = buildReplacementAudioPath(
+        latest,
+        file,
+        tenantId,
+        owner,
+      );
+      const nowIso = new Date().toISOString();
+
+      await uploadData({
+        path: newAudioPath,
+        data: file,
+        options: {
+          contentType: file.type || "application/octet-stream",
+        },
+      }).result;
+
+      const updateJobResult = await client.models.AudioJob.update({
+        id: latest.id,
+        tenantId: latest.tenantId ?? tenantId,
+        owner: latest.owner ?? owner,
+        jobType: latest.jobType || "PRACTICE",
+        sourceEntityType: latest.sourceEntityType || "PracticeCode",
+        sourceEntityId: latest.sourceEntityId ?? undefined,
+        audioPath: newAudioPath,
+        recordedAt: nowIso,
+        status: "PENDING",
+        transcribeJobName: null,
+        transcribeStatus: null,
+        transcriptText: null,
+        summaryText: null,
+        errorMessage: null,
+        completedAt: null,
+      });
+
+      if (updateJobResult.errors?.length) {
+        throw new Error(joinErrors(updateJobResult.errors));
+      }
+
+      if (latest.sourceEntityId) {
+        const updatePracticeResult = await client.models.PracticeCode.update({
+          id: latest.sourceEntityId,
+          audioKey: newAudioPath,
+          recordedAt: nowIso,
+          transcribeJobName: "",
+          transcribeStatus: "",
+          transcriptText: "",
+          errorMessage: "",
+          updatedBy: owner,
+        });
+
+        if (updatePracticeResult.errors?.length) {
+          console.warn("PracticeCode audioKey update failed", {
+            practiceId: latest.sourceEntityId,
+            errors: updatePracticeResult.errors,
+          });
+        }
+      }
+
+      setMessage(
+        "音声ファイルを差し替えました。必要に応じて Run Transcribe を実行してください。",
+      );
+
+      await refresh();
+    } catch (caught) {
+      const text = caught instanceof Error ? caught.message : String(caught);
+
+      console.error(caught);
+      setError(text);
+    } finally {
+      setReplacing("");
+    }
+  }
+
   async function runTranscribe(job: AudioJob) {
     const initialJob = job as AudioJobWithOptionalFields;
 
@@ -312,6 +460,7 @@ export default function AudioJobsPanel(props: Props) {
 
     setRunning(initialJob.id);
     setError("");
+    setMessage("");
 
     try {
       const latestResult = await client.models.AudioJob.get({
@@ -381,36 +530,42 @@ export default function AudioJobsPanel(props: Props) {
       console.log("summarizeAudio response(parsed):", body);
 
       if (normalize(status) === "FAILED") {
-        const message =
+        const text =
           body?.summaryText ??
           "StartTranscriptionJob failed in summarizeAudio.";
 
         await client.models.AudioJob.update({
           id: latest.id,
+          tenantId: latest.tenantId ?? tenantId,
+          owner: latest.owner ?? owner,
+          recordedAt: latest.recordedAt,
           status: "FAILED",
           transcribeStatus: "FAILED",
-          errorMessage: message,
+          errorMessage: text,
           completedAt: new Date().toISOString(),
         });
 
         await refresh();
-        throw new Error(message);
+        throw new Error(text);
       }
 
       if (!transcribeJobName) {
-        const message =
+        const text =
           "No transcribeJobName returned from summarizeAudio. Check audio-summarize handler logs.";
 
         await client.models.AudioJob.update({
           id: latest.id,
+          tenantId: latest.tenantId ?? tenantId,
+          owner: latest.owner ?? owner,
+          recordedAt: latest.recordedAt,
           status: "FAILED",
           transcribeStatus: "FAILED",
-          errorMessage: message,
+          errorMessage: text,
           completedAt: new Date().toISOString(),
         });
 
         await refresh();
-        throw new Error(message);
+        throw new Error(text);
       }
 
       const latestBeforeUpdateResult = await client.models.AudioJob.get({
@@ -442,8 +597,13 @@ export default function AudioJobsPanel(props: Props) {
 
       await client.models.AudioJob.update({
         id: latest.id,
+        tenantId: latest.tenantId ?? tenantId,
+        owner: latest.owner ?? owner,
+        recordedAt: latest.recordedAt,
         status: "RUNNING",
         sourceEntityType: latest.sourceEntityType || "PracticeCode",
+        jobType: latest.jobType || "PRACTICE",
+        sourceEntityId: latest.sourceEntityId ?? undefined,
         transcribeJobName,
         transcribeStatus: "IN_PROGRESS",
         errorMessage: null,
@@ -451,12 +611,12 @@ export default function AudioJobsPanel(props: Props) {
       });
 
       await refresh();
-      alert("Transcribe started.");
+      setMessage("Transcribeを開始しました。完了まで少し待ってください。");
     } catch (caught) {
-      const message = caught instanceof Error ? caught.message : String(caught);
+      const text = caught instanceof Error ? caught.message : String(caught);
 
       console.error(caught);
-      setError(message);
+      setError(text);
     } finally {
       setRunning("");
     }
@@ -505,6 +665,12 @@ export default function AudioJobsPanel(props: Props) {
         系AudioJobのみ
       </div>
 
+      {message && (
+        <div style={{ fontSize: 12, color: "#166534" }}>
+          <pre style={{ margin: 0, whiteSpace: "pre-wrap" }}>{message}</pre>
+        </div>
+      )}
+
       {error && (
         <div style={{ fontSize: 12, color: "crimson" }}>
           error:
@@ -522,6 +688,8 @@ export default function AudioJobsPanel(props: Props) {
             const j = item as AudioJobWithOptionalFields;
             const blockReason = getRunBlockReason(j);
             const canRun = !blockReason;
+            const canReplace = canReplaceAudio(j);
+            const isReplacing = replacing === j.id;
 
             return (
               <div
@@ -547,11 +715,22 @@ export default function AudioJobsPanel(props: Props) {
                     {toDisplayDate(j.recordedAt)}
                   </div>
 
-                  <div style={{ marginLeft: "auto" }}>
+                  <div
+                    style={{
+                      marginLeft: "auto",
+                      display: "flex",
+                      gap: 8,
+                      alignItems: "center",
+                    }}
+                  >
                     <button
                       onClick={() => runTranscribe(j)}
                       disabled={
-                        loading || running === j.id || !canRun || !j.audioPath
+                        loading ||
+                        running === j.id ||
+                        replacing === j.id ||
+                        !canRun ||
+                        !j.audioPath
                       }
                       title={blockReason || "Run Transcribe"}
                     >
@@ -563,6 +742,43 @@ export default function AudioJobsPanel(props: Props) {
                 {blockReason && (
                   <div style={{ fontSize: 12, opacity: 0.75 }}>
                     Run不可: {blockReason}
+                  </div>
+                )}
+
+                {canReplace && (
+                  <div
+                    style={{
+                      display: "grid",
+                      gap: 4,
+                      padding: 8,
+                      border: "1px solid #f5d0fe",
+                      background: "#fdf4ff",
+                      borderRadius: 6,
+                    }}
+                  >
+                    <div style={{ fontSize: 12, fontWeight: 700 }}>
+                      音声ファイルを差し替え
+                    </div>
+                    <div style={{ fontSize: 12, opacity: 0.75 }}>
+                      無音・音量不足などでFAILEDになった場合、新しい音声ファイルを選択すると、
+                      このAudioJobをPENDINGに戻します。その後、Run
+                      Transcribeを実行してください。
+                    </div>
+                    <input
+                      type="file"
+                      accept=".m4a,.mp3,.wav,.mp4,audio/*"
+                      disabled={loading || Boolean(running) || isReplacing}
+                      onChange={(event) => {
+                        const file = event.currentTarget.files?.[0] ?? null;
+                        event.currentTarget.value = "";
+                        void replaceAudioFile(j, file);
+                      }}
+                    />
+                    {isReplacing && (
+                      <div style={{ fontSize: 12, opacity: 0.75 }}>
+                        差し替え中...
+                      </div>
+                    )}
                   </div>
                 )}
 

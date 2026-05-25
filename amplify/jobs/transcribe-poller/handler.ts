@@ -35,12 +35,44 @@ type AudioJobLike = Schema["AudioJob"]["type"] & {
   practiceCode?: string | null;
 };
 
+type TranscriptAlternative = {
+  content?: string | null;
+  confidence?: string | null;
+};
+
+type TranscriptItem = {
+  type?: string | null;
+  alternatives?: TranscriptAlternative[] | null;
+  start_time?: string | null;
+  end_time?: string | null;
+};
+
 type TranscriptJson = {
   results?: {
     transcripts?: Array<{
       transcript?: string | null;
-    }>;
-  };
+    }> | null;
+    items?: TranscriptItem[] | null;
+    audio_segments?: unknown[] | null;
+  } | null;
+};
+
+type TranscriptExtractionDetails = {
+  transcriptSource: "transcripts" | "items" | "empty";
+  transcriptsCount: number;
+  itemsCount: number;
+  audioSegmentsCount: number;
+  primaryTranscriptChars: number;
+  itemTranscriptChars: number;
+};
+
+type TranscriptExtractionResult = {
+  transcriptText: string;
+  details: TranscriptExtractionDetails;
+};
+
+type TranscriptReadResult = TranscriptExtractionResult & {
+  source: "fetch" | "s3";
 };
 
 type ListJobsByStatusDateInput = {
@@ -212,6 +244,90 @@ function joinErrorMessages(
     .join("\n");
 }
 
+function isAsciiWord(value: string): boolean {
+  return /^[A-Za-z0-9]+$/.test(value);
+}
+
+function buildTranscriptFromItems(items: TranscriptItem[]): string {
+  let out = "";
+
+  for (const item of items) {
+    const content = safeString(item.alternatives?.[0]?.content ?? "").trim();
+    if (!content) continue;
+
+    const type = normalizeType(item.type);
+
+    if (type === "PUNCTUATION") {
+      out += content;
+      continue;
+    }
+
+    if (out && isAsciiWord(out.slice(-1)) && isAsciiWord(content[0] ?? "")) {
+      out += " ";
+    }
+
+    out += content;
+  }
+
+  return out.trim();
+}
+
+function extractTranscriptTextFromJson(
+  json: TranscriptJson,
+): TranscriptExtractionResult {
+  const transcripts = json.results?.transcripts ?? [];
+  const items = json.results?.items ?? [];
+  const audioSegments = json.results?.audio_segments ?? [];
+
+  const transcriptTexts = transcripts
+    .map((item) => safeString(item?.transcript ?? "").trim())
+    .filter(Boolean);
+
+  const primaryTranscript = transcriptTexts.join("\n").trim();
+
+  if (primaryTranscript) {
+    return {
+      transcriptText: primaryTranscript,
+      details: {
+        transcriptSource: "transcripts",
+        transcriptsCount: transcripts.length,
+        itemsCount: items.length,
+        audioSegmentsCount: audioSegments.length,
+        primaryTranscriptChars: primaryTranscript.length,
+        itemTranscriptChars: 0,
+      },
+    };
+  }
+
+  const itemTranscript = buildTranscriptFromItems(items);
+
+  if (itemTranscript) {
+    return {
+      transcriptText: itemTranscript,
+      details: {
+        transcriptSource: "items",
+        transcriptsCount: transcripts.length,
+        itemsCount: items.length,
+        audioSegmentsCount: audioSegments.length,
+        primaryTranscriptChars: 0,
+        itemTranscriptChars: itemTranscript.length,
+      },
+    };
+  }
+
+  return {
+    transcriptText: "",
+    details: {
+      transcriptSource: "empty",
+      transcriptsCount: transcripts.length,
+      itemsCount: items.length,
+      audioSegmentsCount: audioSegments.length,
+      primaryTranscriptChars: 0,
+      itemTranscriptChars: 0,
+    },
+  };
+}
+
 async function readStreamToString(body: unknown): Promise<string> {
   if (!body) return "";
 
@@ -311,13 +427,15 @@ function parseS3FromUri(uri: string): { bucket?: string; key?: string } {
 async function getTranscriptText(
   region: string,
   transcriptFileUri: string,
-): Promise<{ transcriptText: string; source: "fetch" | "s3" }> {
+): Promise<TranscriptReadResult> {
   try {
     const json = await fetchJsonWithRetry(transcriptFileUri, 3, 15_000);
-    const transcriptText = safeString(
-      json.results?.transcripts?.[0]?.transcript ?? "",
-    );
-    return { transcriptText, source: "fetch" };
+    const extracted = extractTranscriptTextFromJson(json);
+
+    return {
+      ...extracted,
+      source: "fetch",
+    };
   } catch (error) {
     const e = toErrorLike(error);
     console.warn("fetch TranscriptFileUri failed; trying S3 fallback", {
@@ -341,12 +459,12 @@ async function getTranscriptText(
 
   const text = await readStreamToString(object.Body);
   const json = JSON.parse(text) as TranscriptJson;
+  const extracted = extractTranscriptTextFromJson(json);
 
-  const transcriptText = safeString(
-    json.results?.transcripts?.[0]?.transcript ?? "",
-  );
-
-  return { transcriptText, source: "s3" };
+  return {
+    ...extracted,
+    source: "s3",
+  };
 }
 
 async function withTimeout<T>(
@@ -695,19 +813,60 @@ export const handler = async () => {
         }
 
         try {
-          const { transcriptText, source } = await withTimeout(
+          const { transcriptText, source, details } = await withTimeout(
             getTranscriptText(region, transcriptFileUri),
             15_000,
             `getTranscriptText ${jobName}`,
           );
 
-          const finalTranscript = truncate(transcriptText || "");
+          const finalTranscript = truncate(transcriptText.trim());
+
+          console.info("transcript extraction summary", {
+            jobId,
+            jobName,
+            source,
+            chars: finalTranscript.length,
+            transcriptSource: details.transcriptSource,
+            transcriptsCount: details.transcriptsCount,
+            itemsCount: details.itemsCount,
+            audioSegmentsCount: details.audioSegmentsCount,
+            primaryTranscriptChars: details.primaryTranscriptChars,
+            itemTranscriptChars: details.itemTranscriptChars,
+          });
+
+          if (!finalTranscript) {
+            const emptyMessage =
+              "Transcribe completed, but no speech was recognized. " +
+              "Transcript text is empty and items/audio_segments are empty or unusable. " +
+              "Please check audio volume, silence, noise, recording format, and whether Japanese speech is clearly recorded.";
+
+            await markAudioJobFailed(dataClient, {
+              jobId,
+              transcribeStatus: "COMPLETED",
+              errorMessage: emptyMessage,
+            });
+
+            updated++;
+            failed++;
+
+            console.warn("empty transcript -> FAILED", {
+              jobId,
+              jobName,
+              source,
+              transcriptSource: details.transcriptSource,
+              transcriptsCount: details.transcriptsCount,
+              itemsCount: details.itemsCount,
+              audioSegmentsCount: details.audioSegmentsCount,
+            });
+
+            continue;
+          }
 
           await dataClient.models.AudioJob.update({
             id: jobId,
             status: "SUCCEEDED",
             transcribeStatus: "COMPLETED",
-            transcriptText: finalTranscript || null,
+            transcriptText: finalTranscript,
             errorMessage: null,
             completedAt: isoNow(),
           });
@@ -759,7 +918,7 @@ export const handler = async () => {
                     version: Number(practice.version ?? 1),
 
                     status: "REVIEW",
-                    transcriptText: finalTranscript || "",
+                    transcriptText: finalTranscript,
                     transcribeJobName: jobName,
                     transcribeStatus: "COMPLETED",
                     errorMessage: "",
