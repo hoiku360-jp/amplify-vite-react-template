@@ -109,6 +109,10 @@ type UpdatableModel<TRow> = {
   update(input: MutationInput): Promise<MutationResponse<TRow>>;
 };
 
+type GettableModel<TRow> = {
+  get(input: { id: string }): Promise<MutationResponse<TRow>>;
+};
+
 type ScheduleDayRow = Schema["ScheduleDay"]["type"];
 type ScheduleDayItemRow = Schema["ScheduleDayItem"]["type"];
 type ScheduleRecordRow = Schema["ScheduleRecord"]["type"];
@@ -186,7 +190,8 @@ type ScheduleDayPanelClient = {
       CreatableModel<ScheduleRecordRow>;
     AudioJob: ListableModel<AudioJobRow> &
       CreatableModel<AudioJobRow> &
-      UpdatableModel<AudioJobRow>;
+      UpdatableModel<AudioJobRow> &
+      GettableModel<AudioJobRow>;
   };
   queries?: {
     syncScheduleDayObservations?: OperationRunner<
@@ -507,6 +512,46 @@ function getStorageBucketName(): string | undefined {
 
 function sleep(ms: number) {
   return new Promise<void>((resolve) => setTimeout(resolve, ms));
+}
+
+const TRANSCRIPT_POLL_INTERVAL_MS = 5000;
+const TRANSCRIPT_POLL_MAX_ATTEMPTS = 180; // 15分
+
+function normalizeJobStatus(value?: string | null) {
+  return String(value ?? "")
+    .trim()
+    .toUpperCase();
+}
+
+function readAudioJobTranscriptText(job: AudioJobRow | null | undefined) {
+  return String(job?.transcriptText ?? "").trim();
+}
+
+function buildAudioJobStatusMessage(job: AudioJobRow) {
+  const status = normalizeJobStatus(job.status);
+  const transcribeStatus = String(job.transcribeStatus ?? "").trim();
+  const errorMessage = String(job.errorMessage ?? "").trim();
+
+  const parts = [`AudioJob status=${status || "-"}`];
+
+  if (transcribeStatus) {
+    parts.push(`transcribeStatus=${transcribeStatus}`);
+  }
+
+  if (errorMessage) {
+    parts.push(`error=${errorMessage}`);
+  }
+
+  return parts.join(" / ");
+}
+
+function buildTranscriptTimeoutMessage(jobId: string) {
+  return [
+    "文字起こし結果の待機がタイムアウトしました。",
+    "Transcribeが長引いている、またはpollerの反映待ちの可能性があります。",
+    `AudioJob: ${jobId}`,
+    "少し待ってから「結果を再確認」を押してください。",
+  ].join("\n");
 }
 
 export default function ScheduleDayPanel(props: { owner: string }) {
@@ -961,32 +1006,153 @@ export default function ScheduleDayPanel(props: { owner: string }) {
     }
   }
 
-  async function waitForTranscriptJob(jobId: string) {
-    for (let i = 0; i < 60; i += 1) {
-      await sleep(5000);
+  async function getAudioJobById(jobId: string): Promise<AudioJobRow | null> {
+    const jobRes = await client.models.AudioJob.get({ id: jobId });
 
-      const jobRes = await client.models.AudioJob.list({
-        filter: {
-          id: { eq: jobId },
-        } as ListOptions,
-      });
+    if (jobRes.errors?.length) {
+      throw new Error(
+        formatModelErrors(jobRes.errors, "AudioJob の取得に失敗しました。"),
+      );
+    }
 
-      const job = (jobRes.data ?? [])[0];
+    return jobRes.data ?? null;
+  }
 
-      if (!job) continue;
+  async function waitForTranscriptJob(
+    jobId: string,
+    itemId?: string,
+  ): Promise<AudioJobRow> {
+    let latestJob: AudioJobRow | null = null;
 
-      if (job.status === "SUCCEEDED") {
+    for (let i = 0; i < TRANSCRIPT_POLL_MAX_ATTEMPTS; i += 1) {
+      await sleep(TRANSCRIPT_POLL_INTERVAL_MS);
+
+      const job = await getAudioJobById(jobId);
+      if (!job) {
+        if (itemId && i % 6 === 0) {
+          updateTranscriptDraft(itemId, {
+            audioStatusText: `AudioJobを確認中です... (${i + 1}/${TRANSCRIPT_POLL_MAX_ATTEMPTS})`,
+          });
+        }
+        continue;
+      }
+
+      latestJob = job;
+
+      const status = normalizeJobStatus(job.status);
+      const transcriptText = readAudioJobTranscriptText(job);
+
+      if (itemId && i % 3 === 0) {
+        updateTranscriptDraft(itemId, {
+          audioStatusText: `文字起こし中です。${buildAudioJobStatusMessage(job)} (${i + 1}/${TRANSCRIPT_POLL_MAX_ATTEMPTS})`,
+        });
+      }
+
+      if (status === "SUCCEEDED") {
+        if (!transcriptText) {
+          throw new Error(
+            "文字起こしは完了しましたが、transcriptText が空です。AudioJob の結果を確認してください。",
+          );
+        }
+
         return job;
       }
 
-      if (job.status === "FAILED") {
+      if (status === "FAILED") {
         throw new Error(job.errorMessage || "文字起こしに失敗しました。");
       }
     }
 
-    throw new Error(
-      "文字起こし結果の待機がタイムアウトしました。AudioJob の状態を確認してください。",
+    if (latestJob && itemId) {
+      updateTranscriptDraft(itemId, {
+        audioStatusText: `文字起こしは継続中です。${buildAudioJobStatusMessage(
+          latestJob,
+        )}\n少し待ってから「結果を再確認」を押してください。`,
+      });
+    }
+
+    throw new Error(buildTranscriptTimeoutMessage(jobId));
+  }
+
+  async function applyTranscriptJobResult(
+    item: ScheduleDayItemRow,
+    job: AudioJobRow,
+  ) {
+    const transcriptText = readAudioJobTranscriptText(job);
+
+    if (!transcriptText) {
+      throw new Error("文字起こし結果が空です。");
+    }
+
+    updateTranscriptDraft(item.id, {
+      transcriptText,
+      audioStatusText: "文字起こし完了。transcript text に反映しました。",
+      audioFile: null,
+      audioFileName: "",
+      audioJobId: job.id,
+    });
+
+    setMessage(
+      "文字起こし結果を transcript text に反映しました。次に AIクリーンアップ → 音声メモを保存 ができます。",
     );
+  }
+
+  async function checkTranscriptJobNow(item: ScheduleDayItemRow) {
+    const draft = transcriptDrafts[item.id] ?? createEmptyTranscriptDraft();
+    const jobId = draft.audioJobId.trim();
+
+    if (!jobId) {
+      setMessage("確認する AudioJob がありません。");
+      return;
+    }
+
+    setTranscribingTranscriptItemId(item.id);
+    setMessage("");
+
+    try {
+      const job = await getAudioJobById(jobId);
+
+      if (!job) {
+        updateTranscriptDraft(item.id, {
+          audioStatusText: `AudioJob がまだ見つかりません: ${jobId}`,
+        });
+        setMessage(`AudioJob がまだ見つかりません: ${jobId}`);
+        return;
+      }
+
+      const status = normalizeJobStatus(job.status);
+
+      if (status === "SUCCEEDED") {
+        await applyTranscriptJobResult(item, job);
+        return;
+      }
+
+      if (status === "FAILED") {
+        const msg = job.errorMessage || "文字起こしに失敗しました。";
+        updateTranscriptDraft(item.id, {
+          audioStatusText: `文字起こしエラー: ${msg}`,
+        });
+        setMessage(`文字起こしエラー: ${msg}`);
+        return;
+      }
+
+      updateTranscriptDraft(item.id, {
+        audioStatusText: `まだ文字起こし中です。${buildAudioJobStatusMessage(
+          job,
+        )}\n少し待ってから再度「結果を再確認」を押してください。`,
+      });
+
+      setMessage(`まだ文字起こし中です。${buildAudioJobStatusMessage(job)}`);
+    } catch (e) {
+      console.error(e);
+      const msg = e instanceof Error ? e.message : String(e);
+      updateTranscriptDraft(item.id, {
+        audioStatusText: `結果確認エラー: ${msg}`,
+      });
+      setMessage(`結果確認エラー: ${msg}`);
+    } finally {
+      setTranscribingTranscriptItemId(null);
+    }
   }
 
   async function transcribeTranscriptAudio(item: ScheduleDayItemRow) {
@@ -1132,27 +1298,23 @@ export default function ScheduleDayPanel(props: { owner: string }) {
       } as MutationInput);
 
       updateTranscriptDraft(item.id, {
-        audioStatusText: "文字起こし中です。しばらくお待ちください...",
+        audioStatusText:
+          "文字起こし中です。完了まで数分かかる場合があります。画面がタイムアウトした場合は「結果を再確認」を押してください。",
       });
 
-      const finishedJob = await waitForTranscriptJob(jobId);
-      const transcriptText = String(finishedJob?.transcriptText ?? "").trim();
+      try {
+        const job = await waitForTranscriptJob(jobId, item.id);
+        await applyTranscriptJobResult(item, job);
+      } catch (e) {
+        const msg = e instanceof Error ? e.message : String(e);
 
-      if (!transcriptText) {
-        throw new Error("文字起こし結果が空です。");
+        updateTranscriptDraft(item.id, {
+          audioJobId: jobId,
+          audioStatusText: `文字起こし待機エラー: ${msg}`,
+        });
+
+        setMessage(`文字起こし待機エラー: ${msg}`);
       }
-
-      updateTranscriptDraft(item.id, {
-        transcriptText,
-        audioStatusText: "文字起こし完了。transcript text に反映しました。",
-        audioFile: null,
-        audioFileName: "",
-        audioJobId: jobId,
-      });
-
-      setMessage(
-        "文字起こし結果を transcript text に反映しました。次に AIクリーンアップ → 音声メモを保存 ができます。",
-      );
     } catch (e) {
       console.error(e);
       const msg = e instanceof Error ? e.message : String(e);
@@ -2082,6 +2244,19 @@ export default function ScheduleDayPanel(props: { owner: string }) {
                           {transcribingTranscriptItemId === item.id
                             ? "文字起こし中..."
                             : "文字起こし"}
+                        </button>
+
+                        <button
+                          onClick={() => checkTranscriptJobNow(item)}
+                          disabled={
+                            day?.status === "CLOSED" ||
+                            !transcriptDraft.audioJobId ||
+                            transcribingTranscriptItemId === item.id ||
+                            cleaningTranscriptItemId === item.id ||
+                            savingTranscriptItemId === item.id
+                          }
+                        >
+                          結果を再確認
                         </button>
 
                         <button
