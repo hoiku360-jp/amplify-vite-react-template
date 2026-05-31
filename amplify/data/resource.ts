@@ -73,6 +73,17 @@ export const cleanupTranscriptTextFn = defineFunction({
   runtime: 22,
 });
 
+export const generateParentNoticeFn = defineFunction({
+  name: "generate-parent-notice",
+  entry: "../functions/generate-parent-notice/handler.ts",
+  timeoutSeconds: 60,
+  memoryMB: 512,
+  environment: {
+    BEDROCK_MODEL_ID: "apac.anthropic.claude-3-5-sonnet-20241022-v2:0",
+  },
+  runtime: 22,
+});
+
 export const syncScheduleDayObservationsFn = defineFunction({
   name: "sync-schedule-day-observations",
   entry: "../functions/sync-schedule-day-observations/handler.ts",
@@ -257,6 +268,24 @@ const schema = a
       .returns(a.ref("CleanupTranscriptTextResponse"))
       .authorization((allow) => [allow.authenticated()])
       .handler(a.handler.function(cleanupTranscriptTextFn)),
+
+    GenerateParentNoticeResponse: a.customType({
+      scheduleDayId: a.id().required(),
+      draftText: a.string().required(),
+      sourceJson: a.string(),
+      status: a.string().required(),
+      message: a.string(),
+    }),
+
+    generateParentNotice: a
+      .mutation()
+      .arguments({
+        scheduleDayId: a.id().required(),
+        manualNote: a.string(),
+      })
+      .returns(a.ref("GenerateParentNoticeResponse"))
+      .authorization((allow) => [allow.authenticated()])
+      .handler(a.handler.function(generateParentNoticeFn)),
 
     IssueScheduleDayFromScheduleWeekResponse: a.customType({
       scheduleWeekId: a.id().required(),
@@ -924,6 +953,13 @@ const schema = a
         totalExpression: a.integer(),
 
         items: a.hasMany("ScheduleDayItem", "scheduleDayId"),
+        parentNoticeDraftText: a.string(),
+        parentNoticeText: a.string(),
+        parentNoticeSourceJson: a.string(),
+        parentNoticeStatus: a.string(), // DRAFT / CONFIRMED / CLEARED
+        parentNoticeGeneratedAt: a.datetime(),
+        parentNoticeConfirmedAt: a.datetime(),
+
         records: a.hasMany("ScheduleRecord", "scheduleDayId"),
       })
       .secondaryIndexes((index) => [
@@ -1983,6 +2019,7 @@ const schema = a
     allow.resource(issueNextDaySchedules),
     allow.resource(analyzeTranscriptObservationsFn),
     allow.resource(cleanupTranscriptTextFn),
+    allow.resource(generateParentNoticeFn),
     allow.resource(syncScheduleDayObservationsFn),
     allow.resource(issueScheduleDayFromScheduleWeekFn),
     allow.resource(issueScheduleWeekFromScheduleMonthFn),

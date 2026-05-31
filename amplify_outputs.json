@@ -3901,6 +3901,48 @@
                 ]
               }
             },
+            "parentNoticeDraftText": {
+              "name": "parentNoticeDraftText",
+              "isArray": false,
+              "type": "String",
+              "isRequired": false,
+              "attributes": []
+            },
+            "parentNoticeText": {
+              "name": "parentNoticeText",
+              "isArray": false,
+              "type": "String",
+              "isRequired": false,
+              "attributes": []
+            },
+            "parentNoticeSourceJson": {
+              "name": "parentNoticeSourceJson",
+              "isArray": false,
+              "type": "String",
+              "isRequired": false,
+              "attributes": []
+            },
+            "parentNoticeStatus": {
+              "name": "parentNoticeStatus",
+              "isArray": false,
+              "type": "String",
+              "isRequired": false,
+              "attributes": []
+            },
+            "parentNoticeGeneratedAt": {
+              "name": "parentNoticeGeneratedAt",
+              "isArray": false,
+              "type": "AWSDateTime",
+              "isRequired": false,
+              "attributes": []
+            },
+            "parentNoticeConfirmedAt": {
+              "name": "parentNoticeConfirmedAt",
+              "isArray": false,
+              "type": "AWSDateTime",
+              "isRequired": false,
+              "attributes": []
+            },
             "records": {
               "name": "records",
               "isArray": true,
@@ -9664,6 +9706,46 @@
             }
           }
         },
+        "GenerateParentNoticeResponse": {
+          "name": "GenerateParentNoticeResponse",
+          "fields": {
+            "scheduleDayId": {
+              "name": "scheduleDayId",
+              "isArray": false,
+              "type": "ID",
+              "isRequired": true,
+              "attributes": []
+            },
+            "draftText": {
+              "name": "draftText",
+              "isArray": false,
+              "type": "String",
+              "isRequired": true,
+              "attributes": []
+            },
+            "sourceJson": {
+              "name": "sourceJson",
+              "isArray": false,
+              "type": "String",
+              "isRequired": false,
+              "attributes": []
+            },
+            "status": {
+              "name": "status",
+              "isArray": false,
+              "type": "String",
+              "isRequired": true,
+              "attributes": []
+            },
+            "message": {
+              "name": "message",
+              "isArray": false,
+              "type": "String",
+              "isRequired": false,
+              "attributes": []
+            }
+          }
+        },
         "IssueScheduleDayFromScheduleWeekResponse": {
           "name": "IssueScheduleDayFromScheduleWeekResponse",
           "fields": {
@@ -10105,6 +10187,28 @@
               "isArray": false,
               "type": "String",
               "isRequired": true
+            }
+          }
+        },
+        "generateParentNotice": {
+          "name": "generateParentNotice",
+          "isArray": false,
+          "type": {
+            "nonModel": "GenerateParentNoticeResponse"
+          },
+          "isRequired": false,
+          "arguments": {
+            "scheduleDayId": {
+              "name": "scheduleDayId",
+              "isArray": false,
+              "type": "ID",
+              "isRequired": true
+            },
+            "manualNote": {
+              "name": "manualNote",
+              "isArray": false,
+              "type": "String",
+              "isRequired": false
             }
           }
         },

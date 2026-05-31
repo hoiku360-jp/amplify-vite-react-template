@@ -149,6 +149,19 @@ type CleanupTranscriptResult = {
   message?: string;
 };
 
+type GenerateParentNoticeArgs = {
+  scheduleDayId: string;
+  manualNote?: string | null;
+};
+
+type GenerateParentNoticeResult = {
+  scheduleDayId?: string | null;
+  draftText?: string | null;
+  sourceJson?: string | null;
+  status?: string | null;
+  message?: string | null;
+};
+
 type SyncScheduleDayArgs = {
   scheduleDayId: string;
 };
@@ -218,6 +231,10 @@ type ScheduleDayPanelClient = {
     cleanupTranscriptText?: OperationRunner<
       CleanupTranscriptArgs,
       CleanupTranscriptResult
+    >;
+    generateParentNotice?: OperationRunner<
+      GenerateParentNoticeArgs,
+      GenerateParentNoticeResult
     >;
   };
 };
@@ -814,6 +831,10 @@ export default function ScheduleDayPanel(props: { owner: string }) {
   const [closing, setClosing] = useState(false);
   const [reopening, setReopening] = useState(false);
   const [message, setMessage] = useState("");
+  const [generatingParentNotice, setGeneratingParentNotice] = useState(false);
+  const [savingParentNotice, setSavingParentNotice] = useState(false);
+  const [parentNoticeDraft, setParentNoticeDraft] = useState("");
+  const [parentNoticeManualNote, setParentNoticeManualNote] = useState("");
 
   const [day, setDay] = useState<Schema["ScheduleDay"]["type"] | null>(null);
   const [items, setItems] = useState<Array<Schema["ScheduleDayItem"]["type"]>>(
@@ -1062,6 +1083,8 @@ export default function ScheduleDayPanel(props: { owner: string }) {
     setMemoDrafts({});
     setAttendanceDrafts({});
     setTranscriptDrafts({});
+    setParentNoticeDraft("");
+    setParentNoticeManualNote("");
 
     try {
       const dayRes = await client.models.ScheduleDay.list({
@@ -1100,6 +1123,11 @@ export default function ScheduleDayPanel(props: { owner: string }) {
       }
 
       setDay(normalizedDay);
+      setParentNoticeDraft(
+        s(normalizedDay.parentNoticeText) ||
+          s(normalizedDay.parentNoticeDraftText),
+      );
+      setParentNoticeManualNote("");
 
       const itemsRes = await client.models.ScheduleDayItem.list({
         filter: {
@@ -1148,6 +1176,123 @@ export default function ScheduleDayPanel(props: { owner: string }) {
     }
   }
 
+  async function generateParentNotice() {
+    if (!day) return;
+
+    const runner = client.mutations?.generateParentNotice;
+    if (!runner) {
+      setMessage(
+        "generateParentNotice mutation が見つかりません。resource.ts と sandbox を確認してください。",
+      );
+      return;
+    }
+
+    setGeneratingParentNotice(true);
+    setMessage("");
+
+    try {
+      let res:
+        | OperationEnvelope<GenerateParentNoticeResult>
+        | GenerateParentNoticeResult;
+
+      const args: GenerateParentNoticeArgs = {
+        scheduleDayId: day.id,
+        manualNote: parentNoticeManualNote.trim() || undefined,
+      };
+
+      try {
+        res = await runner(args);
+      } catch {
+        res = await runner({ input: args });
+      }
+
+      const errors = getOperationErrors(res);
+      if (errors?.length) {
+        throw new Error(
+          formatModelErrors(errors, "お知らせ案の生成に失敗しました。"),
+        );
+      }
+
+      const data = getOperationData(res);
+      const draftText = s(data?.draftText);
+
+      if (!draftText) {
+        throw new Error("生成結果が空でした。");
+      }
+
+      setParentNoticeDraft(draftText);
+      setDay({
+        ...day,
+        parentNoticeDraftText: draftText,
+        parentNoticeText: draftText,
+        parentNoticeStatus: s(data?.status) || "DRAFT",
+        parentNoticeSourceJson: data?.sourceJson ?? day.parentNoticeSourceJson,
+        parentNoticeGeneratedAt: new Date().toISOString(),
+      });
+
+      setMessage(
+        data?.message
+          ? `保護者向けお知らせ案を生成しました。${data.message}`
+          : "保護者向けお知らせ案を生成しました。",
+      );
+    } catch (e) {
+      console.error(e);
+      setMessage(
+        `お知らせ案生成エラー: ${e instanceof Error ? e.message : String(e)}`,
+      );
+    } finally {
+      setGeneratingParentNotice(false);
+    }
+  }
+
+  async function saveParentNotice() {
+    if (!day) return;
+
+    setSavingParentNotice(true);
+    setMessage("");
+
+    try {
+      const text = parentNoticeDraft.trim();
+      const now = new Date().toISOString();
+
+      const updateRes = await client.models.ScheduleDay.update({
+        id: day.id,
+        parentNoticeText: text,
+        parentNoticeDraftText: text,
+        parentNoticeStatus: text ? "CONFIRMED" : "CLEARED",
+        parentNoticeConfirmedAt: now,
+      } as MutationInput);
+
+      if (!updateRes.data) {
+        throw new Error(
+          formatModelErrors(
+            updateRes.errors,
+            "保護者向けお知らせの保存に失敗しました。",
+          ),
+        );
+      }
+
+      setDay(updateRes.data);
+      setMessage(
+        text
+          ? "保護者向けお知らせを確定保存しました。"
+          : "保護者向けお知らせをクリアしました。",
+      );
+    } catch (e) {
+      console.error(e);
+      setMessage(
+        `お知らせ保存エラー: ${e instanceof Error ? e.message : String(e)}`,
+      );
+    } finally {
+      setSavingParentNotice(false);
+    }
+  }
+
+  async function clearParentNotice() {
+    setParentNoticeDraft("");
+    setParentNoticeManualNote("");
+    await saveParentNotice();
+  }
   async function saveMemo(item: ScheduleDayItemRow) {
     if (!day) return;
 
@@ -1967,6 +2112,86 @@ export default function ScheduleDayPanel(props: { owner: string }) {
           rows={calendarEvents}
           targetDate={day.targetDate}
         />
+      ) : null}
+
+      {day ? (
+        <div
+          style={{
+            padding: 16,
+            border: "1px solid #d0d7de",
+            borderRadius: 8,
+            background: "#fffdf7",
+            display: "grid",
+            gap: 12,
+          }}
+        >
+          <h3 style={{ margin: 0 }}>保護者向けお知らせ</h3>
+
+          <div style={{ fontSize: 13, color: "#555" }}>
+            今日の予定・家庭への連絡事項・Practiceをもとに、保護者向けのお知らせ下書きを生成します。
+            送信機能ではなく、保育士が確認・編集して確定するための下書きです。
+          </div>
+
+          <label>
+            <div style={{ fontWeight: 700, marginBottom: 4 }}>手入力の補足</div>
+            <textarea
+              value={parentNoticeManualNote}
+              onChange={(e) => setParentNoticeManualNote(e.target.value)}
+              placeholder="例: 明日は水遊びです。水着、タオル、着替えをお持ちください。"
+              disabled={generatingParentNotice || savingParentNotice}
+              style={{
+                width: "100%",
+                minHeight: 64,
+                resize: "vertical",
+              }}
+            />
+          </label>
+
+          <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+            <button
+              onClick={generateParentNotice}
+              disabled={generatingParentNotice || savingParentNotice}
+            >
+              {generatingParentNotice ? "生成中..." : "お知らせ案を生成"}
+            </button>
+
+            <button
+              onClick={saveParentNotice}
+              disabled={generatingParentNotice || savingParentNotice}
+            >
+              {savingParentNotice ? "保存中..." : "確定保存"}
+            </button>
+
+            <button
+              onClick={clearParentNotice}
+              disabled={generatingParentNotice || savingParentNotice}
+            >
+              クリア
+            </button>
+          </div>
+
+          <label>
+            <div style={{ fontWeight: 700, marginBottom: 4 }}>お知らせ本文</div>
+            <textarea
+              value={parentNoticeDraft}
+              onChange={(e) => setParentNoticeDraft(e.target.value)}
+              placeholder="ここに保護者向けお知らせ文を入力・編集します。"
+              disabled={generatingParentNotice || savingParentNotice}
+              style={{
+                width: "100%",
+                minHeight: 140,
+                resize: "vertical",
+                whiteSpace: "pre-wrap",
+              }}
+            />
+          </label>
+
+          <div style={{ fontSize: 12, color: "#666" }}>
+            status: {day.parentNoticeStatus || "未作成"} / generatedAt:{" "}
+            {formatDateTime(day.parentNoticeGeneratedAt)} / confirmedAt:{" "}
+            {formatDateTime(day.parentNoticeConfirmedAt)}
+          </div>
+        </div>
       ) : null}
 
       {day ? (

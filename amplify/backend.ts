@@ -1,6 +1,11 @@
 import { defineBackend } from "@aws-amplify/backend";
 import { Duration } from "aws-cdk-lib";
-import { PolicyStatement, Role, ServicePrincipal } from "aws-cdk-lib/aws-iam";
+import {
+  PolicyStatement,
+  Role,
+  ServicePrincipal,
+  Effect,
+} from "aws-cdk-lib/aws-iam";
 
 import { auth } from "./auth/resource";
 import {
@@ -11,6 +16,7 @@ import {
   registerPracticeLinksFn,
   analyzeTranscriptObservationsFn,
   cleanupTranscriptTextFn,
+  generateParentNoticeFn,
 } from "./data/resource";
 import { storage } from "./storage/resource";
 import { dailyDigest } from "./jobs/daily-digest/resource";
@@ -20,6 +26,7 @@ import { issueNextDaySchedules } from "./jobs/issue-next-day-schedules/resource"
 const backend = defineBackend({
   auth,
   data,
+  generateParentNoticeFn,
   storage,
   dailyDigest,
   issueNextDaySchedules,
@@ -31,6 +38,19 @@ const backend = defineBackend({
   cleanupTranscriptTextFn,
   transcribePoller,
 });
+
+const generateParentNoticeBedrockPolicy = new PolicyStatement({
+  effect: Effect.ALLOW,
+  actions: ["bedrock:InvokeModel", "bedrock:GetInferenceProfile"],
+  resources: [
+    "arn:aws:bedrock:*::foundation-model/anthropic.claude-3-5-sonnet-20241022-v2:0",
+    "arn:aws:bedrock:*:*:inference-profile/apac.anthropic.claude-3-5-sonnet-20241022-v2:0",
+  ],
+});
+
+backend.generateParentNoticeFn.resources.lambda.addToRolePolicy(
+  generateParentNoticeBedrockPolicy,
+);
 
 type LambdaConfigurable = {
   addEnvironment: (name: string, value: string) => void;
