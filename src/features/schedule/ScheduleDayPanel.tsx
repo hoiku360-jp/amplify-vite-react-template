@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+﻿import { useMemo, useState } from "react";
 import { generateClient } from "aws-amplify/data";
 import { uploadData } from "aws-amplify/storage";
 import outputs from "../../../amplify_outputs.json";
@@ -117,6 +117,7 @@ type ScheduleDayRow = Schema["ScheduleDay"]["type"];
 type ScheduleDayItemRow = Schema["ScheduleDayItem"]["type"];
 type ScheduleRecordRow = Schema["ScheduleRecord"]["type"];
 type AudioJobRow = Schema["AudioJob"]["type"];
+type ClassCalendarEventRow = Schema["ClassCalendarEvent"]["type"];
 
 type ScheduleDaySyncResult = {
   createdObservationCount?: number;
@@ -192,6 +193,7 @@ type ScheduleDayPanelClient = {
       CreatableModel<AudioJobRow> &
       UpdatableModel<AudioJobRow> &
       GettableModel<AudioJobRow>;
+    ClassCalendarEvent: ListableModel<ClassCalendarEventRow>;
   };
   queries?: {
     syncScheduleDayObservations?: OperationRunner<
@@ -358,6 +360,134 @@ function formatDateTime(value?: string | null) {
   const d = new Date(value);
   if (Number.isNaN(d.getTime())) return value;
   return d.toLocaleString("ja-JP");
+}
+
+function s(value: unknown): string {
+  return String(value ?? "").trim();
+}
+
+function parseLocalDate(dateStr: string): Date {
+  const [y, m, d] = dateStr.split("-").map(Number);
+  return new Date(y, (m || 1) - 1, d || 1);
+}
+
+function toWeekday(dateStr: string): number {
+  return parseLocalDate(dateStr).getDay();
+}
+
+function dayOfMonth(dateStr: string): number {
+  return parseLocalDate(dateStr).getDate();
+}
+
+function dayOfWeekLabel(value?: number | null): string {
+  if (value === 0) return "日曜日";
+  if (value === 1) return "月曜日";
+  if (value === 2) return "火曜日";
+  if (value === 3) return "水曜日";
+  if (value === 4) return "木曜日";
+  if (value === 5) return "金曜日";
+  if (value === 6) return "土曜日";
+  return "-";
+}
+
+function calendarScopeLabel(value?: string | null): string {
+  const scope = s(value).toUpperCase();
+  if (scope === "SCHOOL") return "園";
+  if (scope === "CLASSROOM") return "クラス";
+  return scope || "-";
+}
+
+function calendarEventTypeLabel(value?: string | null): string {
+  const type = s(value).toUpperCase();
+  if (type === "EVENT") return "行事";
+  if (type === "PREPARATION") return "持ち物・準備";
+  if (type === "HEALTH_CHECK") return "健診";
+  if (type === "DRILL") return "避難訓練";
+  if (type === "BIRTHDAY") return "誕生会";
+  if (type === "OTHER") return "その他";
+  return type || "-";
+}
+
+function calendarEventDateLabel(row: ClassCalendarEventRow): string {
+  const mode = s(row.dateMode).toUpperCase();
+
+  if (mode === "WEEKLY") {
+    return `毎週${dayOfWeekLabel(row.dayOfWeek ?? null)}`;
+  }
+
+  if (mode === "MONTHLY_DATE") {
+    return `毎月${row.dayOfMonth ?? "-"}日`;
+  }
+
+  if (mode === "RANGE") {
+    return `${row.startDate ?? "-"} ～ ${row.endDate ?? "-"}`;
+  }
+
+  return row.startDate ?? "-";
+}
+
+function calendarEventOccursOnDate(
+  row: ClassCalendarEventRow,
+  targetDate: string,
+): boolean {
+  const mode = s(row.dateMode).toUpperCase();
+  const startDate = s(row.startDate);
+  const endDate = s(row.endDate) || startDate;
+
+  if (!startDate || !targetDate) return false;
+
+  if (mode === "WEEKLY") {
+    if (startDate > targetDate) return false;
+    if (endDate && endDate < targetDate) return false;
+    return Number(row.dayOfWeek ?? -1) === toWeekday(targetDate);
+  }
+
+  if (mode === "MONTHLY_DATE") {
+    if (startDate > targetDate) return false;
+    if (endDate && endDate < targetDate) return false;
+    return Number(row.dayOfMonth ?? -1) === dayOfMonth(targetDate);
+  }
+
+  if (mode === "RANGE") {
+    return startDate <= targetDate && endDate >= targetDate;
+  }
+
+  return startDate === targetDate;
+}
+
+function calendarEventVisibleForScheduleDay(
+  row: ClassCalendarEventRow,
+  day: ScheduleDayRow,
+): boolean {
+  if (s(row.tenantId) !== s(day.tenantId)) return false;
+
+  const status = s(row.status || "ACTIVE").toUpperCase();
+  if (status === "ARCHIVED") return false;
+
+  if (row.showInSchedule === false) return false;
+
+  const scopeType = s(row.scopeType).toUpperCase();
+
+  if (scopeType === "SCHOOL") return true;
+
+  if (scopeType === "CLASSROOM") {
+    return s(row.classroomId) === s(day.classroomId);
+  }
+
+  return false;
+}
+
+function sortCalendarEventsForDay(
+  a: ClassCalendarEventRow,
+  b: ClassCalendarEventRow,
+): number {
+  const time = s(a.startTime).localeCompare(s(b.startTime));
+  if (time !== 0) return time;
+
+  const order = Number(a.sortOrder ?? 999999) - Number(b.sortOrder ?? 999999);
+  if (order !== 0) return order;
+
+  return s(a.title).localeCompare(s(b.title));
 }
 
 function createEmptyAttendanceRow(): AttendanceDraft {
@@ -554,6 +684,109 @@ function buildTranscriptTimeoutMessage(jobId: string) {
   ].join("\n");
 }
 
+function ScheduleDayCalendarPanel(props: {
+  rows: ClassCalendarEventRow[];
+  targetDate: string;
+}) {
+  const { rows, targetDate } = props;
+
+  const homeNoticeRows = rows.filter(
+    (row) => row.showInHomeNotice || s(row.homeNoticeText),
+  );
+
+  return (
+    <div
+      style={{
+        padding: 16,
+        border: "1px solid #d0d7de",
+        borderRadius: 8,
+        background: "#fff",
+        display: "grid",
+        gap: 12,
+      }}
+    >
+      <div>
+        <h3 style={{ margin: 0 }}>今日の予定</h3>
+        <div style={{ fontSize: 12, color: "#666", marginTop: 4 }}>
+          行事カレンダーから、{targetDate}{" "}
+          に該当する園行事・クラス行事を表示します。
+        </div>
+      </div>
+
+      {rows.length === 0 ? (
+        <div style={{ color: "#666" }}>今日の予定はありません。</div>
+      ) : (
+        <div style={{ display: "grid", gap: 8 }}>
+          {rows.map((row) => (
+            <div
+              key={row.id}
+              style={{
+                padding: 12,
+                border: "1px solid #e5e7eb",
+                borderRadius: 8,
+                background: "#fafafa",
+              }}
+            >
+              <div
+                style={{
+                  display: "flex",
+                  gap: 8,
+                  flexWrap: "wrap",
+                  alignItems: "center",
+                  marginBottom: 6,
+                }}
+              >
+                <strong>{row.title}</strong>
+                <span style={{ fontSize: 12, color: "#666" }}>
+                  {calendarScopeLabel(row.scopeType)} /{" "}
+                  {calendarEventTypeLabel(row.eventType)}
+                </span>
+                <span style={{ fontSize: 12, color: "#666" }}>
+                  {calendarEventDateLabel(row)}
+                  {row.startTime ? ` ${row.startTime}` : ""}
+                  {row.endTime ? `-${row.endTime}` : ""}
+                </span>
+              </div>
+
+              {row.description ? (
+                <div style={{ whiteSpace: "pre-wrap" }}>{row.description}</div>
+              ) : null}
+            </div>
+          ))}
+        </div>
+      )}
+
+      <div
+        style={{
+          padding: 12,
+          border: "1px solid #e5e7eb",
+          borderRadius: 8,
+          background: "#f6fbff",
+        }}
+      >
+        <div style={{ fontWeight: 700, marginBottom: 8 }}>家庭への連絡事項</div>
+
+        {homeNoticeRows.length === 0 ? (
+          <div style={{ color: "#666" }}>
+            今日の家庭向け連絡事項はありません。
+          </div>
+        ) : (
+          <ul style={{ margin: 0, paddingLeft: 20 }}>
+            {homeNoticeRows.map((row) => (
+              <li key={row.id} style={{ marginBottom: 6 }}>
+                <b>{row.title}：</b>
+                <span style={{ whiteSpace: "pre-wrap" }}>
+                  {row.homeNoticeText || row.description || row.title}
+                </span>
+              </li>
+            ))}
+          </ul>
+        )}
+      </div>
+    </div>
+  );
+}
+
 export default function ScheduleDayPanel(props: { owner: string }) {
   const { owner } = props;
   const client = useMemo(
@@ -589,6 +822,10 @@ export default function ScheduleDayPanel(props: { owner: string }) {
   const [records, setRecords] = useState<
     Array<Schema["ScheduleRecord"]["type"]>
   >([]);
+  const [calendarEvents, setCalendarEvents] = useState<ClassCalendarEventRow[]>(
+    [],
+  );
+
   const [memoDrafts, setMemoDrafts] = useState<Record<string, string>>({});
   const [attendanceDrafts, setAttendanceDrafts] = useState<
     Record<string, Record<string, AttendanceDraft>>
@@ -790,12 +1027,38 @@ export default function ScheduleDayPanel(props: { owner: string }) {
     }
   }
 
+  async function fetchCalendarEventsForDay(
+    scheduleDay: ScheduleDayRow,
+  ): Promise<ClassCalendarEventRow[]> {
+    const res = await client.models.ClassCalendarEvent.list({
+      filter: {
+        tenantId: { eq: scheduleDay.tenantId },
+      } as ListOptions,
+      limit: 2000,
+    });
+
+    if (res.errors?.length) {
+      throw new Error(
+        formatModelErrors(
+          res.errors,
+          "ClassCalendarEvent の取得に失敗しました。",
+        ),
+      );
+    }
+
+    return [...(res.data ?? [])]
+      .filter((row) => calendarEventVisibleForScheduleDay(row, scheduleDay))
+      .filter((row) => calendarEventOccursOnDate(row, scheduleDay.targetDate))
+      .sort(sortCalendarEventsForDay);
+  }
+
   async function loadScheduleDay() {
     setLoading(true);
     setMessage("");
     setDay(null);
     setItems([]);
     setRecords([]);
+    setCalendarEvents([]);
     setMemoDrafts({});
     setAttendanceDrafts({});
     setTranscriptDrafts({});
@@ -872,6 +1135,9 @@ export default function ScheduleDayPanel(props: { owner: string }) {
         }
       }
       setTranscriptDrafts(initialTranscriptDrafts);
+
+      const calendarRows = await fetchCalendarEventsForDay(normalizedDay);
+      setCalendarEvents(calendarRows);
 
       setMessage(`日案を読み込みました。 itemCount=${sortedItems.length}`);
     } catch (e) {
@@ -1696,6 +1962,12 @@ export default function ScheduleDayPanel(props: { owner: string }) {
           </div>
         ) : null}
       </div>
+      {day ? (
+        <ScheduleDayCalendarPanel
+          rows={calendarEvents}
+          targetDate={day.targetDate}
+        />
+      ) : null}
 
       {day ? (
         <div

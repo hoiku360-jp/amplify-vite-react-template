@@ -53,6 +53,7 @@ import {
   type SchoolAnnualPlanRecord,
   type TenantRecord,
   type TreeNode,
+  type ClassCalendarEventRecord,
 } from "./types";
 
 type Props = {
@@ -73,6 +74,7 @@ type Props = {
   quarterEvents: QuarterEventRecord[];
   selectedQuarterEvents: QuarterEventRecord[];
   monthEvents: MonthEventRecord[];
+  monthCalendarEvents: ClassCalendarEventRecord[];
   planPhrases: PlanPhraseRecord[];
   planPhraseAbilityLinks: PlanPhraseAbilityLinkRecord[];
   monthPhraseSelections: ClassMonthPlanPhraseSelectionRecord[];
@@ -146,6 +148,69 @@ const smallMutedStyle: CSSProperties = {
 
 function textOr(value: string | null | undefined, fallback = ""): string {
   return value ?? fallback;
+}
+
+function calendarScopeLabel(value?: string | null): string {
+  const scope = s(value).toUpperCase();
+
+  if (scope === "SCHOOL") return "園";
+  if (scope === "CLASSROOM") return "クラス";
+
+  return scope || "-";
+}
+
+function calendarEventTypeLabel(value?: string | null): string {
+  const type = s(value).toUpperCase();
+
+  if (type === "EVENT") return "行事";
+  if (type === "PREPARATION") return "持ち物・準備";
+  if (type === "HEALTH_CHECK") return "健診";
+  if (type === "DRILL") return "避難訓練";
+  if (type === "BIRTHDAY") return "誕生会";
+  if (type === "OTHER") return "その他";
+
+  return type || "-";
+}
+
+function calendarDateModeLabel(value?: string | null): string {
+  const mode = s(value).toUpperCase();
+
+  if (mode === "SINGLE") return "単発";
+  if (mode === "RANGE") return "期間";
+  if (mode === "WEEKLY") return "毎週";
+  if (mode === "MONTHLY_DATE") return "毎月日付";
+
+  return mode || "-";
+}
+
+function dayOfWeekLabel(value?: number | null): string {
+  if (value === 0) return "日曜日";
+  if (value === 1) return "月曜日";
+  if (value === 2) return "火曜日";
+  if (value === 3) return "水曜日";
+  if (value === 4) return "木曜日";
+  if (value === 5) return "金曜日";
+  if (value === 6) return "土曜日";
+
+  return "-";
+}
+
+function calendarEventDateLabel(row: ClassCalendarEventRecord): string {
+  const mode = s(row.dateMode).toUpperCase();
+
+  if (mode === "WEEKLY") {
+    return `毎週${dayOfWeekLabel(row.dayOfWeek ?? null)}`;
+  }
+
+  if (mode === "MONTHLY_DATE") {
+    return `毎月${row.dayOfMonth ?? "-"}日`;
+  }
+
+  if (mode === "RANGE") {
+    return `${row.startDate ?? "-"} ～ ${row.endDate ?? "-"}`;
+  }
+
+  return row.startDate ?? "-";
 }
 
 function sortBySortOrderThenId<T extends { sortOrder?: number | null }>(
@@ -642,6 +707,107 @@ function SelectedReferenceList<
           </button>
         </div>
       ))}
+    </div>
+  );
+}
+
+function MonthCalendarEventReferencePanel(props: {
+  rows: ClassCalendarEventRecord[];
+}) {
+  const { rows } = props;
+
+  const homeNoticeRows = rows.filter(
+    (row) => row.showInHomeNotice || s(row.homeNoticeText),
+  );
+
+  return (
+    <div style={subtleBoxStyle}>
+      <div style={{ display: "grid", gap: 10 }}>
+        <div>
+          <div style={{ fontWeight: 700 }}>今月の予定</div>
+          <div style={smallMutedStyle}>
+            行事カレンダーに登録された園行事・クラス行事を参照表示します。
+            月計画の保存データにはまだ混ぜません。
+          </div>
+        </div>
+
+        {rows.length === 0 ? (
+          <div style={smallMutedStyle}>今月の予定はありません。</div>
+        ) : (
+          <div style={{ overflowX: "auto" }}>
+            <table
+              style={{
+                width: "100%",
+                borderCollapse: "collapse",
+                minWidth: 760,
+              }}
+            >
+              <thead>
+                <tr>
+                  <th style={thStyle}>日付</th>
+                  <th style={thStyle}>対象</th>
+                  <th style={thStyle}>種別</th>
+                  <th style={thStyle}>内容</th>
+                  <th style={thStyle}>家庭連絡</th>
+                </tr>
+              </thead>
+              <tbody>
+                {rows.map((row) => (
+                  <tr key={row.id}>
+                    <td style={tdStyle}>
+                      {calendarEventDateLabel(row)}
+                      <div style={smallMutedStyle}>
+                        {calendarDateModeLabel(row.dateMode)}
+                        {row.startTime ? ` / ${row.startTime}` : ""}
+                        {row.endTime ? `-${row.endTime}` : ""}
+                      </div>
+                    </td>
+                    <td style={tdStyle}>{calendarScopeLabel(row.scopeType)}</td>
+                    <td style={tdStyle}>
+                      {calendarEventTypeLabel(row.eventType)}
+                    </td>
+                    <td style={tdStyle}>
+                      <div style={{ fontWeight: 700 }}>{row.title}</div>
+                      {row.description ? (
+                        <div style={{ whiteSpace: "pre-wrap" }}>
+                          {row.description}
+                        </div>
+                      ) : null}
+                    </td>
+                    <td style={tdStyle}>
+                      {row.showInHomeNotice || row.homeNoticeText ? (
+                        <div style={{ whiteSpace: "pre-wrap" }}>
+                          {row.homeNoticeText || row.title}
+                        </div>
+                      ) : (
+                        <span style={smallMutedStyle}>-</span>
+                      )}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+
+        <div>
+          <div style={{ fontWeight: 700 }}>家庭への連絡事項</div>
+          {homeNoticeRows.length === 0 ? (
+            <div style={smallMutedStyle}>
+              今月の家庭向け連絡事項はありません。
+            </div>
+          ) : (
+            <ul style={{ margin: "6px 0 0", paddingLeft: 20 }}>
+              {homeNoticeRows.map((row) => (
+                <li key={row.id}>
+                  <b>{calendarEventDateLabel(row)}：</b>
+                  {row.homeNoticeText || row.title}
+                </li>
+              ))}
+            </ul>
+          )}
+        </div>
+      </div>
     </div>
   );
 }
@@ -1308,6 +1474,7 @@ function PlanV2EditorInner(props: Props) {
     quarterEvents = [],
     monthChildren = [],
     monthEvents = [],
+    monthCalendarEvents = [],
     monthPhraseSelections = [],
     planPhraseSelections = [],
     planPhrases = [],
@@ -1642,6 +1809,9 @@ function PlanV2EditorInner(props: Props) {
           note="月のねらい(C)の手入力欄は非表示にしました。候補選択結果を内部的に goalTextC と5領域(C)へ反映します。"
         />
         <StatusSelect form={monthForm} setForm={setMonthForm} />
+
+        <MonthCalendarEventReferencePanel rows={monthCalendarEvents} />
+
         <MonthPhraseSelector
           title="月のねらい候補"
           form={monthForm}
@@ -1671,6 +1841,7 @@ export default function PlanV2Editor(props: Props) {
     classAnnualPlanForClassroom,
     quarterPlan,
     monthPlan,
+    monthCalendarEvents = [],
     quarterChildrenForClassroom = [],
     selectedQuarterEvents = [],
     monthChildren = [],
@@ -1692,6 +1863,7 @@ export default function PlanV2Editor(props: Props) {
         classAnnualPlanForClassroom?.id ?? "",
         quarterPlan?.id ?? "",
         monthPlan?.id ?? "",
+        monthCalendarEvents.map((x) => x.id).join(","),
         schoolAgeTargets.map((x) => x.id).join(","),
         quarterChildrenForClassroom.map((x) => x.id).join(","),
         selectedQuarterEvents.map((x) => x.id).join(","),
@@ -1710,6 +1882,7 @@ export default function PlanV2Editor(props: Props) {
       classAnnualPlanForClassroom?.id,
       quarterPlan?.id,
       monthPlan?.id,
+      monthCalendarEvents,
       schoolAgeTargets,
       quarterChildrenForClassroom,
       selectedQuarterEvents,

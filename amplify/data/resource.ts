@@ -1655,6 +1655,70 @@ const schema = a
         allow.authenticated().to(["create", "read", "update", "delete"]),
       ]),
 
+    ClassCalendarEvent: a
+      .model({
+        tenantId: a.string().required(),
+        owner: a.string().required(),
+
+        // SCHOOL: 園全体の行事 / CLASSROOM: クラス単位の行事
+        scopeType: a.string().required(), // SCHOOL / CLASSROOM
+
+        // scopeType が CLASSROOM の場合に使用。SCHOOL の場合は null。
+        classroomId: a.id(),
+
+        title: a.string().required(),
+        description: a.string(),
+
+        // 行事種別
+        eventType: a.string(), // EVENT / PREPARATION / HEALTH_CHECK / DRILL / BIRTHDAY / OTHER
+
+        // 日付の扱い
+        dateMode: a.string().required(), // SINGLE / RANGE / WEEKLY / MONTHLY_DATE
+
+        // SINGLE: startDate = 当日
+        // RANGE: startDate〜endDate
+        // WEEKLY / MONTHLY_DATE: 有効開始日
+        startDate: a.date().required(),
+
+        // RANGE / 繰り返しの有効終了日に使用
+        endDate: a.date(),
+
+        // WEEKLY 用: 0=日, 1=月, ... 6=土
+        dayOfWeek: a.integer(),
+
+        // MONTHLY_DATE 用: 毎月25日など
+        dayOfMonth: a.integer(),
+
+        startTime: a.string(),
+        endTime: a.string(),
+
+        // PLAN / Schedule での表示制御
+        showInPlan: a.boolean(),
+        showInSchedule: a.boolean(),
+        showInHomeNotice: a.boolean(),
+
+        // 家庭への連絡事項として表示する文章
+        homeNoticeText: a.string(),
+
+        sortOrder: a.integer(),
+        status: a.string().required(), // ACTIVE / ARCHIVED
+      })
+      .secondaryIndexes((index) => [
+        index("tenantId")
+          .sortKeys(["startDate", "sortOrder"])
+          .queryField("listClassCalendarEventsByTenantStartDate"),
+        index("classroomId")
+          .sortKeys(["startDate", "sortOrder"])
+          .queryField("listClassCalendarEventsByClassroomStartDate"),
+        index("tenantId")
+          .sortKeys(["status", "startDate"])
+          .queryField("listClassCalendarEventsByTenantStatus"),
+      ])
+      .authorization((allow) => [
+        allow.ownerDefinedIn("owner"),
+        allow.authenticated().to(["read", "create", "update", "delete"]),
+      ]),
+
     ClassWeekPlan: a
       .model({
         classMonthPlanId: a.id().required(),

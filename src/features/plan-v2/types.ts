@@ -12,6 +12,47 @@ export type QuarterEventRecord = Schema["QuarterEvent"]["type"];
 export type ClassMonthPlanRecord = Schema["ClassMonthPlan"]["type"];
 export type MonthEventRecord = Schema["MonthEvent"]["type"];
 
+export type ClassCalendarEventRecord = Schema["ClassCalendarEvent"]["type"];
+
+export type ClassCalendarEventScopeType = "SCHOOL" | "CLASSROOM";
+
+export type ClassCalendarEventDateMode =
+  | "SINGLE"
+  | "RANGE"
+  | "WEEKLY"
+  | "MONTHLY_DATE";
+
+export type ClassCalendarEventKind =
+  | "EVENT"
+  | "PREPARATION"
+  | "HEALTH_CHECK"
+  | "DRILL"
+  | "BIRTHDAY"
+  | "OTHER";
+
+export type ClassCalendarEventForm = {
+  id?: string;
+  tenantId: string;
+  scopeType: ClassCalendarEventScopeType;
+  classroomId?: string;
+  title: string;
+  description: string;
+  eventType: ClassCalendarEventKind;
+  dateMode: ClassCalendarEventDateMode;
+  startDate: string;
+  endDate: string;
+  dayOfWeek: string;
+  dayOfMonth: string;
+  startTime: string;
+  endTime: string;
+  showInPlan: boolean;
+  showInSchedule: boolean;
+  showInHomeNotice: boolean;
+  homeNoticeText: string;
+  sortOrder: string;
+  status: string;
+};
+
 export type PlanPhraseRecord = Schema["PlanPhrase"]["type"];
 export type PlanPhraseAbilityLinkRecord =
   Schema["PlanPhraseAbilityLink"]["type"];

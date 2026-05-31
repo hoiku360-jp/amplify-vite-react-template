@@ -21,6 +21,7 @@ type ClassMonthPlanRow = Schema["ClassMonthPlan"]["type"];
 type ClassMonthPlanPhraseSelectionRow =
   Schema["ClassMonthPlanPhraseSelection"]["type"];
 type ClassPlanPhraseSelectionRow = Schema["ClassPlanPhraseSelection"]["type"];
+type ClassCalendarEventRow = Schema["ClassCalendarEvent"]["type"];
 
 type ScoreSet = {
   health: number;
@@ -82,6 +83,36 @@ type PracticeRecommendation = {
   referenceMatchCount: number;
   matchedAbilities: string[];
   sourceLabels: string[];
+};
+
+type CalendarEventScopeType = "SCHOOL" | "CLASSROOM";
+type CalendarEventDateMode = "SINGLE" | "RANGE" | "WEEKLY" | "MONTHLY_DATE";
+type CalendarEventKind =
+  | "EVENT"
+  | "PREPARATION"
+  | "HEALTH_CHECK"
+  | "DRILL"
+  | "BIRTHDAY"
+  | "OTHER";
+
+type CalendarEventForm = {
+  scopeType: CalendarEventScopeType;
+  classroomId: string;
+  title: string;
+  description: string;
+  eventType: CalendarEventKind;
+  dateMode: CalendarEventDateMode;
+  startDate: string;
+  endDate: string;
+  dayOfWeek: string;
+  dayOfMonth: string;
+  startTime: string;
+  endTime: string;
+  showInPlan: boolean;
+  showInSchedule: boolean;
+  showInHomeNotice: boolean;
+  homeNoticeText: string;
+  sortOrder: string;
 };
 
 type ModelError = {
@@ -169,6 +200,9 @@ type SimpleScheduleWorkspaceClient = {
     ClassMonthPlan: ListableModel<ClassMonthPlanRow>;
     ClassMonthPlanPhraseSelection: ListableModel<ClassMonthPlanPhraseSelectionRow>;
     ClassPlanPhraseSelection: ListableModel<ClassPlanPhraseSelectionRow>;
+    ClassCalendarEvent: ListableModel<ClassCalendarEventRow> &
+      CreatableModel<ClassCalendarEventRow> &
+      UpdatableModel<ClassCalendarEventRow>;
     ScheduleMonth: ListableModel<ScheduleMonthRow> &
       CreatableModel<ScheduleMonthRow> &
       UpdatableModel<ScheduleMonthRow>;
@@ -226,6 +260,38 @@ const SCORE_AREAS: ScoreArea[] = [
   { key: "expression", label: "表現" },
 ];
 
+const CALENDAR_EVENT_TYPE_OPTIONS: Array<{
+  value: CalendarEventKind;
+  label: string;
+}> = [
+  { value: "EVENT", label: "行事" },
+  { value: "PREPARATION", label: "持ち物・準備" },
+  { value: "HEALTH_CHECK", label: "健診" },
+  { value: "DRILL", label: "避難訓練" },
+  { value: "BIRTHDAY", label: "誕生会" },
+  { value: "OTHER", label: "その他" },
+];
+
+const CALENDAR_DATE_MODE_OPTIONS: Array<{
+  value: CalendarEventDateMode;
+  label: string;
+}> = [
+  { value: "SINGLE", label: "単発" },
+  { value: "RANGE", label: "期間" },
+  { value: "WEEKLY", label: "毎週" },
+  { value: "MONTHLY_DATE", label: "毎月日付" },
+];
+
+const CALENDAR_DAY_OF_WEEK_OPTIONS = [
+  { value: "0", label: "日曜日" },
+  { value: "1", label: "月曜日" },
+  { value: "2", label: "火曜日" },
+  { value: "3", label: "水曜日" },
+  { value: "4", label: "木曜日" },
+  { value: "5", label: "金曜日" },
+  { value: "6", label: "土曜日" },
+];
+
 function s(value: unknown): string {
   return String(value ?? "").trim();
 }
@@ -233,6 +299,14 @@ function s(value: unknown): string {
 function n(value: unknown, fallback = 0): number {
   const parsed = Number(value ?? fallback);
   return Number.isFinite(parsed) ? parsed : fallback;
+}
+
+function toOptionalInt(value: string) {
+  const text = s(value);
+  if (!text) return undefined;
+
+  const parsed = Number(text);
+  return Number.isFinite(parsed) ? Math.trunc(parsed) : undefined;
 }
 
 function todayString() {
@@ -635,6 +709,168 @@ function practiceActive(row: PracticeRow) {
   return status !== "ARCHIVED";
 }
 
+function createEmptyCalendarEventForm(
+  monthKey: string,
+  defaultClassroomId: string,
+): CalendarEventForm {
+  return {
+    scopeType: defaultClassroomId ? "CLASSROOM" : "SCHOOL",
+    classroomId: defaultClassroomId,
+    title: "",
+    description: "",
+    eventType: "EVENT",
+    dateMode: "SINGLE",
+    startDate: monthRange(monthKey).fromDate,
+    endDate: "",
+    dayOfWeek: "1",
+    dayOfMonth: "1",
+    startTime: "",
+    endTime: "",
+    showInPlan: true,
+    showInSchedule: true,
+    showInHomeNotice: false,
+    homeNoticeText: "",
+    sortOrder: "0",
+  };
+}
+
+function calendarScopeLabel(value?: string | null) {
+  const scope = s(value).toUpperCase();
+  if (scope === "SCHOOL") return "園";
+  if (scope === "CLASSROOM") return "クラス";
+  return scope || "-";
+}
+
+function calendarEventTypeLabel(value?: string | null) {
+  const key = s(value).toUpperCase();
+  return (
+    CALENDAR_EVENT_TYPE_OPTIONS.find((row) => row.value === key)?.label ||
+    key ||
+    "-"
+  );
+}
+
+function calendarDateModeLabel(value?: string | null) {
+  const key = s(value).toUpperCase();
+  return (
+    CALENDAR_DATE_MODE_OPTIONS.find((row) => row.value === key)?.label ||
+    key ||
+    "-"
+  );
+}
+
+function calendarEventDateLabel(row: ClassCalendarEventRow) {
+  const mode = s(row.dateMode).toUpperCase();
+
+  if (mode === "WEEKLY") {
+    const day = Number(row.dayOfWeek ?? -1);
+    return `毎週${dayOfWeekLabel(day)}`;
+  }
+
+  if (mode === "MONTHLY_DATE") {
+    return `毎月${row.dayOfMonth ?? "-"}日`;
+  }
+
+  if (mode === "RANGE") {
+    return `${row.startDate ?? "-"} ～ ${row.endDate ?? "-"}`;
+  }
+
+  return row.startDate ?? "-";
+}
+
+function calendarEventOccursOnDate(
+  row: ClassCalendarEventRow,
+  targetDate: string,
+) {
+  const mode = s(row.dateMode).toUpperCase();
+  const startDate = s(row.startDate);
+  const endDate = s(row.endDate) || startDate;
+  if (!startDate) return false;
+
+  if (mode === "WEEKLY") {
+    const effectiveEndDate = s(row.endDate);
+    if (startDate > targetDate) return false;
+    if (effectiveEndDate && effectiveEndDate < targetDate) return false;
+    return Number(row.dayOfWeek ?? -1) === toWeekday(targetDate);
+  }
+
+  if (mode === "MONTHLY_DATE") {
+    const effectiveEndDate = s(row.endDate);
+    if (startDate > targetDate) return false;
+    if (effectiveEndDate && effectiveEndDate < targetDate) return false;
+    const day = parseDate(targetDate).getDate();
+    return Number(row.dayOfMonth ?? -1) === day;
+  }
+
+  return startDate <= targetDate && endDate >= targetDate;
+}
+
+function calendarEventIntersectsRange(
+  row: ClassCalendarEventRow,
+  fromDate: string,
+  toDate: string,
+) {
+  return listDates(fromDate, toDate).some((date) =>
+    calendarEventOccursOnDate(row, date),
+  );
+}
+
+function calendarEventVisibleForClassroom(
+  row: ClassCalendarEventRow,
+  targetTenantId: string,
+  targetClassroomId: string,
+) {
+  if (row.tenantId !== targetTenantId) return false;
+
+  const status = s(row.status || "ACTIVE").toUpperCase();
+  if (status === "ARCHIVED") return false;
+
+  const scope = s(row.scopeType).toUpperCase();
+  if (scope === "SCHOOL") return true;
+  if (scope === "CLASSROOM") {
+    return !!targetClassroomId && row.classroomId === targetClassroomId;
+  }
+
+  return false;
+}
+
+function sortCalendarEvents(
+  a: ClassCalendarEventRow,
+  b: ClassCalendarEventRow,
+) {
+  const dateDiff = s(a.startDate).localeCompare(s(b.startDate));
+  if (dateDiff !== 0) return dateDiff;
+
+  const orderDiff = n(a.sortOrder, 999999) - n(b.sortOrder, 999999);
+  if (orderDiff !== 0) return orderDiff;
+
+  return s(a.title).localeCompare(s(b.title));
+}
+
+async function listAll<TRow>(
+  model: ListableModel<TRow>,
+  options?: ListOptions,
+): Promise<TRow[]> {
+  const rows: TRow[] = [];
+  let nextToken: string | null | undefined = undefined;
+
+  do {
+    const res = await model.list({
+      ...(options ?? {}),
+      nextToken,
+    });
+
+    if (res.errors?.length) {
+      throw new Error(formatModelErrors(res.errors));
+    }
+
+    rows.push(...(res.data ?? []));
+    nextToken = res.nextToken ?? null;
+  } while (nextToken);
+
+  return rows;
+}
+
 const thStyle: CSSProperties = {
   border: "1px solid #ddd",
   padding: 8,
@@ -694,6 +930,16 @@ export default function SimpleScheduleWorkspacePanel(props: Props) {
   const [planPhraseSelections, setPlanPhraseSelections] = useState<
     ClassPlanPhraseSelectionRow[]
   >([]);
+  const [calendarEvents, setCalendarEvents] = useState<ClassCalendarEventRow[]>(
+    [],
+  );
+  const [calendarForm, setCalendarForm] = useState<CalendarEventForm>(() =>
+    createEmptyCalendarEventForm(monthKey, ""),
+  );
+  const [savingCalendarEvent, setSavingCalendarEvent] = useState(false);
+  const [archivingCalendarEventId, setArchivingCalendarEventId] = useState<
+    string | null
+  >(null);
   const [months, setMonths] = useState<ScheduleMonthRow[]>([]);
   const [weeks, setWeeks] = useState<ScheduleWeekRow[]>([]);
   const [weekItemsByWeekId, setWeekItemsByWeekId] = useState<
@@ -957,6 +1203,77 @@ export default function SimpleScheduleWorkspacePanel(props: Props) {
       .slice(0, 8);
   }, [selectedReferencePhraseSelections]);
 
+  const selectedMonthCalendarEvents = useMemo(() => {
+    const { fromDate, toDate } = monthRange(monthKey);
+
+    return calendarEvents
+      .filter((row) =>
+        calendarEventVisibleForClassroom(row, tenantId, classroomId),
+      )
+      .filter((row) => calendarEventIntersectsRange(row, fromDate, toDate))
+      .sort(sortCalendarEvents);
+  }, [calendarEvents, classroomId, monthKey, tenantId]);
+
+  const homeNoticeCalendarEvents = useMemo(
+    () =>
+      selectedMonthCalendarEvents.filter(
+        (row) => row.showInHomeNotice || s(row.homeNoticeText),
+      ),
+    [selectedMonthCalendarEvents],
+  );
+
+  const weekSummaries: WeekSummaryRow[] = useMemo(() => {
+    return weekRangesInMonth.map((range) => {
+      const scheduleWeek = weekMapByStartDate.get(range.weekStartDate) ?? null;
+      const items = scheduleWeek
+        ? (weekItemsByWeekId[scheduleWeek.id] ?? [])
+        : [];
+      const rows: WeekDateRow[] = listDates(
+        range.weekStartDate,
+        range.weekEndDate,
+      ).map((date) => {
+        const weekday = toWeekday(date);
+        const hits = items.filter(
+          (it) => it.dayOfWeek === weekday || it.targetDate === date,
+        );
+        const canonical = pickCanonicalWeekItem(hits);
+
+        return {
+          date,
+          weekday,
+          label: `${date} (${dayOfWeekLabel(weekday)})`,
+          weekItem: canonical,
+          hasDuplicate: hits.length > 1,
+        };
+      });
+
+      const totals = sumScoreSets(
+        rows.map((r) => ({
+          health: n(r.weekItem?.scoreHealth),
+          humanRelations: n(r.weekItem?.scoreHumanRelations),
+          environment: n(r.weekItem?.scoreEnvironment),
+          language: n(r.weekItem?.scoreLanguage),
+          expression: n(r.weekItem?.scoreExpression),
+        })),
+      );
+
+      return {
+        weekStartDate: range.weekStartDate,
+        weekEndDate: range.weekEndDate,
+        weekNoInMonth: range.weekNoInMonth,
+        label: range.label,
+        scheduleWeek,
+        rows,
+        totals,
+      };
+    });
+  }, [weekRangesInMonth, weekMapByStartDate, weekItemsByWeekId]);
+
+  const monthTotals = useMemo(
+    () => sumScoreSets(weekSummaries.map((w) => w.totals)),
+    [weekSummaries],
+  );
+
   useEffect(() => {
     if (!expandedWeekStartDate && weekRangesInMonth[0]) {
       setExpandedWeekStartDate(weekRangesInMonth[0].weekStartDate);
@@ -985,6 +1302,80 @@ export default function SimpleScheduleWorkspacePanel(props: Props) {
     });
   }, [classMonthPlanCandidates, selectedMonth?.sourceClassMonthPlanId]);
 
+  useEffect(() => {
+    setCalendarForm((prev) => {
+      if (prev.title || prev.description || prev.homeNoticeText) return prev;
+      return createEmptyCalendarEventForm(monthKey, classroomId);
+    });
+  }, [classroomId, monthKey]);
+
+  const fetchWeeksForMonth = useCallback(async (monthId: string) => {
+    if (!monthId) {
+      setWeeks([]);
+      setWeekItemsByWeekId({});
+      setLatestDaysByWeekDateKey({});
+      return;
+    }
+
+    const weekRows = (
+      await listAll(client.models.ScheduleWeek, {
+        filter: {
+          sourceScheduleMonthId: { eq: monthId },
+        },
+        limit: 1000,
+      } as ListOptions)
+    ).sort((a, b) => s(a.weekStartDate).localeCompare(s(b.weekStartDate)));
+
+    setWeeks(weekRows);
+
+    const itemEntries = await Promise.all(
+      weekRows.map(async (week) => {
+        const itemRows = (
+          await listAll(client.models.ScheduleWeekItem, {
+            filter: {
+              scheduleWeekId: { eq: week.id },
+            },
+            limit: 1000,
+          } as ListOptions)
+        ).sort((a, b) => {
+          const dayDiff = n(a.dayOfWeek) - n(b.dayOfWeek);
+          if (dayDiff !== 0) return dayDiff;
+          return n(a.sortOrder) - n(b.sortOrder);
+        });
+        return [week.id, itemRows] as const;
+      }),
+    );
+
+    setWeekItemsByWeekId(Object.fromEntries(itemEntries));
+
+    const dayEntries = await Promise.all(
+      weekRows.map(async (week) => {
+        const dayRows = await listAll(client.models.ScheduleDay, {
+          filter: {
+            sourceWeekId: { eq: week.id },
+          },
+          limit: 1000,
+        } as ListOptions);
+
+        return dayRows.map(
+          (day) => [makeWeekDateKey(week.id, day.targetDate), day] as const,
+        );
+      }),
+    );
+
+    const latestMap = new Map<string, ScheduleDayRow>();
+    for (const entries of dayEntries) {
+      for (const [key, day] of entries) {
+        const current = latestMap.get(key);
+        if (!current || latestIssueVersion(current, day) > 0) {
+          latestMap.set(key, day);
+        }
+      }
+    }
+
+    setLatestDaysByWeekDateKey(Object.fromEntries(latestMap));
+  }, []);
+
   const loadInitial = useCallback(async () => {
     setLoading(true);
     try {
@@ -998,6 +1389,7 @@ export default function SimpleScheduleWorkspacePanel(props: Props) {
         classMonthPlanRes,
         monthPhraseSelectionRes,
         planPhraseSelectionRes,
+        calendarEventRes,
         monthRes,
       ] = await Promise.all([
         client.models.Classroom.list({
@@ -1053,6 +1445,12 @@ export default function SimpleScheduleWorkspacePanel(props: Props) {
           },
           limit: 20000,
         } as ListOptions),
+        client.models.ClassCalendarEvent.list({
+          filter: {
+            tenantId: { eq: trimmedTenantId },
+          },
+          limit: 2000,
+        } as ListOptions),
         client.models.ScheduleMonth.list({
           filter: {
             owner: { eq: owner },
@@ -1060,6 +1458,23 @@ export default function SimpleScheduleWorkspacePanel(props: Props) {
           limit: 1000,
         } as ListOptions),
       ]);
+
+      const allResponses = [
+        classroomRes,
+        ageTargetRes,
+        practiceRes,
+        classAnnualPlanRes,
+        classQuarterPlanRes,
+        classMonthPlanRes,
+        monthPhraseSelectionRes,
+        planPhraseSelectionRes,
+        calendarEventRes,
+        monthRes,
+      ];
+      const responseErrors = allResponses.flatMap((res) => res.errors ?? []);
+      if (responseErrors.length > 0) {
+        throw new Error(formatModelErrors(responseErrors));
+      }
 
       const classroomRows = classroomRes.data ?? [];
       const ageRows = ageTargetRes.data ?? [];
@@ -1069,6 +1484,9 @@ export default function SimpleScheduleWorkspacePanel(props: Props) {
       const monthRows = [...(monthRes.data ?? [])]
         .filter((row) => row.monthKey === monthKey || !row.monthKey)
         .sort((a, b) => s(b.monthKey).localeCompare(s(a.monthKey)));
+      const calendarRows = [...(calendarEventRes.data ?? [])]
+        .filter((row) => s(row.status || "ACTIVE").toUpperCase() !== "ARCHIVED")
+        .sort(sortCalendarEvents);
 
       setTenantId(trimmedTenantId);
       setClassrooms(classroomRows);
@@ -1079,13 +1497,19 @@ export default function SimpleScheduleWorkspacePanel(props: Props) {
       setClassMonthPlans(classMonthPlanRes.data ?? []);
       setMonthPhraseSelections(monthPhraseSelectionRes.data ?? []);
       setPlanPhraseSelections(planPhraseSelectionRes.data ?? []);
+      setCalendarEvents(calendarRows);
       setMonths(monthRows);
 
-      setClassroomId((prev) => prev || classroomRows[0]?.id || "");
-      setAgeTargetId((prev) => prev || ageRows[0]?.id || "");
+      const nextClassroomId = classroomId || classroomRows[0]?.id || "";
+      const nextAgeTargetId = ageTargetId || ageRows[0]?.id || "";
+      setClassroomId(nextClassroomId);
+      setAgeTargetId(nextAgeTargetId);
 
       const sameMonth = monthRows.find(
-        (m) => m.monthKey === monthKey && m.owner === owner,
+        (m) =>
+          m.monthKey === monthKey &&
+          m.owner === owner &&
+          (!nextClassroomId || m.classroomId === nextClassroomId),
       );
       if (sameMonth) {
         setSelectedMonthId(sameMonth.id);
@@ -1094,7 +1518,15 @@ export default function SimpleScheduleWorkspacePanel(props: Props) {
         if (sameMonth.sourceClassMonthPlanId) {
           setSelectedClassMonthPlanId(sameMonth.sourceClassMonthPlanId);
         }
+        await fetchWeeksForMonth(sameMonth.id);
+      } else {
+        setSelectedMonthId("");
+        setWeeks([]);
+        setWeekItemsByWeekId({});
+        setLatestDaysByWeekDateKey({});
       }
+
+      setMessage("読込しました。");
     } catch (e) {
       console.error(e);
       setMessage(
@@ -1103,134 +1535,24 @@ export default function SimpleScheduleWorkspacePanel(props: Props) {
     } finally {
       setLoading(false);
     }
-  }, [fiscalYear, monthKey, owner, tenantId]);
-
-  const fetchWeekItems = useCallback(
-    async (scheduleWeekId: string): Promise<ScheduleWeekItemRow[]> => {
-      const res = await client.models.ScheduleWeekItem.list({
-        filter: {
-          scheduleWeekId: { eq: scheduleWeekId },
-        },
-        limit: 1000,
-      } as ListOptions);
-
-      if (res.errors?.length) {
-        throw new Error(formatModelErrors(res.errors));
-      }
-
-      return [...(res.data ?? [])].sort((a, b) => {
-        const d = n(a.dayOfWeek) - n(b.dayOfWeek);
-        if (d !== 0) return d;
-        return n(a.sortOrder) - n(b.sortOrder);
-      });
-    },
-    [],
-  );
-
-  const fetchScheduleDays = useCallback(
-    async (scheduleWeekId: string): Promise<ScheduleDayRow[]> => {
-      const res = await client.models.ScheduleDay.list({
-        filter: {
-          sourceWeekId: { eq: scheduleWeekId },
-        },
-        limit: 1000,
-      } as ListOptions);
-
-      if (res.errors?.length) {
-        throw new Error(formatModelErrors(res.errors));
-      }
-
-      return [...(res.data ?? [])].sort((a, b) => {
-        const d = s(a.targetDate).localeCompare(s(b.targetDate));
-        if (d !== 0) return d;
-        return latestIssueVersion(a, b);
-      });
-    },
-    [],
-  );
-
-  const loadMonthDetails = useCallback(
-    async (monthId: string) => {
-      if (!monthId) {
-        setWeeks([]);
-        setWeekItemsByWeekId({});
-        setLatestDaysByWeekDateKey({});
-        return;
-      }
-
-      setLoading(true);
-      try {
-        const weekRes = await client.models.ScheduleWeek.list({
-          filter: {
-            sourceScheduleMonthId: { eq: monthId },
-          },
-          limit: 1000,
-        } as ListOptions);
-
-        if (weekRes.errors?.length) {
-          throw new Error(formatModelErrors(weekRes.errors));
-        }
-
-        const weekRows = [...(weekRes.data ?? [])].sort((a, b) =>
-          s(a.weekStartDate).localeCompare(s(b.weekStartDate)),
-        );
-
-        const entries = await Promise.all(
-          weekRows.map(async (w) => {
-            const rows = await fetchWeekItems(w.id);
-            return [w.id, rows] as const;
-          }),
-        );
-
-        const dayEntries = await Promise.all(
-          weekRows.map(async (w) => {
-            const rows = await fetchScheduleDays(w.id);
-            return [w.id, rows] as const;
-          }),
-        );
-
-        const nextLatestDayMap: Record<string, ScheduleDayRow | null> = {};
-
-        for (const [weekId, dayRows] of dayEntries) {
-          const grouped = new Map<string, ScheduleDayRow[]>();
-
-          for (const row of dayRows) {
-            const targetDate = s(row.targetDate);
-            if (!targetDate) continue;
-
-            const list = grouped.get(targetDate) ?? [];
-            list.push(row);
-            grouped.set(targetDate, list);
-          }
-
-          for (const [targetDate, rows] of grouped.entries()) {
-            const latest = [...rows].sort(latestIssueVersion)[0] ?? null;
-            nextLatestDayMap[makeWeekDateKey(weekId, targetDate)] = latest;
-          }
-        }
-
-        setWeeks(weekRows);
-        setWeekItemsByWeekId(Object.fromEntries(entries));
-        setLatestDaysByWeekDateKey(nextLatestDayMap);
-      } catch (e) {
-        console.error(e);
-        setMessage(
-          `月詳細読込エラー: ${e instanceof Error ? e.message : String(e)}`,
-        );
-      } finally {
-        setLoading(false);
-      }
-    },
-    [fetchScheduleDays, fetchWeekItems],
-  );
+  }, [
+    ageTargetId,
+    classroomId,
+    fetchWeeksForMonth,
+    fiscalYear,
+    monthKey,
+    owner,
+    tenantId,
+  ]);
 
   useEffect(() => {
     void loadInitial();
   }, [loadInitial]);
 
   useEffect(() => {
-    void loadMonthDetails(selectedMonthId);
-  }, [selectedMonthId, loadMonthDetails]);
+    if (!selectedMonthId) return;
+    void fetchWeeksForMonth(selectedMonthId);
+  }, [fetchWeeksForMonth, selectedMonthId]);
 
   useEffect(() => {
     let cancelled = false;
@@ -1258,7 +1580,9 @@ export default function SimpleScheduleWorkspacePanel(props: Props) {
           }
         >();
 
-        for (const ability of combinedAbilityRows) {
+        const targetAbilities = combinedAbilityRows.slice(0, 25);
+
+        for (const ability of targetAbilities) {
           const { data, errors } =
             await client.models.AbilityPracticeLink.listByAbility({
               abilityCode: ability.abilityCode,
@@ -1362,21 +1686,22 @@ export default function SimpleScheduleWorkspacePanel(props: Props) {
       );
     }
 
-    try {
-      const res = await runner(args);
-      const errors = getOperationErrors(res);
-      if (errors?.length) throw new Error(formatModelErrors(errors));
-      return getOperationData(res);
-    } catch (error) {
-      if (error instanceof Error && !error.message.includes("input")) {
-        throw error;
-      }
+    let res:
+      | OperationEnvelope<IssueScheduleWeekResult>
+      | IssueScheduleWeekResult;
 
-      const res = await runner({ input: args });
-      const errors = getOperationErrors(res);
-      if (errors?.length) throw new Error(formatModelErrors(errors));
-      return getOperationData(res);
+    try {
+      res = await runner(args);
+    } catch {
+      res = await runner({ input: args });
     }
+
+    const errors = getOperationErrors(res);
+    if (errors?.length) {
+      throw new Error(formatModelErrors(errors));
+    }
+
+    return getOperationData(res);
   }
 
   async function runIssueDayMutation(args: IssueScheduleDayArgs) {
@@ -1387,138 +1712,149 @@ export default function SimpleScheduleWorkspacePanel(props: Props) {
       );
     }
 
+    let res: OperationEnvelope<IssueScheduleDayResult> | IssueScheduleDayResult;
+
     try {
-      const res = await runner(args);
-      const errors = getOperationErrors(res);
-      if (errors?.length) throw new Error(formatModelErrors(errors));
-      return getOperationData(res);
-    } catch (error) {
-      if (error instanceof Error && !error.message.includes("input")) {
-        throw error;
-      }
-
-      const res = await runner({ input: args });
-      const errors = getOperationErrors(res);
-      if (errors?.length) throw new Error(formatModelErrors(errors));
-      return getOperationData(res);
+      res = await runner(args);
+    } catch {
+      res = await runner({ input: args });
     }
+
+    const errors = getOperationErrors(res);
+    if (errors?.length) {
+      throw new Error(formatModelErrors(errors));
+    }
+
+    return getOperationData(res);
   }
 
-  async function issueMissingWeeksForMonth(scheduleMonthId: string) {
-    const existingWeekRes = await client.models.ScheduleWeek.list({
-      filter: {
-        sourceScheduleMonthId: { eq: scheduleMonthId },
-      },
-      limit: 1000,
-    } as ListOptions);
-
-    if (existingWeekRes.errors?.length) {
-      throw new Error(formatModelErrors(existingWeekRes.errors));
-    }
-
-    const existingStarts = new Set(
-      (existingWeekRes.data ?? []).map((w) => w.weekStartDate ?? ""),
-    );
-
-    for (const range of weekRangesInMonth) {
-      if (existingStarts.has(range.weekStartDate)) continue;
-
-      await runIssueWeekMutation({
-        scheduleMonthId,
-        weekStartDate: range.weekStartDate,
-        weekEndDate: range.weekEndDate,
-        weekNo: range.weekNoInMonth,
-        issueType: "MANUAL",
-      });
-    }
-  }
-
-  async function applyClassMonthPlanToScheduleMonth(
-    scheduleMonthId: string,
-    classMonthPlanId: string,
-  ) {
-    if (!scheduleMonthId || !classMonthPlanId) return;
-
-    const updateMonthRes = await client.models.ScheduleMonth.update({
-      id: scheduleMonthId,
-      sourceClassMonthPlanId: classMonthPlanId,
-    } as MutationInput);
-
-    if (!updateMonthRes.data) {
-      throw new Error(
-        formatModelErrors(
-          updateMonthRes.errors,
-          "月案へのPLAN月計画紐づけに失敗しました。",
-        ),
-      );
-    }
-
-    const weekRes = await client.models.ScheduleWeek.list({
-      filter: {
-        sourceScheduleMonthId: { eq: scheduleMonthId },
-      },
-      limit: 1000,
-    } as ListOptions);
-
-    if (weekRes.errors?.length) {
-      throw new Error(formatModelErrors(weekRes.errors));
-    }
-
-    for (const week of weekRes.data ?? []) {
-      const updateWeekRes = await client.models.ScheduleWeek.update({
-        id: week.id,
-        sourceClassMonthPlanId: classMonthPlanId,
-      } as MutationInput);
-
-      if (!updateWeekRes.data) {
-        throw new Error(
-          formatModelErrors(
-            updateWeekRes.errors,
-            "週案へのPLAN月計画紐づけに失敗しました。",
-          ),
-        );
-      }
-    }
-
-    setMonths((prev) =>
-      prev.map((row) =>
-        row.id === scheduleMonthId
-          ? { ...row, sourceClassMonthPlanId: classMonthPlanId }
-          : row,
-      ),
-    );
-  }
-
-  async function attachSelectedPlanToSelectedMonth() {
-    if (!selectedMonth) {
-      setMessage("先にSchedule月案を選択してください。");
+  async function createCalendarEvent() {
+    const title = s(calendarForm.title);
+    if (!tenantId.trim()) {
+      setMessage("tenantId を入力してください。");
       return;
     }
-    if (!selectedClassMonthPlanId) {
-      setMessage("紐づけるPLAN月計画を選択してください。");
+    if (!title) {
+      setMessage("カレンダー行事のタイトルを入力してください。");
+      return;
+    }
+    if (calendarForm.scopeType === "CLASSROOM" && !calendarForm.classroomId) {
+      setMessage("クラス行事の場合は classroom を選択してください。");
+      return;
+    }
+    if (!calendarForm.startDate) {
+      setMessage("開始日を入力してください。");
       return;
     }
 
-    setLoading(true);
+    const dayOfMonth = toOptionalInt(calendarForm.dayOfMonth);
+    if (
+      calendarForm.dateMode === "MONTHLY_DATE" &&
+      (!dayOfMonth || dayOfMonth < 1 || dayOfMonth > 31)
+    ) {
+      setMessage("毎月日付は 1〜31 の範囲で入力してください。");
+      return;
+    }
+
+    setSavingCalendarEvent(true);
     setMessage("");
 
     try {
-      await applyClassMonthPlanToScheduleMonth(
-        selectedMonth.id,
-        selectedClassMonthPlanId,
-      );
-      await loadMonthDetails(selectedMonth.id);
+      const createRes = await client.models.ClassCalendarEvent.create({
+        tenantId: tenantId.trim(),
+        owner,
+        scopeType: calendarForm.scopeType,
+        classroomId:
+          calendarForm.scopeType === "CLASSROOM"
+            ? calendarForm.classroomId
+            : undefined,
+        title,
+        description: calendarForm.description || undefined,
+        eventType: calendarForm.eventType,
+        dateMode: calendarForm.dateMode,
+        startDate: calendarForm.startDate,
+        endDate: calendarForm.endDate || undefined,
+        dayOfWeek:
+          calendarForm.dateMode === "WEEKLY"
+            ? toOptionalInt(calendarForm.dayOfWeek)
+            : undefined,
+        dayOfMonth:
+          calendarForm.dateMode === "MONTHLY_DATE" ? dayOfMonth : undefined,
+        startTime: calendarForm.startTime || undefined,
+        endTime: calendarForm.endTime || undefined,
+        showInPlan: calendarForm.showInPlan,
+        showInSchedule: calendarForm.showInSchedule,
+        showInHomeNotice: calendarForm.showInHomeNotice,
+        homeNoticeText: calendarForm.homeNoticeText || undefined,
+        sortOrder: toOptionalInt(calendarForm.sortOrder) ?? 0,
+        status: "ACTIVE",
+      } as MutationInput);
 
-      setMessage(
-        `Schedule月案にPLAN月計画を紐づけました。\nclassMonthPlanId=${selectedClassMonthPlanId}`,
+      if (!createRes.data) {
+        throw new Error(
+          formatModelErrors(
+            createRes.errors,
+            "ClassCalendarEvent の作成に失敗しました。",
+          ),
+        );
+      }
+
+      setCalendarEvents((prev) =>
+        [...prev, createRes.data as ClassCalendarEventRow].sort(
+          sortCalendarEvents,
+        ),
       );
+
+      setCalendarForm((prev) => ({
+        ...createEmptyCalendarEventForm(monthKey, classroomId),
+        scopeType: prev.scopeType,
+        classroomId:
+          prev.scopeType === "CLASSROOM" ? prev.classroomId || classroomId : "",
+      }));
+
+      setMessage("カレンダー行事を登録しました。");
     } catch (e) {
       console.error(e);
       setMessage(
-        `PLAN月計画紐づけエラー: ${e instanceof Error ? e.message : String(e)}`,
+        `カレンダー行事登録エラー: ${
+          e instanceof Error ? e.message : String(e)
+        }`,
       );
     } finally {
-      setLoading(false);
+      setSavingCalendarEvent(false);
+    }
+  }
+
+  async function archiveCalendarEvent(row: ClassCalendarEventRow) {
+    setArchivingCalendarEventId(row.id);
+    setMessage("");
+
+    try {
+      const updateRes = await client.models.ClassCalendarEvent.update({
+        id: row.id,
+        status: "ARCHIVED",
+      } as MutationInput);
+
+      if (!updateRes.data) {
+        throw new Error(
+          formatModelErrors(
+            updateRes.errors,
+            "ClassCalendarEvent の整理に失敗しました。",
+          ),
+        );
+      }
+
+      setCalendarEvents((prev) => prev.filter((item) => item.id !== row.id));
+      setMessage("カレンダー行事を整理しました。");
+    } catch (e) {
+      console.error(e);
+      setMessage(
+        `カレンダー行事整理エラー: ${
+          e instanceof Error ? e.message : String(e)
+        }`,
+      );
+    } finally {
+      setArchivingCalendarEventId(null);
     }
   }
 
@@ -1527,12 +1863,12 @@ export default function SimpleScheduleWorkspacePanel(props: Props) {
       setMessage("tenantId を入力してください。");
       return;
     }
-    if (!classroomId.trim()) {
-      setMessage("classroomId を選択してください。");
+    if (!classroomId) {
+      setMessage("classroom を選択してください。");
       return;
     }
-    if (!ageTargetId.trim()) {
-      setMessage("ageTargetId を選択してください。");
+    if (!ageTargetId) {
+      setMessage("ageTarget を選択してください。");
       return;
     }
 
@@ -1540,62 +1876,72 @@ export default function SimpleScheduleWorkspacePanel(props: Props) {
     setMessage("");
 
     try {
-      const existing = months.find(
-        (m) =>
-          m.monthKey === monthKey &&
-          m.classroomId === classroomId &&
-          m.ageTargetId === ageTargetId,
+      const duplicate = months.find(
+        (row) =>
+          row.monthKey === monthKey &&
+          row.classroomId === classroomId &&
+          row.owner === owner,
       );
 
-      if (existing) {
-        if (selectedClassMonthPlanId) {
-          await applyClassMonthPlanToScheduleMonth(
-            existing.id,
-            selectedClassMonthPlanId,
+      const month = duplicate ?? null;
+      let scheduleMonth = month;
+
+      if (!scheduleMonth) {
+        const createRes = await client.models.ScheduleMonth.create({
+          tenantId: tenantId.trim(),
+          owner,
+          classroomId,
+          ageTargetId,
+          sourceClassMonthPlanId: selectedClassMonthPlanId || undefined,
+          monthKey,
+          title: `${monthKey} 月案`,
+          notes: selectedClassMonthPlan?.goalTextC || undefined,
+          status: "ACTIVE",
+          issueType: "MANUAL",
+          issueVersion: 1,
+          issuedAt: new Date().toISOString(),
+        } as MutationInput);
+
+        if (!createRes.data) {
+          throw new Error(
+            formatModelErrors(
+              createRes.errors,
+              "ScheduleMonth の作成に失敗しました。",
+            ),
           );
         }
 
-        await issueMissingWeeksForMonth(existing.id);
-        setSelectedMonthId(existing.id);
-        await loadInitial();
-        await loadMonthDetails(existing.id);
-        setMessage("既存の月案を使い、不足している週案を補完しました。");
-        return;
+        scheduleMonth = createRes.data as ScheduleMonthRow;
+        setMonths((prev) => [scheduleMonth as ScheduleMonthRow, ...prev]);
       }
 
-      const now = new Date().toISOString();
-      const createMonthRes = await client.models.ScheduleMonth.create({
-        tenantId: tenantId.trim(),
-        owner,
-        classroomId,
-        ageTargetId,
-        sourceClassMonthPlanId: selectedClassMonthPlanId || null,
-        monthKey,
-        title: `${monthKey} 月案`,
-        notes: selectedClassMonthPlanId
-          ? `PLAN_V2月計画と連携: ${selectedClassMonthPlanId}`
-          : "",
-        status: "DRAFT",
-        issueType: "MANUAL",
-        issueVersion: 1,
-        issuedAt: now,
-      } as MutationInput);
+      if (!scheduleMonth)
+        throw new Error("ScheduleMonth を取得できませんでした。");
 
-      if (!createMonthRes.data) {
-        throw new Error(
-          formatModelErrors(
-            createMonthRes.errors,
-            "月案の作成に失敗しました。",
-          ),
+      let issuedCount = 0;
+      const messages: string[] = [];
+      for (const range of weekRangesInMonth) {
+        const result = await runIssueWeekMutation({
+          scheduleMonthId: scheduleMonth.id,
+          weekStartDate: range.weekStartDate,
+          weekEndDate: range.weekEndDate,
+          weekNo: range.weekNoInMonth,
+          issueType: "MANUAL",
+        });
+        issuedCount += result.status === "ISSUED" ? 1 : 0;
+        messages.push(
+          `${range.label}: ${result.status ?? "-"}${result.message ? ` / ${result.message}` : ""}`,
         );
       }
 
-      const createdMonth = createMonthRes.data;
-      setSelectedMonthId(createdMonth.id);
-      await issueMissingWeeksForMonth(createdMonth.id);
-      await loadInitial();
-      await loadMonthDetails(createdMonth.id);
-      setMessage("月案と週案を作成しました。");
+      setSelectedMonthId(scheduleMonth.id);
+      await fetchWeeksForMonth(scheduleMonth.id);
+      setMessage(
+        [
+          `月案＋週案を作成しました。新規週案: ${issuedCount}件`,
+          ...messages,
+        ].join("\n"),
+      );
     } catch (e) {
       console.error(e);
       setMessage(
@@ -1608,7 +1954,7 @@ export default function SimpleScheduleWorkspacePanel(props: Props) {
 
   async function fillMissingWeeksForSelectedMonth() {
     if (!selectedMonthId) {
-      setMessage("先にSchedule月案を選択してください。");
+      setMessage("Schedule月案を選択してください。");
       return;
     }
 
@@ -1616,10 +1962,39 @@ export default function SimpleScheduleWorkspacePanel(props: Props) {
     setMessage("");
 
     try {
-      await issueMissingWeeksForMonth(selectedMonthId);
-      await loadInitial();
-      await loadMonthDetails(selectedMonthId);
-      setMessage("不足週案を補完しました。");
+      let issuedCount = 0;
+      const messages: string[] = [];
+
+      for (const range of weekRangesInMonth) {
+        const exists = weeks.some(
+          (row) =>
+            row.sourceScheduleMonthId === selectedMonthId &&
+            row.weekStartDate === range.weekStartDate,
+        );
+        if (exists) continue;
+
+        const result = await runIssueWeekMutation({
+          scheduleMonthId: selectedMonthId,
+          weekStartDate: range.weekStartDate,
+          weekEndDate: range.weekEndDate,
+          weekNo: range.weekNoInMonth,
+          issueType: "MANUAL",
+        });
+        issuedCount += result.status === "ISSUED" ? 1 : 0;
+        messages.push(
+          `${range.label}: ${result.status ?? "-"}${result.message ? ` / ${result.message}` : ""}`,
+        );
+      }
+
+      await fetchWeeksForMonth(selectedMonthId);
+      setMessage(
+        issuedCount > 0
+          ? [
+              `不足週案を補完しました。新規週案: ${issuedCount}件`,
+              ...messages,
+            ].join("\n")
+          : "不足している週案はありません。",
+      );
     } catch (e) {
       console.error(e);
       setMessage(
@@ -1630,112 +2005,63 @@ export default function SimpleScheduleWorkspacePanel(props: Props) {
     }
   }
 
-  function getLatestDay(scheduleWeekId: string, targetDate: string) {
-    return (
-      latestDaysByWeekDateKey[makeWeekDateKey(scheduleWeekId, targetDate)] ??
-      null
-    );
-  }
+  async function attachSelectedPlanToSelectedMonth() {
+    if (!selectedMonthId || !selectedClassMonthPlanId) {
+      setMessage("Schedule月案とPLAN_V2月計画を選択してください。");
+      return;
+    }
 
-  async function issueDayForRow(
-    scheduleWeek: ScheduleWeekRow,
-    row: WeekDateRow,
-    issueType: "MANUAL" | "MANUAL_REISSUE",
-  ) {
     setLoading(true);
     setMessage("");
 
     try {
-      const result = await runIssueDayMutation({
-        scheduleWeekId: scheduleWeek.id,
-        targetDate: row.date,
-        issueType,
-      });
+      const updateRes = await client.models.ScheduleMonth.update({
+        id: selectedMonthId,
+        sourceClassMonthPlanId: selectedClassMonthPlanId,
+        notes: selectedClassMonthPlan?.goalTextC || undefined,
+      } as MutationInput);
 
-      await loadMonthDetails(selectedMonthId);
-
-      const status = s(result?.status);
-      const version = n(result?.issueVersion);
-
-      if (status === "ALREADY_ISSUED") {
-        setMessage(
-          `${row.date} の日案は既に発行済みです。再発行する場合は「日案再発行」を押してください。`,
+      if (!updateRes.data) {
+        throw new Error(
+          formatModelErrors(
+            updateRes.errors,
+            "PLAN月計画の紐づけに失敗しました。",
+          ),
         );
-        return;
       }
 
-      if (status === "REISSUE_BLOCKED") {
-        setMessage(
-          `${row.date} の日案は再発行できません。既存の日案に PLANNED 以外の状態が含まれています。`,
-        );
-        return;
-      }
-
-      setMessage(
-        issueType === "MANUAL_REISSUE"
-          ? `${row.date} の日案を再発行しました。version=${version || "-"}`
-          : `${row.date} の日案を発行しました。version=${version || "-"}`,
+      setMonths((prev) =>
+        prev.map((row) =>
+          row.id === selectedMonthId
+            ? (updateRes.data as ScheduleMonthRow)
+            : row,
+        ),
       );
+      setMessage("PLAN月計画をSchedule月案へ紐づけました。");
     } catch (e) {
       console.error(e);
       setMessage(
-        `日案発行エラー: ${e instanceof Error ? e.message : String(e)}`,
+        `PLAN月計画紐づけエラー: ${e instanceof Error ? e.message : String(e)}`,
       );
     } finally {
       setLoading(false);
     }
   }
 
-  const weekSummaries = useMemo<WeekSummaryRow[]>(() => {
-    return weekRangesInMonth.map((range) => {
-      const scheduleWeek = weekMapByStartDate.get(range.weekStartDate) ?? null;
-      const items = scheduleWeek
-        ? (weekItemsByWeekId[scheduleWeek.id] ?? [])
-        : [];
-
-      const rows: WeekDateRow[] = listDates(
-        range.weekStartDate,
-        range.weekEndDate,
-      ).map((date) => {
-        const weekday = toWeekday(date);
-        const hits = items.filter((it) => it.dayOfWeek === weekday);
-        const canonical = pickCanonicalWeekItem(hits);
-
-        return {
-          date,
-          weekday,
-          label: `${date} (${dayOfWeekLabel(weekday)})`,
-          weekItem: canonical,
-          hasDuplicate: hits.length > 1,
-        };
-      });
-
-      const totals = sumScoreSets(
-        rows.map((r) => ({
-          health: n(r.weekItem?.scoreHealth),
-          humanRelations: n(r.weekItem?.scoreHumanRelations),
-          environment: n(r.weekItem?.scoreEnvironment),
-          language: n(r.weekItem?.scoreLanguage),
-          expression: n(r.weekItem?.scoreExpression),
-        })),
-      );
-
-      return {
-        weekStartDate: range.weekStartDate,
-        weekEndDate: range.weekEndDate,
-        weekNoInMonth: range.weekNoInMonth,
-        label: range.label,
-        scheduleWeek,
-        rows,
-        totals,
-      };
+  async function fetchWeekItems(scheduleWeekId: string) {
+    return (
+      await listAll(client.models.ScheduleWeekItem, {
+        filter: {
+          scheduleWeekId: { eq: scheduleWeekId },
+        },
+        limit: 1000,
+      } as ListOptions)
+    ).sort((a, b) => {
+      const dayDiff = n(a.dayOfWeek) - n(b.dayOfWeek);
+      if (dayDiff !== 0) return dayDiff;
+      return n(a.sortOrder) - n(b.sortOrder);
     });
-  }, [weekRangesInMonth, weekMapByStartDate, weekItemsByWeekId]);
-
-  const monthTotals = useMemo(
-    () => sumScoreSets(weekSummaries.map((w) => w.totals)),
-    [weekSummaries],
-  );
+  }
 
   async function computePracticeScores(
     practiceCode: string,
@@ -1776,7 +2102,8 @@ export default function SimpleScheduleWorkspacePanel(props: Props) {
       const scores = await computePracticeScores(nextPracticeCode);
       const allItems = await fetchWeekItems(scheduleWeek.id);
       const sameDayItems = allItems.filter(
-        (item) => item.dayOfWeek === row.weekday,
+        (item) =>
+          item.dayOfWeek === row.weekday || item.targetDate === row.date,
       );
       const canonical = pickCanonicalWeekItem(sameDayItems) ?? row.weekItem;
       const duplicateItems = canonical
@@ -1787,9 +2114,9 @@ export default function SimpleScheduleWorkspacePanel(props: Props) {
         tenantId: scheduleWeek.tenantId,
         owner: scheduleWeek.owner,
         scheduleWeekId: scheduleWeek.id,
-        sourceMonthItemId: canonical?.sourceMonthItemId ?? null,
+        sourceMonthItemId: canonical?.sourceMonthItemId ?? undefined,
         sourceClassWeekPracticeAssignmentId:
-          canonical?.sourceClassWeekPracticeAssignmentId ?? null,
+          canonical?.sourceClassWeekPracticeAssignmentId ?? undefined,
         dayOfWeek: row.weekday,
         targetDate: row.date,
         sourceType: canonical?.sourceType ?? "PLANNED",
@@ -1798,9 +2125,9 @@ export default function SimpleScheduleWorkspacePanel(props: Props) {
         description: practice ? s(practice.memo) : "",
         startTime: canonical?.startTime ?? DEFAULT_START_TIME,
         endTime: canonical?.endTime ?? DEFAULT_END_TIME,
-        sortOrder: canonical?.sortOrder ?? row.weekday + 1,
-        practiceCode: nextPracticeCode || null,
-        practiceTitleSnapshot: practice ? s(practice.name) : "",
+        sortOrder: canonical?.sortOrder ?? row.weekday * 10,
+        practiceCode: nextPracticeCode || undefined,
+        practiceTitleSnapshot: practice ? s(practice.name) : undefined,
         scoreHealth: scores.health,
         scoreHumanRelations: scores.humanRelations,
         scoreEnvironment: scores.environment,
@@ -1809,53 +2136,106 @@ export default function SimpleScheduleWorkspacePanel(props: Props) {
       };
 
       if (canonical) {
-        const updated = await client.models.ScheduleWeekItem.update({
+        const updateRes = await client.models.ScheduleWeekItem.update({
           id: canonical.id,
           ...basePayload,
         } as MutationInput);
 
-        if (!updated.data) {
+        if (!updateRes.data) {
           throw new Error(
-            formatModelErrors(updated.errors, "週案itemの更新に失敗しました。"),
+            formatModelErrors(
+              updateRes.errors,
+              "ScheduleWeekItem の更新に失敗しました。",
+            ),
           );
         }
       } else {
-        const created = await client.models.ScheduleWeekItem.create(
+        const createRes = await client.models.ScheduleWeekItem.create(
           basePayload as MutationInput,
         );
 
-        if (!created.data) {
+        if (!createRes.data) {
           throw new Error(
-            formatModelErrors(created.errors, "週案itemの作成に失敗しました。"),
+            formatModelErrors(
+              createRes.errors,
+              "ScheduleWeekItem の作成に失敗しました。",
+            ),
           );
         }
       }
 
-      await loadMonthDetails(selectedMonthId);
+      for (const duplicate of duplicateItems) {
+        await client.models.ScheduleWeekItem.update({
+          id: duplicate.id,
+          practiceCode: undefined,
+          title: `${duplicate.title || "重複"}（整理済）`,
+          description: duplicate.description ?? undefined,
+        } as MutationInput);
+      }
 
-      const latestDay = getLatestDay(scheduleWeek.id, row.date);
-      const duplicateNote =
-        duplicateItems.length > 0
-          ? `\n同じ曜日に重複している item が ${sameDayItems.length} 件あります。最新1件を表示・更新しました。`
-          : "";
-
+      await fetchWeeksForMonth(
+        scheduleWeek.sourceScheduleMonthId ?? selectedMonthId,
+      );
       setMessage(
-        latestDay
-          ? `週案を更新しました。 ${row.date}\n既に日案 v${latestDay.issueVersion ?? 1} があるため、内容を反映するには「日案再発行」を押してください。${duplicateNote}\ncodes=${nextPracticeCode || "-"}\nscores=${scoreSummaryText(scores)}`
-          : `週案を更新しました。 ${row.date}${duplicateNote}\n必要に応じて「日案発行」を押してください。\ncodes=${nextPracticeCode || "-"}\nscores=${scoreSummaryText(scores)}`,
+        duplicateItems.length > 0
+          ? `Practiceを保存しました。重複候補 ${duplicateItems.length}件を整理しました。`
+          : "Practiceを保存しました。",
       );
     } catch (e) {
       console.error(e);
       setMessage(
-        `週案更新エラー: ${e instanceof Error ? e.message : String(e)}`,
+        `Practice保存エラー: ${e instanceof Error ? e.message : String(e)}`,
       );
     } finally {
       setLoading(false);
     }
   }
 
+  async function issueDayForRow(
+    scheduleWeek: ScheduleWeekRow,
+    row: WeekDateRow,
+    issueType: "MANUAL" | "MANUAL_REISSUE",
+  ) {
+    if (!row.weekItem?.practiceCode) {
+      setMessage("日案発行前にPracticeを選択してください。");
+      return;
+    }
+
+    setLoading(true);
+    setMessage("");
+
+    try {
+      const result = await runIssueDayMutation({
+        scheduleWeekId: scheduleWeek.id,
+        targetDate: row.date,
+        issueType,
+      });
+
+      await fetchWeeksForMonth(
+        scheduleWeek.sourceScheduleMonthId ?? selectedMonthId,
+      );
+      setMessage(
+        `日案を発行しました。status=${result.status ?? "-"}${result.issueVersion ? ` / issueVersion=${result.issueVersion}` : ""}${result.message ? ` / ${result.message}` : ""}`,
+      );
+    } catch (e) {
+      console.error(e);
+      setMessage(
+        `日案発行エラー: ${e instanceof Error ? e.message : String(e)}`,
+      );
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  function getLatestDay(scheduleWeekId: string, targetDate: string) {
+    return (
+      latestDaysByWeekDateKey[makeWeekDateKey(scheduleWeekId, targetDate)] ??
+      null
+    );
+  }
+
   return (
-    <div style={{ display: "grid", gap: 20 }}>
+    <div style={{ display: "grid", gap: 16 }}>
       <div
         style={{
           padding: 16,
@@ -1866,7 +2246,7 @@ export default function SimpleScheduleWorkspacePanel(props: Props) {
           gap: 12,
         }}
       >
-        <h2 style={{ margin: 0 }}>シンプル Schedule ワークスペース</h2>
+        <h2 style={{ margin: 0 }}>Schedule Workspace</h2>
 
         <div
           style={{
@@ -2017,6 +2397,431 @@ export default function SimpleScheduleWorkspacePanel(props: Props) {
           gap: 12,
         }}
       >
+        <div>
+          <h3 style={{ margin: 0 }}>行事カレンダー</h3>
+          <div style={smallMutedStyle}>
+            園行事は全クラス、クラス行事は選択中のクラスに表示されます。
+            ここで登録した内容を、PLAN
+            v2・月案・週案・日案から参照していきます。
+          </div>
+        </div>
+
+        <div
+          style={{
+            display: "grid",
+            gap: 8,
+            gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))",
+          }}
+        >
+          <label>
+            対象{" "}
+            <select
+              value={calendarForm.scopeType}
+              onChange={(e) =>
+                setCalendarForm((prev) => ({
+                  ...prev,
+                  scopeType: e.target.value as CalendarEventScopeType,
+                  classroomId:
+                    e.target.value === "CLASSROOM"
+                      ? prev.classroomId || classroomId
+                      : "",
+                }))
+              }
+            >
+              <option value="SCHOOL">園行事</option>
+              <option value="CLASSROOM">クラス行事</option>
+            </select>
+          </label>
+
+          <label>
+            クラス{" "}
+            <select
+              value={calendarForm.classroomId}
+              onChange={(e) =>
+                setCalendarForm((prev) => ({
+                  ...prev,
+                  classroomId: e.target.value,
+                  scopeType: e.target.value ? "CLASSROOM" : prev.scopeType,
+                }))
+              }
+              disabled={calendarForm.scopeType !== "CLASSROOM"}
+            >
+              <option value="">園全体</option>
+              {classrooms.map((row) => (
+                <option key={row.id} value={row.id}>
+                  {classroomLabel(row)}
+                </option>
+              ))}
+            </select>
+          </label>
+
+          <label>
+            種別{" "}
+            <select
+              value={calendarForm.eventType}
+              onChange={(e) =>
+                setCalendarForm((prev) => ({
+                  ...prev,
+                  eventType: e.target.value as CalendarEventKind,
+                }))
+              }
+            >
+              {CALENDAR_EVENT_TYPE_OPTIONS.map((row) => (
+                <option key={row.value} value={row.value}>
+                  {row.label}
+                </option>
+              ))}
+            </select>
+          </label>
+
+          <label>
+            日付区分{" "}
+            <select
+              value={calendarForm.dateMode}
+              onChange={(e) =>
+                setCalendarForm((prev) => ({
+                  ...prev,
+                  dateMode: e.target.value as CalendarEventDateMode,
+                }))
+              }
+            >
+              {CALENDAR_DATE_MODE_OPTIONS.map((row) => (
+                <option key={row.value} value={row.value}>
+                  {row.label}
+                </option>
+              ))}
+            </select>
+          </label>
+        </div>
+
+        <label>
+          タイトル{" "}
+          <input
+            type="text"
+            value={calendarForm.title}
+            onChange={(e) =>
+              setCalendarForm((prev) => ({
+                ...prev,
+                title: e.target.value,
+              }))
+            }
+            placeholder="例：避難訓練、誕生会、着替え交換日"
+            style={{ width: "100%" }}
+          />
+        </label>
+
+        <label>
+          説明{" "}
+          <textarea
+            rows={2}
+            value={calendarForm.description}
+            onChange={(e) =>
+              setCalendarForm((prev) => ({
+                ...prev,
+                description: e.target.value,
+              }))
+            }
+            placeholder="行事の補足、保育者向けメモなど"
+            style={{ width: "100%" }}
+          />
+        </label>
+
+        <div
+          style={{
+            display: "grid",
+            gap: 8,
+            gridTemplateColumns: "repeat(auto-fit, minmax(160px, 1fr))",
+          }}
+        >
+          {calendarForm.dateMode === "WEEKLY" ? (
+            <label>
+              曜日{" "}
+              <select
+                value={calendarForm.dayOfWeek}
+                onChange={(e) =>
+                  setCalendarForm((prev) => ({
+                    ...prev,
+                    dayOfWeek: e.target.value,
+                  }))
+                }
+              >
+                {CALENDAR_DAY_OF_WEEK_OPTIONS.map((row) => (
+                  <option key={row.value} value={row.value}>
+                    {row.label}
+                  </option>
+                ))}
+              </select>
+            </label>
+          ) : null}
+
+          {calendarForm.dateMode === "MONTHLY_DATE" ? (
+            <label>
+              毎月日付{" "}
+              <input
+                type="number"
+                min={1}
+                max={31}
+                value={calendarForm.dayOfMonth}
+                onChange={(e) =>
+                  setCalendarForm((prev) => ({
+                    ...prev,
+                    dayOfMonth: e.target.value,
+                  }))
+                }
+                style={{ width: 80 }}
+              />
+            </label>
+          ) : null}
+
+          <label>
+            開始日{" "}
+            <input
+              type="date"
+              value={calendarForm.startDate}
+              onChange={(e) =>
+                setCalendarForm((prev) => ({
+                  ...prev,
+                  startDate: e.target.value,
+                }))
+              }
+            />
+          </label>
+
+          <label>
+            終了日{" "}
+            <input
+              type="date"
+              value={calendarForm.endDate}
+              onChange={(e) =>
+                setCalendarForm((prev) => ({
+                  ...prev,
+                  endDate: e.target.value,
+                }))
+              }
+            />
+          </label>
+
+          <label>
+            開始時刻{" "}
+            <input
+              type="time"
+              value={calendarForm.startTime}
+              onChange={(e) =>
+                setCalendarForm((prev) => ({
+                  ...prev,
+                  startTime: e.target.value,
+                }))
+              }
+            />
+          </label>
+
+          <label>
+            終了時刻{" "}
+            <input
+              type="time"
+              value={calendarForm.endTime}
+              onChange={(e) =>
+                setCalendarForm((prev) => ({
+                  ...prev,
+                  endTime: e.target.value,
+                }))
+              }
+            />
+          </label>
+        </div>
+
+        <div style={{ display: "flex", gap: 16, flexWrap: "wrap" }}>
+          <label>
+            <input
+              type="checkbox"
+              checked={calendarForm.showInPlan}
+              onChange={(e) =>
+                setCalendarForm((prev) => ({
+                  ...prev,
+                  showInPlan: e.target.checked,
+                }))
+              }
+            />{" "}
+            PLANに表示
+          </label>
+
+          <label>
+            <input
+              type="checkbox"
+              checked={calendarForm.showInSchedule}
+              onChange={(e) =>
+                setCalendarForm((prev) => ({
+                  ...prev,
+                  showInSchedule: e.target.checked,
+                }))
+              }
+            />{" "}
+            Scheduleに表示
+          </label>
+
+          <label>
+            <input
+              type="checkbox"
+              checked={calendarForm.showInHomeNotice}
+              onChange={(e) =>
+                setCalendarForm((prev) => ({
+                  ...prev,
+                  showInHomeNotice: e.target.checked,
+                }))
+              }
+            />{" "}
+            家庭への連絡事項に表示
+          </label>
+        </div>
+
+        <label>
+          家庭への連絡事項{" "}
+          <textarea
+            rows={3}
+            value={calendarForm.homeNoticeText}
+            onChange={(e) =>
+              setCalendarForm((prev) => ({
+                ...prev,
+                homeNoticeText: e.target.value,
+              }))
+            }
+            placeholder="例：水着とタオルを持たせてください。着替えを多めにお願いします。"
+            style={{ width: "100%" }}
+          />
+        </label>
+
+        <div>
+          <button
+            onClick={() => void createCalendarEvent()}
+            disabled={savingCalendarEvent || loading}
+          >
+            {savingCalendarEvent ? "登録中..." : "カレンダー行事を登録"}
+          </button>
+        </div>
+
+        <div style={subtleBoxStyle}>
+          <div style={{ fontWeight: 700, marginBottom: 8 }}>
+            今月の予定：{selectedMonthCalendarEvents.length}件
+          </div>
+
+          {selectedMonthCalendarEvents.length === 0 ? (
+            <div style={smallMutedStyle}>
+              今月のカレンダー行事はありません。
+            </div>
+          ) : (
+            <div style={{ overflowX: "auto" }}>
+              <table
+                style={{
+                  width: "100%",
+                  borderCollapse: "collapse",
+                  minWidth: 900,
+                }}
+              >
+                <thead>
+                  <tr>
+                    <th style={thStyle}>日付</th>
+                    <th style={thStyle}>対象</th>
+                    <th style={thStyle}>種別</th>
+                    <th style={thStyle}>タイトル</th>
+                    <th style={thStyle}>家庭連絡</th>
+                    <th style={thStyle}>操作</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {selectedMonthCalendarEvents.map((row) => {
+                    const classroom = classrooms.find(
+                      (c) => c.id === row.classroomId,
+                    );
+
+                    return (
+                      <tr key={row.id}>
+                        <td style={tdStyle}>
+                          {calendarEventDateLabel(row)}
+                          <div style={smallMutedStyle}>
+                            {calendarDateModeLabel(row.dateMode)}
+                            {row.startTime ? ` / ${row.startTime}` : ""}
+                            {row.endTime ? `-${row.endTime}` : ""}
+                          </div>
+                        </td>
+                        <td style={tdStyle}>
+                          {calendarScopeLabel(row.scopeType)}
+                          {s(row.scopeType).toUpperCase() === "CLASSROOM" ? (
+                            <div style={smallMutedStyle}>
+                              {classroom
+                                ? classroomLabel(classroom)
+                                : row.classroomId || "-"}
+                            </div>
+                          ) : null}
+                        </td>
+                        <td style={tdStyle}>
+                          {calendarEventTypeLabel(row.eventType)}
+                        </td>
+                        <td style={tdStyle}>
+                          <div style={{ fontWeight: 700 }}>{row.title}</div>
+                          {row.description ? (
+                            <div style={smallMutedStyle}>{row.description}</div>
+                          ) : null}
+                        </td>
+                        <td style={tdStyle}>
+                          {row.showInHomeNotice || row.homeNoticeText ? (
+                            <div style={{ whiteSpace: "pre-wrap" }}>
+                              {row.homeNoticeText || "家庭連絡に表示"}
+                            </div>
+                          ) : (
+                            <span style={smallMutedStyle}>-</span>
+                          )}
+                        </td>
+                        <td style={tdStyle}>
+                          <button
+                            onClick={() => void archiveCalendarEvent(row)}
+                            disabled={archivingCalendarEventId === row.id}
+                          >
+                            {archivingCalendarEventId === row.id
+                              ? "整理中..."
+                              : "整理"}
+                          </button>
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </div>
+
+        <div style={subtleBoxStyle}>
+          <div style={{ fontWeight: 700, marginBottom: 8 }}>
+            家庭への連絡事項：{homeNoticeCalendarEvents.length}件
+          </div>
+
+          {homeNoticeCalendarEvents.length === 0 ? (
+            <div style={smallMutedStyle}>
+              今月の家庭向け連絡事項はありません。
+            </div>
+          ) : (
+            <ul style={{ margin: 0, paddingLeft: 20 }}>
+              {homeNoticeCalendarEvents.map((row) => (
+                <li key={row.id}>
+                  <b>{calendarEventDateLabel(row)}：</b>
+                  {row.homeNoticeText || row.title}
+                </li>
+              ))}
+            </ul>
+          )}
+        </div>
+      </div>
+
+      <div
+        style={{
+          padding: 16,
+          border: "1px solid #ddd",
+          borderRadius: 8,
+          background: "#fff",
+          display: "grid",
+          gap: 12,
+        }}
+      >
         <h3 style={{ margin: 0 }}>PLAN_V2 連携状況</h3>
 
         {selectedClassMonthPlan ? (
@@ -2058,100 +2863,104 @@ export default function SimpleScheduleWorkspacePanel(props: Props) {
                 ))}
               </div>
               {referencePhraseLines.length > 0 ? (
-                <ul style={{ marginTop: 8, marginBottom: 0, paddingLeft: 20 }}>
+                <ul style={{ marginBottom: 0 }}>
                   {referencePhraseLines.map((row, index) => (
                     <li key={`${row.scopeLabel}-${index}`}>
                       <b>{row.scopeLabel}</b>: {row.text}
                     </li>
                   ))}
                 </ul>
-              ) : (
-                <div style={{ ...smallMutedStyle, marginTop: 8 }}>
-                  年間・四半期の文例選択がまだない場合、月計画だけを使ってPractice候補を出します。
-                </div>
-              )}
+              ) : null}
             </div>
 
             <div style={subtleBoxStyle}>
               <div style={{ fontWeight: 700, marginBottom: 6 }}>
-                Practice候補のもとになるAbility
+                月計画の選択文例から抽出したAbility
               </div>
-              {combinedAbilityRows.length > 0 ? (
+              {combinedAbilityRows.length === 0 ? (
+                <div style={smallMutedStyle}>Ability候補はまだありません。</div>
+              ) : (
                 <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
-                  {combinedAbilityRows.slice(0, 16).map((row) => (
+                  {combinedAbilityRows.slice(0, 20).map((row) => (
                     <span
-                      key={`${row.abilityCode}-${row.sourceLabel}`}
+                      key={row.abilityCode}
                       style={{
-                        border: "1px solid #d1d5db",
-                        borderRadius: 999,
                         padding: "4px 8px",
-                        background: "#fff",
-                        fontSize: 13,
+                        borderRadius: 999,
+                        background: "#eef2ff",
+                        border: "1px solid #c7d2fe",
+                        fontSize: 12,
                       }}
                     >
-                      {row.label} +{row.weight} / {row.sourceLabel}
+                      {row.label} ({row.abilityCode}) / w={row.weight} / rec=
+                      {row.recommendWeight}
                     </span>
                   ))}
                 </div>
-              ) : (
-                <div style={smallMutedStyle}>
-                  月計画文例または年間・四半期文例を選択すると表示されます。
-                </div>
               )}
             </div>
-
-            {recommendLoading ? (
-              <div style={smallMutedStyle}>Practice候補を読込中です...</div>
-            ) : practiceRecommendations.length > 0 ? (
-              <div style={{ overflowX: "auto" }}>
-                <table
-                  style={{
-                    width: "100%",
-                    borderCollapse: "collapse",
-                    minWidth: 900,
-                  }}
-                >
-                  <thead>
-                    <tr>
-                      <th style={thStyle}>Practice</th>
-                      <th style={thStyle}>推薦</th>
-                      <th style={thStyle}>月計画一致</th>
-                      <th style={thStyle}>方針一致</th>
-                      <th style={thStyle}>Practice score</th>
-                      <th style={thStyle}>一致Ability</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {practiceRecommendations.slice(0, 10).map((row) => (
-                      <tr key={row.practiceCode}>
-                        <td style={tdStyle}>
-                          {row.practiceCode} / {row.practiceName}
-                          <div style={smallMutedStyle}>
-                            {row.sourceLabels.join("・")}
-                          </div>
-                        </td>
-                        <td style={tdStyle}>{row.recommendScore}</td>
-                        <td style={tdStyle}>{row.monthMatchCount}</td>
-                        <td style={tdStyle}>{row.referenceMatchCount}</td>
-                        <td style={tdStyle}>{row.totalPracticeScore}</td>
-                        <td style={tdStyle}>
-                          {row.matchedAbilities.slice(0, 6).join(" / ")}
-                          {row.matchedAbilities.length > 6 ? " ..." : ""}
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-            ) : (
-              <div style={smallMutedStyle}>
-                月計画・年間方針・四半期方針に紐づくPractice候補はまだありません。
-              </div>
-            )}
           </div>
         ) : (
-          <div style={{ color: "#666" }}>
-            PLAN_V2月計画を選択すると、目標(C)、5領域スコア、年間・四半期方針、Practice候補が表示されます。
+          <div style={smallMutedStyle}>PLAN_V2月計画を選択してください。</div>
+        )}
+      </div>
+
+      <div
+        style={{
+          padding: 16,
+          border: "1px solid #ddd",
+          borderRadius: 8,
+          background: "#fff",
+          display: "grid",
+          gap: 12,
+        }}
+      >
+        <h3 style={{ margin: 0 }}>Practice候補</h3>
+        <div style={smallMutedStyle}>
+          月計画のAbilityを強く、年間・四半期方針を弱く使って候補を並べます。
+          {recommendLoading ? " 推薦計算中..." : ""}
+        </div>
+
+        {practiceRecommendations.length === 0 ? (
+          <div style={smallMutedStyle}>推薦候補はありません。</div>
+        ) : (
+          <div style={{ overflowX: "auto" }}>
+            <table
+              style={{
+                width: "100%",
+                borderCollapse: "collapse",
+                minWidth: 900,
+              }}
+            >
+              <thead>
+                <tr>
+                  <th style={thStyle}>Practice</th>
+                  <th style={thStyle}>推薦点</th>
+                  <th style={thStyle}>一致Ability</th>
+                  <th style={thStyle}>根拠</th>
+                </tr>
+              </thead>
+              <tbody>
+                {practiceRecommendations.map((row) => (
+                  <tr key={row.practiceCode}>
+                    <td style={tdStyle}>
+                      <b>{row.practiceCode}</b> / {row.practiceName}
+                    </td>
+                    <td style={tdStyle}>{row.recommendScore}</td>
+                    <td style={tdStyle}>
+                      月:{row.monthMatchCount} / 補助:{row.referenceMatchCount}{" "}
+                      / 合計:
+                      {row.matchAbilityCount}
+                    </td>
+                    <td style={tdStyle}>
+                      <div style={{ whiteSpace: "pre-wrap" }}>
+                        {row.matchedAbilities.slice(0, 6).join("\n")}
+                      </div>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
           </div>
         )}
       </div>
@@ -2166,71 +2975,29 @@ export default function SimpleScheduleWorkspacePanel(props: Props) {
           gap: 12,
         }}
       >
-        <h3 style={{ margin: 0 }}>月案（週ごとの5領域合計）</h3>
+        <h3 style={{ margin: 0 }}>月案・週案</h3>
 
-        <div>
-          月合計:
-          {" 健康 "}
-          <b>{monthTotals.health}</b>
-          {" / 人間関係 "}
-          <b>{monthTotals.humanRelations}</b>
-          {" / 環境 "}
-          <b>{monthTotals.environment}</b>
-          {" / 言葉 "}
-          <b>{monthTotals.language}</b>
-          {" / 表現 "}
-          <b>{monthTotals.expression}</b>
-        </div>
-
-        <div style={{ overflowX: "auto" }}>
-          <table
-            style={{ width: "100%", borderCollapse: "collapse", minWidth: 920 }}
-          >
-            <thead>
-              <tr>
-                <th style={thStyle}>週初めの日付</th>
-                <th style={thStyle}>健康合計</th>
-                <th style={thStyle}>人間関係合計</th>
-                <th style={thStyle}>環境合計</th>
-                <th style={thStyle}>言葉合計</th>
-                <th style={thStyle}>表現合計</th>
-                <th style={thStyle}>状態</th>
-              </tr>
-            </thead>
-            <tbody>
-              {weekSummaries.map((week) => (
-                <tr key={week.weekStartDate}>
-                  <td style={tdStyle}>{week.weekStartDate}</td>
-                  <td style={tdStyle}>{week.totals.health}</td>
-                  <td style={tdStyle}>{week.totals.humanRelations}</td>
-                  <td style={tdStyle}>{week.totals.environment}</td>
-                  <td style={tdStyle}>{week.totals.language}</td>
-                  <td style={tdStyle}>{week.totals.expression}</td>
-                  <td style={tdStyle}>
-                    {week.scheduleWeek ? "週案あり" : "未発行"}
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-      </div>
-
-      <div
-        style={{
-          padding: 16,
-          border: "1px solid #ddd",
-          borderRadius: 8,
-          background: "#fff",
-          display: "grid",
-          gap: 12,
-        }}
-      >
-        <h3 style={{ margin: 0 }}>週案（日付ごとに Practice 1件）</h3>
-
-        <div style={{ color: "#555" }}>
-          週案を修正したあと、その内容を日案に反映したい場合は「日案再発行」を押してください。
-          Practice選択欄には、PLAN_V2月計画を主材料にし、年間・四半期方針を補助ヒントにしたおすすめPracticeを先頭に表示します。
+        <div style={subtleBoxStyle}>
+          <div style={{ fontWeight: 700, marginBottom: 8 }}>月合計</div>
+          <div>{scoreSummaryText(monthTotals)}</div>
+          <div style={smallMutedStyle}>
+            PLAN月計画比: 健康{" "}
+            {formatRatio(monthTotals.health, selectedPlanScores.health)} /
+            人間関係{" "}
+            {formatRatio(
+              monthTotals.humanRelations,
+              selectedPlanScores.humanRelations,
+            )}{" "}
+            / 環境{" "}
+            {formatRatio(
+              monthTotals.environment,
+              selectedPlanScores.environment,
+            )}{" "}
+            / 言葉{" "}
+            {formatRatio(monthTotals.language, selectedPlanScores.language)} /
+            表現{" "}
+            {formatRatio(monthTotals.expression, selectedPlanScores.expression)}
+          </div>
         </div>
 
         <div style={{ overflowX: "auto" }}>
@@ -2238,7 +3005,7 @@ export default function SimpleScheduleWorkspacePanel(props: Props) {
             style={{
               width: "100%",
               borderCollapse: "collapse",
-              minWidth: 1080,
+              minWidth: 1100,
             }}
           >
             <thead>
@@ -2394,12 +3161,9 @@ export default function SimpleScheduleWorkspacePanel(props: Props) {
                                       scheduleWeek.id,
                                       row.date,
                                     );
-
                                     const dayLabel = latestDay
-                                      ? `発行済み v${latestDay.issueVersion ?? 1}`
-                                      : row.weekItem
-                                        ? "未発行"
-                                        : "-";
+                                      ? `${latestDay.status} / v${latestDay.issueVersion ?? "-"}`
+                                      : "未発行";
 
                                     return (
                                       <tr key={row.date}>
@@ -2407,53 +3171,44 @@ export default function SimpleScheduleWorkspacePanel(props: Props) {
                                         <td style={tdStyle}>
                                           <select
                                             value={currentCode}
-                                            onChange={(e) => {
+                                            onChange={(e) =>
                                               void saveWeekPractice(
                                                 scheduleWeek,
                                                 row,
                                                 e.target.value,
-                                              );
-                                            }}
+                                              )
+                                            }
                                             disabled={loading}
-                                            style={{ width: "100%" }}
+                                            style={{ minWidth: 320 }}
                                           >
                                             <option value="">未設定</option>
-
-                                            {practiceRecommendations.length >
-                                            0 ? (
-                                              <optgroup label="月計画＋方針からのおすすめ">
-                                                {practiceRecommendations.map(
-                                                  (p) => (
-                                                    <option
-                                                      key={`rec-${p.practiceCode}`}
-                                                      value={p.practiceCode}
-                                                    >
-                                                      {p.practiceCode} /{" "}
-                                                      {p.practiceName} / 推薦{" "}
-                                                      {p.recommendScore} / 月
-                                                      {p.monthMatchCount} 方針
-                                                      {p.referenceMatchCount}
-                                                    </option>
-                                                  ),
-                                                )}
-                                              </optgroup>
-                                            ) : null}
-
-                                            <optgroup label="全Practice">
-                                              {nonRecommendedPracticeRows.map(
-                                                (p) => (
-                                                  <option
-                                                    key={p.practice_code}
-                                                    value={
-                                                      p.practice_code ?? ""
-                                                    }
-                                                  >
-                                                    {practiceLabel(p)}
-                                                  </option>
-                                                ),
-                                              )}
-                                            </optgroup>
+                                            {practiceRecommendations.map(
+                                              (p) => (
+                                                <option
+                                                  key={`rec-${p.practiceCode}`}
+                                                  value={p.practiceCode}
+                                                >
+                                                  ★ {p.practiceCode} /{" "}
+                                                  {p.practiceName}
+                                                </option>
+                                              ),
+                                            )}
+                                            {nonRecommendedPracticeRows.map(
+                                              (p) => (
+                                                <option
+                                                  key={s(p.practice_code)}
+                                                  value={s(p.practice_code)}
+                                                >
+                                                  {practiceLabel(p)}
+                                                </option>
+                                              ),
+                                            )}
                                           </select>
+                                          {row.weekItem?.description ? (
+                                            <div style={smallMutedStyle}>
+                                              {row.weekItem.description}
+                                            </div>
+                                          ) : null}
                                         </td>
                                         <td style={tdStyle}>
                                           {row.weekItem?.scoreHealth ?? 0}

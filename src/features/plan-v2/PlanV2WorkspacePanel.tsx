@@ -34,6 +34,7 @@ import {
   type SchoolAnnualPlanRecord,
   type TenantRecord,
   type TreeNode,
+  type ClassCalendarEventRecord,
 } from "./types";
 
 type ModelResultLike =
@@ -114,6 +115,97 @@ function uniqueAbilityCodes(rows: {
   );
 }
 
+function monthKeyToRange(monthKey?: string | null): {
+  fromDate: string;
+  toDate: string;
+} {
+  const key = s(monthKey);
+  const match = key.match(/^(\d{4})-(\d{2})$/);
+
+  if (!match) {
+    return { fromDate: "", toDate: "" };
+  }
+
+  const year = Number(match[1]);
+  const month = Number(match[2]);
+  const lastDay = new Date(year, month, 0).getDate();
+
+  return {
+    fromDate: `${match[1]}-${match[2]}-01`,
+    toDate: `${match[1]}-${match[2]}-${String(lastDay).padStart(2, "0")}`,
+  };
+}
+
+function monthPlanDateRange(monthPlan?: ClassMonthPlanRecord | null): {
+  fromDate: string;
+  toDate: string;
+} {
+  if (!monthPlan) return { fromDate: "", toDate: "" };
+
+  const fallback = monthKeyToRange(monthPlan.monthKey);
+
+  return {
+    fromDate: monthPlan.periodStart || fallback.fromDate,
+    toDate: monthPlan.periodEnd || fallback.toDate,
+  };
+}
+
+function classCalendarEventIntersectsRange(
+  row: ClassCalendarEventRecord,
+  fromDate: string,
+  toDate: string,
+): boolean {
+  if (!fromDate || !toDate) return false;
+
+  const mode = s(row.dateMode).toUpperCase();
+  const startDate = s(row.startDate);
+  const endDate = s(row.endDate) || startDate;
+
+  if (!startDate) return false;
+
+  if (mode === "WEEKLY" || mode === "MONTHLY_DATE") {
+    if (startDate > toDate) return false;
+    if (endDate && endDate < fromDate) return false;
+    return true;
+  }
+
+  return startDate <= toDate && endDate >= fromDate;
+}
+
+function classCalendarEventVisibleForClassroom(
+  row: ClassCalendarEventRecord,
+  tenantId: string,
+  classroomId: string,
+): boolean {
+  if (row.tenantId !== tenantId) return false;
+
+  const status = s(row.status || "ACTIVE").toUpperCase();
+  if (status === "ARCHIVED") return false;
+
+  const scopeType = s(row.scopeType).toUpperCase();
+
+  if (scopeType === "SCHOOL") return true;
+
+  if (scopeType === "CLASSROOM") {
+    return !!classroomId && row.classroomId === classroomId;
+  }
+
+  return false;
+}
+
+function sortClassCalendarEvents(
+  a: ClassCalendarEventRecord,
+  b: ClassCalendarEventRecord,
+): number {
+  const date = s(a.startDate).localeCompare(s(b.startDate));
+  if (date !== 0) return date;
+
+  const order = Number(a.sortOrder ?? 999999) - Number(b.sortOrder ?? 999999);
+  if (order !== 0) return order;
+
+  return s(a.title).localeCompare(s(b.title));
+}
+
 export default function PlanV2WorkspacePanel(props: { owner: string }) {
   const { owner } = props;
   const client = useMemo(() => generateClient<Schema>(), []);
@@ -143,6 +235,9 @@ export default function PlanV2WorkspacePanel(props: { owner: string }) {
   const [quarterEvents, setQuarterEvents] = useState<QuarterEventRecord[]>([]);
   const [monthPlans, setMonthPlans] = useState<ClassMonthPlanRecord[]>([]);
   const [monthEvents, setMonthEvents] = useState<MonthEventRecord[]>([]);
+  const [classCalendarEvents, setClassCalendarEvents] = useState<
+    ClassCalendarEventRecord[]
+  >([]);
   const [planPhrases, setPlanPhrases] = useState<PlanPhraseRecord[]>([]);
   const [planPhraseAbilityLinks, setPlanPhraseAbilityLinks] = useState<
     PlanPhraseAbilityLinkRecord[]
@@ -189,6 +284,7 @@ export default function PlanV2WorkspacePanel(props: { owner: string }) {
           setPlanPhraseAbilityLinks([]);
           setMonthPhraseSelections([]);
           setPlanPhraseSelections([]);
+          setClassCalendarEvents([]);
           return;
         }
 
@@ -201,6 +297,7 @@ export default function PlanV2WorkspacePanel(props: { owner: string }) {
           quarterEventRes,
           monthPlanRes,
           monthEventRes,
+          classCalendarEventRes,
           planPhraseRes,
           planPhraseAbilityLinkRes,
           monthPhraseSelectionRes,
@@ -251,6 +348,12 @@ export default function PlanV2WorkspacePanel(props: { owner: string }) {
           client.models.MonthEvent.list({
             limit: 20000,
           }),
+          client.models.ClassCalendarEvent.list({
+            filter: {
+              tenantId: { eq: tenantId },
+            },
+            limit: 20000,
+          }),
           client.models.PlanPhrase.list({
             filter: {
               status: { eq: "active" },
@@ -287,6 +390,7 @@ export default function PlanV2WorkspacePanel(props: { owner: string }) {
         throwIfModelErrors(quarterEventRes);
         throwIfModelErrors(monthPlanRes);
         throwIfModelErrors(monthEventRes);
+        throwIfModelErrors(classCalendarEventRes);
         throwIfModelErrors(planPhraseRes);
         throwIfModelErrors(planPhraseAbilityLinkRes);
         throwIfModelErrors(monthPhraseSelectionRes);
@@ -319,6 +423,11 @@ export default function PlanV2WorkspacePanel(props: { owner: string }) {
           [...(monthEventRes.data ?? [])].filter((x) =>
             monthIds.has(x.classMonthPlanId),
           ),
+        );
+        setClassCalendarEvents(
+          [...(classCalendarEventRes.data ?? [])]
+            .filter((x) => s(x.status || "ACTIVE").toUpperCase() !== "ARCHIVED")
+            .sort(sortClassCalendarEvents),
         );
         setPlanPhrases(
           [...(planPhraseRes.data ?? [])].sort((a, b) => {
@@ -414,6 +523,45 @@ export default function PlanV2WorkspacePanel(props: { owner: string }) {
     selectedNode?.kind === "month"
       ? (monthPlans.find((x) => x.id === selectedNode.id) ?? null)
       : null;
+
+  const selectedMonthPlanClassroomId = useMemo(() => {
+    if (!selectedMonthPlan) return "";
+
+    const quarterPlan =
+      quarterPlans.find((x) => x.id === selectedMonthPlan.classQuarterPlanId) ??
+      null;
+
+    if (!quarterPlan) return "";
+
+    const annualPlan =
+      classAnnualPlans.find((x) => x.id === quarterPlan.classAnnualPlanId) ??
+      null;
+
+    return annualPlan?.classroomId ?? "";
+  }, [classAnnualPlans, quarterPlans, selectedMonthPlan]);
+
+  const selectedMonthCalendarEvents = useMemo(() => {
+    if (!selectedMonthPlan) return [];
+
+    const { fromDate, toDate } = monthPlanDateRange(selectedMonthPlan);
+
+    return classCalendarEvents
+      .filter((row) =>
+        classCalendarEventVisibleForClassroom(
+          row,
+          selectedTenantId,
+          selectedMonthPlanClassroomId,
+        ),
+      )
+      .filter((row) => row.showInPlan !== false)
+      .filter((row) => classCalendarEventIntersectsRange(row, fromDate, toDate))
+      .sort(sortClassCalendarEvents);
+  }, [
+    classCalendarEvents,
+    selectedMonthPlan,
+    selectedMonthPlanClassroomId,
+    selectedTenantId,
+  ]);
 
   const classAnnualPlanForSelectedClassroom = useMemo(() => {
     if (!selectedClassroom) return null;
@@ -1254,6 +1402,7 @@ export default function PlanV2WorkspacePanel(props: { owner: string }) {
     quarterEvents,
     selectedQuarterEvents,
     monthEvents,
+    monthCalendarEvents: selectedMonthCalendarEvents,
     planPhrases,
     planPhraseAbilityLinks,
     monthPhraseSelections,
