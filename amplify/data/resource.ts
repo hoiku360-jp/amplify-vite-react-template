@@ -956,9 +956,19 @@ const schema = a
         parentNoticeDraftText: a.string(),
         parentNoticeText: a.string(),
         parentNoticeSourceJson: a.string(),
-        parentNoticeStatus: a.string(), // DRAFT / CONFIRMED / CLEARED
+
+        // DRAFT / CONFIRMED / SHARED / SENT / CLEARED
+        parentNoticeStatus: a.string(),
+
         parentNoticeGeneratedAt: a.datetime(),
         parentNoticeConfirmedAt: a.datetime(),
+
+        // Phase 3A: iPhone共有・手動送信の記録
+        // WEB_SHARE / CLIPBOARD / MANUAL
+        parentNoticeDeliveryMethod: a.string(),
+        parentNoticeSharedAt: a.datetime(),
+        parentNoticeSentAt: a.datetime(),
+        parentNoticeDeliveryMemo: a.string(),
 
         records: a.hasMany("ScheduleRecord", "scheduleDayId"),
       })

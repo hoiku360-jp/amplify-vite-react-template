@@ -3943,6 +3943,34 @@
               "isRequired": false,
               "attributes": []
             },
+            "parentNoticeDeliveryMethod": {
+              "name": "parentNoticeDeliveryMethod",
+              "isArray": false,
+              "type": "String",
+              "isRequired": false,
+              "attributes": []
+            },
+            "parentNoticeSharedAt": {
+              "name": "parentNoticeSharedAt",
+              "isArray": false,
+              "type": "AWSDateTime",
+              "isRequired": false,
+              "attributes": []
+            },
+            "parentNoticeSentAt": {
+              "name": "parentNoticeSentAt",
+              "isArray": false,
+              "type": "AWSDateTime",
+              "isRequired": false,
+              "attributes": []
+            },
+            "parentNoticeDeliveryMemo": {
+              "name": "parentNoticeDeliveryMemo",
+              "isArray": false,
+              "type": "String",
+              "isRequired": false,
+              "attributes": []
+            },
             "records": {
               "name": "records",
               "isArray": true,
