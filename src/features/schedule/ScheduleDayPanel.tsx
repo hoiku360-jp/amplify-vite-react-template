@@ -12,6 +12,22 @@ function todayYYYYMMDD() {
   return `${y}-${m}-${d}`;
 }
 
+function addDaysYYYYMMDD(dateStr: string, diff: number) {
+  const [y, m, d] = dateStr.split("-").map(Number);
+  const date = new Date(y, (m || 1) - 1, d || 1);
+  date.setDate(date.getDate() + diff);
+
+  const yy = date.getFullYear();
+  const mm = String(date.getMonth() + 1).padStart(2, "0");
+  const dd = String(date.getDate()).padStart(2, "0");
+
+  return `${yy}-${mm}-${dd}`;
+}
+
+function tomorrowYYYYMMDD() {
+  return addDaysYYYYMMDD(todayYYYYMMDD(), 1);
+}
+
 // 仮の子ども一覧（後で Child モデルに置き換え）
 const MORNING_CHECK_CHILDREN = [
   "さくら",
@@ -119,6 +135,19 @@ type ScheduleRecordRow = Schema["ScheduleRecord"]["type"];
 type AudioJobRow = Schema["AudioJob"]["type"];
 type ClassCalendarEventRow = Schema["ClassCalendarEvent"]["type"];
 
+type ClassroomRow = Schema["Classroom"]["type"];
+type AgeTargetRow = Schema["SchoolAnnualAgeTarget"]["type"];
+
+type ClassroomDisplayRow = ClassroomRow & {
+  name?: string | null;
+  title?: string | null;
+  className?: string | null;
+};
+
+type AgeTargetDisplayRow = AgeTargetRow & {
+  ageBand?: string | number | null;
+};
+
 type ScheduleDaySyncResult = {
   createdObservationCount?: number;
   createdAbilityLinkCount?: number;
@@ -209,6 +238,8 @@ type OperationRunner<TArgs, TData> = (
 
 type ScheduleDayPanelClient = {
   models: {
+    Classroom: ListableModel<ClassroomRow>;
+    SchoolAnnualAgeTarget: ListableModel<AgeTargetRow>;
     ScheduleDay: ListableModel<ScheduleDayRow> & UpdatableModel<ScheduleDayRow>;
     ScheduleDayItem: ListableModel<ScheduleDayItemRow>;
     ScheduleRecord: ListableModel<ScheduleRecordRow> &
@@ -439,6 +470,52 @@ function buildParentNoticeShareTitle(day: ScheduleDayRow): string {
 
 function buildParentNoticeShareText(text: string): string {
   return text.trim();
+}
+
+function classroomDisplayLabel(row?: ClassroomDisplayRow | null): string {
+  if (!row) return "-";
+  return row.name || row.title || row.className || row.id || "-";
+}
+
+function ageTargetDisplayLabel(row?: AgeTargetDisplayRow | null): string {
+  if (!row) return "-";
+  return s(row.ageBand) || row.id || "-";
+}
+
+function parentNoticeCandidateText(row: ScheduleDayRow): string {
+  return s(row.parentNoticeText) || s(row.parentNoticeDraftText);
+}
+
+function parentNoticePreviewText(row: ScheduleDayRow, maxLength = 80): string {
+  const text = parentNoticeCandidateText(row).replace(/\s+/g, " ").trim();
+  if (!text) return "-";
+  if (text.length <= maxLength) return text;
+  return `${text.slice(0, maxLength)}...`;
+}
+
+function parentNoticeCandidateSort(a: ScheduleDayRow, b: ScheduleDayRow) {
+  const classDiff = s(a.classroomId).localeCompare(s(b.classroomId));
+  if (classDiff !== 0) return classDiff;
+
+  const versionDiff = (b.issueVersion ?? 0) - (a.issueVersion ?? 0);
+  if (versionDiff !== 0) return versionDiff;
+
+  return s(b.issuedAt).localeCompare(s(a.issuedAt));
+}
+
+function latestScheduleDaysByClassroom(
+  rows: ScheduleDayRow[],
+): ScheduleDayRow[] {
+  const map = new Map<string, ScheduleDayRow>();
+
+  for (const row of [...rows].sort(parentNoticeCandidateSort)) {
+    const key = s(row.classroomId) || row.id;
+    if (!map.has(key)) {
+      map.set(key, row);
+    }
+  }
+
+  return [...map.values()].sort(parentNoticeCandidateSort);
 }
 
 function parseLocalDate(dateStr: string): Date {
@@ -897,6 +974,25 @@ export default function ScheduleDayPanel(props: { owner: string }) {
   const [parentNoticeDraft, setParentNoticeDraft] = useState("");
   const [parentNoticeManualNote, setParentNoticeManualNote] = useState("");
 
+  const [parentNoticeCandidateDate, setParentNoticeCandidateDate] = useState(
+    () => tomorrowYYYYMMDD(),
+  );
+  const [loadingParentNoticeCandidates, setLoadingParentNoticeCandidates] =
+    useState(false);
+  const [openingParentNoticeCandidateId, setOpeningParentNoticeCandidateId] =
+    useState("");
+  const [parentNoticeCandidates, setParentNoticeCandidates] = useState<
+    ScheduleDayRow[]
+  >([]);
+  const [parentNoticeClassroomLabels, setParentNoticeClassroomLabels] =
+    useState<Record<string, string>>({});
+  const [dayHeaderClassroomLabels, setDayHeaderClassroomLabels] = useState<
+    Record<string, string>
+  >({});
+  const [dayHeaderAgeTargetLabels, setDayHeaderAgeTargetLabels] = useState<
+    Record<string, string>
+  >({});
+
   const [day, setDay] = useState<Schema["ScheduleDay"]["type"] | null>(null);
   const [items, setItems] = useState<Array<Schema["ScheduleDayItem"]["type"]>>(
     [],
@@ -1134,6 +1230,248 @@ export default function ScheduleDayPanel(props: { owner: string }) {
       .sort(sortCalendarEventsForDay);
   }
 
+  async function loadParentNoticeCandidates() {
+    const date = parentNoticeCandidateDate.trim();
+
+    if (!date) {
+      setMessage("保護者連絡候補の対象日を入力してください。");
+      return;
+    }
+
+    setLoadingParentNoticeCandidates(true);
+    setMessage("");
+
+    try {
+      const dayRes = await client.models.ScheduleDay.list({
+        filter: {
+          owner: { eq: owner },
+          targetDate: { eq: date },
+        } as ListOptions,
+        limit: 1000,
+      });
+
+      if (dayRes.errors?.length) {
+        throw new Error(
+          formatModelErrors(
+            dayRes.errors,
+            "保護者連絡候補の日案取得に失敗しました。",
+          ),
+        );
+      }
+
+      const latestRows = latestScheduleDaysByClassroom(dayRes.data ?? []);
+      setParentNoticeCandidates(latestRows);
+
+      const tenantId = s(latestRows[0]?.tenantId);
+      if (tenantId) {
+        const classroomRes = await client.models.Classroom.list({
+          filter: {
+            tenantId: { eq: tenantId },
+          } as ListOptions,
+          limit: 1000,
+        });
+
+        if (classroomRes.errors?.length) {
+          throw new Error(
+            formatModelErrors(
+              classroomRes.errors,
+              "クラス一覧の取得に失敗しました。",
+            ),
+          );
+        }
+
+        const labels: Record<string, string> = {};
+        for (const classroom of classroomRes.data ?? []) {
+          labels[classroom.id] = classroomDisplayLabel(
+            classroom as ClassroomDisplayRow,
+          );
+        }
+        setParentNoticeClassroomLabels(labels);
+      } else {
+        setParentNoticeClassroomLabels({});
+      }
+
+      setMessage(
+        `保護者連絡候補を読み込みました。対象日=${date}, 件数=${latestRows.length}`,
+      );
+    } catch (e) {
+      console.error(e);
+      setParentNoticeCandidates([]);
+      setParentNoticeClassroomLabels({});
+      setMessage(
+        `保護者連絡候補の読込エラー: ${
+          e instanceof Error ? e.message : String(e)
+        }`,
+      );
+    } finally {
+      setLoadingParentNoticeCandidates(false);
+    }
+  }
+
+  async function openParentNoticeCandidate(candidate: ScheduleDayRow) {
+    const candidateId = s(candidate.id);
+    if (!candidateId) {
+      setMessage("日案IDを取得できませんでした。");
+      return;
+    }
+
+    setOpeningParentNoticeCandidateId(candidateId);
+    setMessage("");
+    setDay(null);
+    setItems([]);
+    setRecords([]);
+    setCalendarEvents([]);
+    setMemoDrafts({});
+    setAttendanceDrafts({});
+    setTranscriptDrafts({});
+    setParentNoticeDraft("");
+    setParentNoticeManualNote("");
+
+    try {
+      let normalizedDay = candidate;
+
+      if (candidate.status === "ISSUED") {
+        const updateRes = await client.models.ScheduleDay.update({
+          id: candidate.id,
+          status: "IN_PROGRESS",
+          openedAt: new Date().toISOString(),
+        } as MutationInput);
+
+        if (updateRes.data) {
+          normalizedDay = updateRes.data;
+        }
+      }
+
+      setTargetDate(normalizedDay.targetDate);
+      setDay(normalizedDay);
+      await loadDayHeaderLabels(normalizedDay);
+      setParentNoticeDraft(
+        s(normalizedDay.parentNoticeText) ||
+          s(normalizedDay.parentNoticeDraftText),
+      );
+
+      const itemsRes = await client.models.ScheduleDayItem.list({
+        filter: {
+          scheduleDayId: { eq: normalizedDay.id },
+        } as ListOptions,
+      });
+
+      if (itemsRes.errors?.length) {
+        throw new Error(
+          formatModelErrors(
+            itemsRes.errors,
+            "ScheduleDayItem の取得に失敗しました。",
+          ),
+        );
+      }
+
+      const sortedItems = [...(itemsRes.data ?? [])].sort(
+        (a, b) => (a.sortOrder ?? 0) - (b.sortOrder ?? 0),
+      );
+
+      setItems(sortedItems);
+
+      const recordRows = await listAll(client.models.ScheduleRecord, {
+        filter: {
+          scheduleDayId: { eq: normalizedDay.id },
+        } as ListOptions,
+      });
+
+      recordRows.sort((a, b) =>
+        String(a.recordedAt ?? "").localeCompare(String(b.recordedAt ?? "")),
+      );
+      setRecords(recordRows);
+
+      setAttendanceDrafts(
+        buildInitialAttendanceDrafts(sortedItems, recordRows),
+      );
+
+      const initialTranscriptDrafts: Record<string, TranscriptDraft> = {};
+      for (const item of sortedItems) {
+        if (item.sourceType === "PLANNED") {
+          initialTranscriptDrafts[item.id] = createEmptyTranscriptDraft();
+        }
+      }
+      setTranscriptDrafts(initialTranscriptDrafts);
+
+      const calendarRows = await fetchCalendarEventsForDay(normalizedDay);
+      setCalendarEvents(calendarRows);
+
+      setMessage(
+        `保護者連絡候補から日案を開きました。対象日=${normalizedDay.targetDate}, classroomId=${normalizedDay.classroomId}`,
+      );
+    } catch (e) {
+      console.error(e);
+      setMessage(
+        `日案を開くエラー: ${e instanceof Error ? e.message : String(e)}`,
+      );
+    } finally {
+      setOpeningParentNoticeCandidateId("");
+    }
+  }
+
+  async function loadDayHeaderLabels(scheduleDay: ScheduleDayRow) {
+    const tenantId = s(scheduleDay.tenantId);
+
+    if (!tenantId) {
+      setDayHeaderClassroomLabels({});
+      setDayHeaderAgeTargetLabels({});
+      return;
+    }
+
+    try {
+      const [classroomRes, ageTargetRes] = await Promise.all([
+        client.models.Classroom.list({
+          filter: {
+            tenantId: { eq: tenantId },
+          } as ListOptions,
+          limit: 1000,
+        }),
+        client.models.SchoolAnnualAgeTarget.list({
+          filter: {
+            tenantId: { eq: tenantId },
+          } as ListOptions,
+          limit: 1000,
+        }),
+      ]);
+
+      if (classroomRes.errors?.length) {
+        console.warn(
+          formatModelErrors(
+            classroomRes.errors,
+            "クラス一覧の取得に失敗しました。",
+          ),
+        );
+      } else {
+        const labels: Record<string, string> = {};
+        for (const classroom of classroomRes.data ?? []) {
+          labels[classroom.id] = classroomDisplayLabel(
+            classroom as ClassroomDisplayRow,
+          );
+        }
+        setDayHeaderClassroomLabels(labels);
+      }
+
+      if (ageTargetRes.errors?.length) {
+        console.warn(
+          formatModelErrors(
+            ageTargetRes.errors,
+            "対象年齢一覧の取得に失敗しました。",
+          ),
+        );
+      } else {
+        const labels: Record<string, string> = {};
+        for (const ageTarget of ageTargetRes.data ?? []) {
+          labels[ageTarget.id] = ageTargetDisplayLabel(
+            ageTarget as AgeTargetDisplayRow,
+          );
+        }
+        setDayHeaderAgeTargetLabels(labels);
+      }
+    } catch (e) {
+      console.warn("日案ヘッダ表示名の取得に失敗しました。", e);
+    }
+  }
   async function loadScheduleDay() {
     setLoading(true);
     setMessage("");
@@ -1184,6 +1522,7 @@ export default function ScheduleDayPanel(props: { owner: string }) {
       }
 
       setDay(normalizedDay);
+      await loadDayHeaderLabels(normalizedDay);
       setParentNoticeDraft(
         s(normalizedDay.parentNoticeText) ||
           s(normalizedDay.parentNoticeDraftText),
@@ -2352,6 +2691,234 @@ export default function ScheduleDayPanel(props: { owner: string }) {
             </button>
           ) : null}
         </div>
+        <div
+          style={{
+            marginTop: 16,
+            padding: 12,
+            border: "1px solid #e5e7eb",
+            borderRadius: 8,
+            background: "#f8fafc",
+            display: "none",
+            gap: 10,
+          }}
+        >
+          <div
+            style={{
+              marginTop: 16,
+              padding: 12,
+              border: "1px solid #e5e7eb",
+              borderRadius: 8,
+              background: "#f8fafc",
+              display: "grid",
+              gap: 8,
+            }}
+          >
+            <h3 style={{ margin: 0 }}>保護者連絡</h3>
+
+            <div style={{ fontSize: 13, color: "#555", lineHeight: 1.7 }}>
+              保護者向け連絡の確認・生成・確定・送信操作は、上部メニューの
+              <b>「保護者連絡」</b> へ移動しました。
+              日案画面では、今日の予定・実施Practice・観察記録・登降園チェックに集中できます。
+            </div>
+          </div>
+
+          <div
+            style={{
+              display: "flex",
+              gap: 12,
+              alignItems: "center",
+              flexWrap: "wrap",
+            }}
+          >
+            <h3 style={{ margin: 0 }}>明日の保護者連絡候補</h3>
+
+            <label>
+              対象日：
+              <input
+                type="date"
+                value={parentNoticeCandidateDate}
+                onChange={(e) => setParentNoticeCandidateDate(e.target.value)}
+                style={{ marginLeft: 8 }}
+              />
+            </label>
+
+            <button
+              onClick={loadParentNoticeCandidates}
+              disabled={loadingParentNoticeCandidates}
+            >
+              {loadingParentNoticeCandidates ? "読込中..." : "候補を再読込"}
+            </button>
+          </div>
+
+          <div style={{ fontSize: 13, color: "#555" }}>
+            対象日のSchedule日案をクラス単位で一覧し、保護者向け連絡の作成・確定・共有・送信済み状態を確認します。
+            実際の送信操作は「日案を開く」から日案詳細で行います。
+          </div>
+
+          {parentNoticeCandidates.length === 0 ? (
+            <div style={{ color: "#666" }}>
+              候補はまだ読み込まれていません。対象日を確認して「候補を再読込」を押してください。
+            </div>
+          ) : (
+            <div style={{ overflowX: "auto" }}>
+              <table
+                style={{
+                  width: "100%",
+                  borderCollapse: "collapse",
+                  minWidth: 980,
+                }}
+              >
+                <thead>
+                  <tr style={{ textAlign: "left", background: "#fff" }}>
+                    <th
+                      style={{ padding: 8, borderBottom: "1px solid #e5e7eb" }}
+                    >
+                      クラス
+                    </th>
+                    <th
+                      style={{ padding: 8, borderBottom: "1px solid #e5e7eb" }}
+                    >
+                      日案
+                    </th>
+                    <th
+                      style={{ padding: 8, borderBottom: "1px solid #e5e7eb" }}
+                    >
+                      連絡状態
+                    </th>
+                    <th
+                      style={{ padding: 8, borderBottom: "1px solid #e5e7eb" }}
+                    >
+                      共有方法
+                    </th>
+                    <th
+                      style={{ padding: 8, borderBottom: "1px solid #e5e7eb" }}
+                    >
+                      本文プレビュー
+                    </th>
+                    <th
+                      style={{ padding: 8, borderBottom: "1px solid #e5e7eb" }}
+                    >
+                      共有/送信
+                    </th>
+                    <th
+                      style={{ padding: 8, borderBottom: "1px solid #e5e7eb" }}
+                    >
+                      操作
+                    </th>
+                  </tr>
+                </thead>
+
+                <tbody>
+                  {parentNoticeCandidates.map((row) => {
+                    const candidateId = s(row.id);
+                    const classroomName =
+                      parentNoticeClassroomLabels[row.classroomId] ||
+                      row.classroomId ||
+                      "-";
+                    const opening =
+                      openingParentNoticeCandidateId === candidateId;
+
+                    return (
+                      <tr key={candidateId}>
+                        <td
+                          style={{
+                            padding: 8,
+                            borderBottom: "1px solid #eef2f7",
+                            minWidth: 160,
+                          }}
+                        >
+                          <div style={{ fontWeight: 700 }}>{classroomName}</div>
+                          <div style={{ fontSize: 12, color: "#666" }}>
+                            {row.classroomId}
+                          </div>
+                        </td>
+
+                        <td
+                          style={{
+                            padding: 8,
+                            borderBottom: "1px solid #eef2f7",
+                            minWidth: 120,
+                          }}
+                        >
+                          <div>{row.targetDate}</div>
+                          <div style={{ fontSize: 12, color: "#666" }}>
+                            {row.status} / v{row.issueVersion ?? "-"}
+                          </div>
+                        </td>
+
+                        <td
+                          style={{
+                            padding: 8,
+                            borderBottom: "1px solid #eef2f7",
+                            minWidth: 110,
+                          }}
+                        >
+                          {parentNoticeStatusLabel(row.parentNoticeStatus)}
+                        </td>
+
+                        <td
+                          style={{
+                            padding: 8,
+                            borderBottom: "1px solid #eef2f7",
+                            minWidth: 110,
+                          }}
+                        >
+                          {parentNoticeDeliveryMethodLabel(
+                            row.parentNoticeDeliveryMethod,
+                          )}
+                        </td>
+
+                        <td
+                          style={{
+                            padding: 8,
+                            borderBottom: "1px solid #eef2f7",
+                            fontSize: 12,
+                            whiteSpace: "pre-wrap",
+                            minWidth: 320,
+                          }}
+                        >
+                          {parentNoticePreviewText(row)}
+                        </td>
+
+                        <td
+                          style={{
+                            padding: 8,
+                            borderBottom: "1px solid #eef2f7",
+                            fontSize: 12,
+                            color: "#555",
+                            minWidth: 180,
+                          }}
+                        >
+                          <div>
+                            sharedAt: {formatDateTime(row.parentNoticeSharedAt)}
+                          </div>
+                          <div>
+                            sentAt: {formatDateTime(row.parentNoticeSentAt)}
+                          </div>
+                        </td>
+
+                        <td
+                          style={{
+                            padding: 8,
+                            borderBottom: "1px solid #eef2f7",
+                            minWidth: 120,
+                          }}
+                        >
+                          <button
+                            onClick={() => openParentNoticeCandidate(row)}
+                            disabled={opening}
+                          >
+                            {opening ? "開いています..." : "日案を開く"}
+                          </button>
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </div>
 
         {message ? (
           <div style={{ marginTop: 12, color: "#444", whiteSpace: "pre-wrap" }}>
@@ -2372,8 +2939,68 @@ export default function ScheduleDayPanel(props: { owner: string }) {
             padding: 16,
             border: "1px solid #d0d7de",
             borderRadius: 8,
-            background: "#fffdf7",
+            background: "#fff",
             display: "grid",
+            gap: 10,
+          }}
+        >
+          <h3 style={{ margin: 0 }}>保護者連絡</h3>
+
+          <div style={{ fontSize: 13, color: "#555", lineHeight: 1.7 }}>
+            この日案をもとにした保護者向け連絡は、上部メニューの
+            <b>「保護者連絡」</b> で確認・生成・確定・送信してください。
+            日案画面では、現在の連絡状態だけを確認できます。
+          </div>
+
+          <div
+            style={{
+              padding: 12,
+              border: "1px solid #e5e7eb",
+              borderRadius: 8,
+              background: "#f8fafc",
+              fontSize: 13,
+              lineHeight: 1.7,
+            }}
+          >
+            <div>
+              <b>連絡状態:</b> {parentNoticeStatusLabel(day.parentNoticeStatus)}
+            </div>
+            <div>
+              <b>共有方法:</b>{" "}
+              {parentNoticeDeliveryMethodLabel(day.parentNoticeDeliveryMethod)}
+            </div>
+            <div>
+              <b>生成:</b> {formatDateTime(day.parentNoticeGeneratedAt)} /{" "}
+              <b>確定:</b> {formatDateTime(day.parentNoticeConfirmedAt)}
+            </div>
+            <div>
+              <b>共有:</b> {formatDateTime(day.parentNoticeSharedAt)} /{" "}
+              <b>送信:</b> {formatDateTime(day.parentNoticeSentAt)}
+            </div>
+            <div style={{ marginTop: 8 }}>
+              <b>本文プレビュー:</b>
+              <div
+                style={{
+                  whiteSpace: "pre-wrap",
+                  color: "#555",
+                  marginTop: 4,
+                }}
+              >
+                {parentNoticePreviewText(day, 160)}
+              </div>
+            </div>
+          </div>
+        </div>
+      ) : null}
+
+      {day ? (
+        <div
+          style={{
+            padding: 16,
+            border: "1px solid #d0d7de",
+            borderRadius: 8,
+            background: "#fffdf7",
+            display: "none",
             gap: 12,
           }}
         >
@@ -2541,10 +3168,18 @@ export default function ScheduleDayPanel(props: { owner: string }) {
               <b>発行版:</b> {day.issueVersion}
             </div>
             <div>
-              <b>classroomId:</b> {day.classroomId}
+              <b>クラス:</b>{" "}
+              {dayHeaderClassroomLabels[day.classroomId] || day.classroomId}
+            </div>
+            <div style={{ fontSize: 12, color: "#666" }}>
+              classroomId: {day.classroomId}
             </div>
             <div>
-              <b>ageTargetId:</b> {day.ageTargetId}
+              <b>対象年齢:</b>{" "}
+              {dayHeaderAgeTargetLabels[day.ageTargetId] || day.ageTargetId}
+            </div>
+            <div style={{ fontSize: 12, color: "#666" }}>
+              ageTargetId: {day.ageTargetId}
             </div>
             <div>
               <b>openedAt:</b> {formatDateTime(day.openedAt)}

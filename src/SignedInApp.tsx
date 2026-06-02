@@ -8,6 +8,7 @@ import AudioJobsPanel from "./features/audio/AudioJobsPanel";
 import PlanV2WorkspacePanel from "./features/plan-v2/PlanV2WorkspacePanel";
 import ScheduleDayPanel from "./features/schedule/ScheduleDayPanel";
 import SimpleScheduleWorkspacePanel from "./features/schedule/SimpleScheduleWorkspacePanel";
+import ParentNoticePanel from "./features/parent-notice/ParentNoticePanel";
 import AbilityDashboardPanel from "./features/check/AbilityDashboardPanel";
 import ClassWeeklyReportPanel from "./features/check/ClassWeeklyReportPanel";
 import ChildWeekendLetterPanel from "./features/check/ChildWeekendLetterPanel";
@@ -16,6 +17,7 @@ type TabKey =
   | "planV2Workspace"
   | "schedulePlan"
   | "scheduleDay"
+  | "parentNotice"
   | "abilityDashboard"
   | "classWeeklyReport"
   | "childWeekendLetter"
@@ -56,6 +58,7 @@ export default function SignedInApp(props: {
         <button onClick={() => setTab("planV2Workspace")}>PLAN v2</button>
         <button onClick={() => setTab("schedulePlan")}>月案＞週案</button>
         <button onClick={() => setTab("scheduleDay")}>日案</button>
+        <button onClick={() => setTab("parentNotice")}>保護者連絡</button>
         <button onClick={() => setTab("abilityDashboard")}>
           5領域ダッシュボード
         </button>
@@ -78,6 +81,10 @@ export default function SignedInApp(props: {
       {tab === "schedulePlan" && <SimpleScheduleWorkspacePanel owner={owner} />}
 
       {tab === "scheduleDay" && <ScheduleDayPanel owner={owner} />}
+
+      {tab === "parentNotice" && (
+        <ParentNoticePanel owner={owner} tenantId={tenantId} />
+      )}
 
       {tab === "abilityDashboard" && (
         <AbilityDashboardPanel owner={owner} tenantId={tenantId} />

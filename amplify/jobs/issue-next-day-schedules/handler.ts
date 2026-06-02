@@ -44,12 +44,22 @@ async function listAll<TRow>(
   return rows;
 }
 
-function tomorrowJstDateString() {
+function issueTargetJstDateString() {
   const now = new Date();
   const jstNow = new Date(
     now.toLocaleString("en-US", { timeZone: "Asia/Tokyo" }),
   );
-  jstNow.setDate(jstNow.getDate() + 1);
+
+  const todayDayOfWeek = jstNow.getDay(); // 0=日, 1=月, ... 5=金, 6=土
+
+  // 念のための安全弁。resource.ts 側でも MON-FRI 起動にする。
+  if (todayDayOfWeek === 0 || todayDayOfWeek === 6) {
+    return null;
+  }
+
+  // 月〜木は翌日、金曜は翌週月曜を対象にする。
+  const addDays = todayDayOfWeek === 5 ? 3 : 1;
+  jstNow.setDate(jstNow.getDate() + addDays);
 
   const y = jstNow.getFullYear();
   const m = String(jstNow.getMonth() + 1).padStart(2, "0");
@@ -136,7 +146,22 @@ function compareWeeks(
 }
 
 export const handler = async () => {
-  const targetDate = tomorrowJstDateString();
+  const targetDate = issueTargetJstDateString();
+
+  if (!targetDate) {
+    return {
+      targetDate: null,
+      dayOfWeek: null,
+      scannedWeekCount: 0,
+      candidateWeekCount: 0,
+      selectedWeekCount: 0,
+      skippedGroupCount: 0,
+      skippedGroups: [],
+      results: [],
+      message: "土日のため、日案の自動発行をスキップしました。",
+    };
+  }
+
   const dayOfWeek = toDayOfWeek(targetDate);
 
   const allWeeks = await listAll<ScheduleWeekRow>(

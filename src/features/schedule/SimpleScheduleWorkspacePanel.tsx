@@ -871,6 +871,49 @@ async function listAll<TRow>(
   return rows;
 }
 
+function schedulePlanStatusRank(value?: string | null): number {
+  const status = s(value).toUpperCase();
+
+  switch (status) {
+    case "ACTIVE":
+      return 0;
+    case "DRAFT":
+      return 1;
+    case "CLOSED":
+      return 3;
+    default:
+      return 2;
+  }
+}
+
+function scheduleMonthTimestamp(row: ScheduleMonthRow): string {
+  const t = row as ScheduleMonthRow & TimestampLike;
+  return s(row.issuedAt) || s(t.updatedAt) || s(t.createdAt);
+}
+
+function compareScheduleMonthCandidate(
+  a: ScheduleMonthRow,
+  b: ScheduleMonthRow,
+): number {
+  const statusDiff =
+    schedulePlanStatusRank(a.status) - schedulePlanStatusRank(b.status);
+  if (statusDiff !== 0) return statusDiff;
+
+  const versionDiff = n(b.issueVersion) - n(a.issueVersion);
+  if (versionDiff !== 0) return versionDiff;
+
+  const timeDiff = scheduleMonthTimestamp(b).localeCompare(
+    scheduleMonthTimestamp(a),
+  );
+  if (timeDiff !== 0) return timeDiff;
+
+  return s(a.id).localeCompare(s(b.id));
+}
+
+function scheduleMonthOptionLabel(row: ScheduleMonthRow): string {
+  const version = row.issueVersion ? ` / v${row.issueVersion}` : "";
+  return `${row.monthKey} / ${row.title || "月案"} / ${row.status}${version}`;
+}
 const thStyle: CSSProperties = {
   border: "1px solid #ddd",
   padding: 8,
@@ -955,6 +998,34 @@ export default function SimpleScheduleWorkspacePanel(props: Props) {
 
   const [classroomId, setClassroomId] = useState("");
   const [ageTargetId, setAgeTargetId] = useState("");
+
+  const scheduleMonthCandidates = useMemo(() => {
+    return months
+      .filter((row) => {
+        const status = s(row.status).toUpperCase();
+
+        return (
+          row.monthKey === monthKey &&
+          row.owner === owner &&
+          row.classroomId === classroomId &&
+          row.ageTargetId === ageTargetId &&
+          status !== "CLOSED"
+        );
+      })
+      .sort(compareScheduleMonthCandidate);
+  }, [ageTargetId, classroomId, monthKey, months, owner]);
+
+  const activeScheduleMonthCandidateCount = useMemo(() => {
+    return scheduleMonthCandidates.filter(
+      (row) => s(row.status).toUpperCase() === "ACTIVE",
+    ).length;
+  }, [scheduleMonthCandidates]);
+
+  const selectedScheduleMonthForWarning = useMemo(() => {
+    return (
+      scheduleMonthCandidates.find((row) => row.id === selectedMonthId) ?? null
+    );
+  }, [scheduleMonthCandidates, selectedMonthId]);
   const [message, setMessage] = useState("");
   const [loading, setLoading] = useState(false);
 
@@ -1550,7 +1621,28 @@ export default function SimpleScheduleWorkspacePanel(props: Props) {
   }, [loadInitial]);
 
   useEffect(() => {
-    if (!selectedMonthId) return;
+    if (!monthKey || !classroomId || !ageTargetId) {
+      setSelectedMonthId("");
+      return;
+    }
+
+    if (
+      selectedMonthId &&
+      scheduleMonthCandidates.some((row) => row.id === selectedMonthId)
+    ) {
+      return;
+    }
+
+    setSelectedMonthId(scheduleMonthCandidates[0]?.id ?? "");
+  }, [
+    ageTargetId,
+    classroomId,
+    monthKey,
+    scheduleMonthCandidates,
+    selectedMonthId,
+  ]);
+
+  useEffect(() => {
     void fetchWeeksForMonth(selectedMonthId);
   }, [fetchWeeksForMonth, selectedMonthId]);
 
@@ -1859,6 +1951,28 @@ export default function SimpleScheduleWorkspacePanel(props: Props) {
   }
 
   async function createMonthAndWeeks() {
+    if (!monthKey || !classroomId || !ageTargetId) {
+      setMessage("monthKey / classroom / ageTarget を選択してください。");
+      return;
+    }
+
+    if (scheduleMonthCandidates.length > 0) {
+      const existing = scheduleMonthCandidates[0];
+      setSelectedMonthId(existing.id);
+      await fetchWeeksForMonth(existing.id);
+      setMessage(
+        [
+          "既存のSchedule月案を使用します。新規作成は行いませんでした。",
+          `selected: ${scheduleMonthOptionLabel(existing)}`,
+          activeScheduleMonthCandidateCount > 1
+            ? "警告: ACTIVEのSchedule月案が複数あります。古い重複データの整理を検討してください。"
+            : "",
+        ]
+          .filter(Boolean)
+          .join("\n"),
+      );
+      return;
+    }
     if (!tenantId.trim()) {
       setMessage("tenantId を入力してください。");
       return;
@@ -2337,13 +2451,11 @@ export default function SimpleScheduleWorkspacePanel(props: Props) {
               style={{ minWidth: 260 }}
             >
               <option value="">未選択</option>
-              {months
-                .filter((row) => row.monthKey === monthKey)
-                .map((row) => (
-                  <option key={row.id} value={row.id}>
-                    {row.monthKey} / {row.title || "月案"} / {row.status}
-                  </option>
-                ))}
+              {scheduleMonthCandidates.map((row) => (
+                <option key={row.id} value={row.id}>
+                  {scheduleMonthOptionLabel(row)}
+                </option>
+              ))}
             </select>
           </label>
 
@@ -2371,6 +2483,71 @@ export default function SimpleScheduleWorkspacePanel(props: Props) {
           </button>
         </div>
 
+        {monthKey && classroomId && ageTargetId ? (
+          <div
+            style={{
+              padding: 10,
+              borderRadius: 8,
+              background:
+                activeScheduleMonthCandidateCount === 1 &&
+                selectedScheduleMonthForWarning &&
+                s(selectedScheduleMonthForWarning.status).toUpperCase() ===
+                  "ACTIVE"
+                  ? "#f8fafc"
+                  : "#fff7ed",
+              border:
+                activeScheduleMonthCandidateCount === 1 &&
+                selectedScheduleMonthForWarning &&
+                s(selectedScheduleMonthForWarning.status).toUpperCase() ===
+                  "ACTIVE"
+                  ? "1px solid #e5e7eb"
+                  : "1px solid #fed7aa",
+              color: "#444",
+              fontSize: 13,
+              lineHeight: 1.7,
+            }}
+          >
+            <div>
+              Schedule月案候補: {scheduleMonthCandidates.length}件 / ACTIVE:{" "}
+              {activeScheduleMonthCandidateCount}件
+            </div>
+
+            {scheduleMonthCandidates.length === 0 ? (
+              <div>
+                この monthKey / classroom / ageTarget
+                に一致するSchedule月案がありません。
+                「月案＋週案を作成」で作成してください。
+              </div>
+            ) : null}
+
+            {activeScheduleMonthCandidateCount > 1 ? (
+              <div>
+                警告: 同じ monthKey / classroom / ageTarget に ACTIVE
+                のSchedule月案が複数あります。
+                先頭候補を使用しますが、古い重複データの整理を検討してください。
+              </div>
+            ) : null}
+
+            {scheduleMonthCandidates.length > 0 &&
+            activeScheduleMonthCandidateCount === 0 ? (
+              <div>
+                警告: ACTIVE
+                のSchedule月案がありません。DRAFTを選択して週案・日案を発行すると、
+                DRAFT内容が採用されます。
+              </div>
+            ) : null}
+
+            {selectedScheduleMonthForWarning &&
+            s(selectedScheduleMonthForWarning.status).toUpperCase() !==
+              "ACTIVE" ? (
+              <div>
+                現在選択中:{" "}
+                {scheduleMonthOptionLabel(selectedScheduleMonthForWarning)}
+                。通常運用では ACTIVE の月案を選んでください。
+              </div>
+            ) : null}
+          </div>
+        ) : null}
         {message ? (
           <pre
             style={{
