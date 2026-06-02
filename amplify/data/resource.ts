@@ -84,6 +84,14 @@ export const generateParentNoticeFn = defineFunction({
   runtime: 22,
 });
 
+export const submitParentNoticeReplyFn = defineFunction({
+  name: "submit-parent-notice-reply",
+  entry: "../functions/submit-parent-notice-reply/handler.ts",
+  timeoutSeconds: 30,
+  memoryMB: 512,
+  runtime: 22,
+});
+
 export const syncScheduleDayObservationsFn = defineFunction({
   name: "sync-schedule-day-observations",
   entry: "../functions/sync-schedule-day-observations/handler.ts",
@@ -286,6 +294,33 @@ const schema = a
       .returns(a.ref("GenerateParentNoticeResponse"))
       .authorization((allow) => [allow.authenticated()])
       .handler(a.handler.function(generateParentNoticeFn)),
+
+    SubmitParentNoticeReplyResponse: a.customType({
+      replyId: a.id(),
+      status: a.string().required(),
+      message: a.string(),
+    }),
+
+    submitParentNoticeReply: a
+      .mutation()
+      .arguments({
+        replyToken: a.string().required(),
+
+        childKey: a.string(),
+        childName: a.string(),
+
+        okSigned: a.boolean().required(),
+
+        pickupPersonRelation: a.string(),
+        pickupPersonName: a.string(),
+        pickupPlannedTime: a.string(),
+
+        homeNote: a.string(),
+        userAgent: a.string(),
+      })
+      .returns(a.ref("SubmitParentNoticeReplyResponse"))
+      .authorization((allow) => [allow.publicApiKey(), allow.authenticated()])
+      .handler(a.handler.function(submitParentNoticeReplyFn)),
 
     IssueScheduleDayFromScheduleWeekResponse: a.customType({
       scheduleWeekId: a.id().required(),
@@ -989,6 +1024,95 @@ const schema = a
       .authorization((allow) => [
         allow.ownerDefinedIn("owner"),
         allow.authenticated().to(["read", "create", "update"]),
+      ]),
+
+    ParentNoticeReplyToken: a
+      .model({
+        tenantId: a.string().required(),
+        owner: a.string().required(),
+
+        scheduleDayId: a.id().required(),
+        classroomId: a.id().required(),
+        ageTargetId: a.id(),
+        targetDate: a.date().required(),
+
+        tokenHash: a.string().required(),
+
+        // CLASSROOM: Phase 4-1 MVPではクラス共通URL
+        // CHILD: 将来の子ども別URL用
+        scopeType: a.string().required(),
+
+        // ACTIVE / REVOKED / EXPIRED
+        status: a.string().required(),
+
+        issuedAt: a.datetime().required(),
+        expiresAt: a.datetime(),
+        issuedBySub: a.string(),
+        memo: a.string(),
+      })
+      .secondaryIndexes((index) => [
+        index("tokenHash").queryField("listParentNoticeReplyTokensByTokenHash"),
+        index("scheduleDayId")
+          .sortKeys(["issuedAt"])
+          .queryField("listParentNoticeReplyTokensByScheduleDay"),
+        index("classroomId")
+          .sortKeys(["targetDate", "issuedAt"])
+          .queryField("listParentNoticeReplyTokensByClassroomDate"),
+      ])
+      .authorization((allow) => [
+        allow.ownerDefinedIn("owner"),
+        allow.authenticated().to(["read", "create", "update", "delete"]),
+      ]),
+
+    ParentNoticeReply: a
+      .model({
+        tenantId: a.string().required(),
+        owner: a.string().required(),
+
+        scheduleDayId: a.id().required(),
+        classroomId: a.id().required(),
+        ageTargetId: a.id(),
+        targetDate: a.date().required(),
+
+        replyTokenHash: a.string().required(),
+
+        childKey: a.string(),
+        childName: a.string(),
+
+        okSigned: a.boolean().required(),
+
+        pickupPersonRelation: a.string(),
+        pickupPersonName: a.string(),
+        pickupPlannedTime: a.string(),
+
+        homeNote: a.string(),
+
+        // SUBMITTED / CONFIRMED / ARCHIVED
+        status: a.string().required(),
+
+        submittedAt: a.datetime().required(),
+        confirmedAt: a.datetime(),
+        confirmedBySub: a.string(),
+
+        userAgent: a.string(),
+      })
+      .secondaryIndexes((index) => [
+        index("scheduleDayId")
+          .sortKeys(["submittedAt"])
+          .queryField("listParentNoticeRepliesByScheduleDay"),
+        index("classroomId")
+          .sortKeys(["targetDate", "submittedAt"])
+          .queryField("listParentNoticeRepliesByClassroomDate"),
+        index("replyTokenHash")
+          .sortKeys(["submittedAt"])
+          .queryField("listParentNoticeRepliesByTokenHash"),
+        index("childKey")
+          .sortKeys(["targetDate", "submittedAt"])
+          .queryField("listParentNoticeRepliesByChildDate"),
+      ])
+      .authorization((allow) => [
+        allow.ownerDefinedIn("owner"),
+        allow.authenticated().to(["read", "create", "update", "delete"]),
       ]),
 
     ScheduleDayItem: a
@@ -2030,6 +2154,7 @@ const schema = a
     allow.resource(analyzeTranscriptObservationsFn),
     allow.resource(cleanupTranscriptTextFn),
     allow.resource(generateParentNoticeFn),
+    allow.resource(submitParentNoticeReplyFn),
     allow.resource(syncScheduleDayObservationsFn),
     allow.resource(issueScheduleDayFromScheduleWeekFn),
     allow.resource(issueScheduleWeekFromScheduleMonthFn),

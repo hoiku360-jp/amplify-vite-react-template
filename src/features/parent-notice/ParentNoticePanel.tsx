@@ -24,6 +24,10 @@ type ListableModel<TRow> = {
   list(options?: ListOptions): Promise<ListResponse<TRow>>;
 };
 
+type CreatableModel<TRow> = {
+  create(input: MutationInput): Promise<MutationResponse<TRow>>;
+};
+
 type UpdatableModel<TRow> = {
   update(input: MutationInput): Promise<MutationResponse<TRow>>;
 };
@@ -31,6 +35,8 @@ type UpdatableModel<TRow> = {
 type ScheduleDayRow = Schema["ScheduleDay"]["type"];
 type ClassroomRow = Schema["Classroom"]["type"];
 type AgeTargetRow = Schema["SchoolAnnualAgeTarget"]["type"];
+type ParentNoticeReplyTokenRow = Schema["ParentNoticeReplyToken"]["type"];
+type ParentNoticeReplyRow = Schema["ParentNoticeReply"]["type"];
 
 type ClassroomDisplayRow = ClassroomRow & {
   name?: string | null;
@@ -73,6 +79,10 @@ type ParentNoticeClient = {
     Classroom: ListableModel<ClassroomRow>;
     SchoolAnnualAgeTarget: ListableModel<AgeTargetRow>;
     ScheduleDay: ListableModel<ScheduleDayRow> & UpdatableModel<ScheduleDayRow>;
+    ParentNoticeReplyToken: ListableModel<ParentNoticeReplyTokenRow> &
+      CreatableModel<ParentNoticeReplyTokenRow>;
+    ParentNoticeReply: ListableModel<ParentNoticeReplyRow> &
+      UpdatableModel<ParentNoticeReplyRow>;
   };
   mutations?: {
     generateParentNotice?: OperationRunner<
@@ -113,6 +123,12 @@ function addDaysYYYYMMDD(dateStr: string, diff: number) {
   const dd = String(date.getDate()).padStart(2, "0");
 
   return `${yy}-${mm}-${dd}`;
+}
+
+function addDaysIso(days: number): string {
+  const date = new Date();
+  date.setDate(date.getDate() + days);
+  return date.toISOString();
 }
 
 function tomorrowYYYYMMDD() {
@@ -195,6 +211,21 @@ function parentNoticeDeliveryMethodLabel(value?: string | null): string {
   }
 }
 
+function parentReplyStatusLabel(value?: string | null): string {
+  const status = s(value).toUpperCase();
+
+  switch (status) {
+    case "SUBMITTED":
+      return "返信あり";
+    case "CONFIRMED":
+      return "園確認済み";
+    case "ARCHIVED":
+      return "アーカイブ";
+    default:
+      return status || "-";
+  }
+}
+
 function classroomDisplayLabel(row?: ClassroomDisplayRow | null): string {
   if (!row) return "-";
   return row.name || row.title || row.className || row.id || "-";
@@ -259,8 +290,52 @@ function buildParentNoticeShareTitle(day: ScheduleDayRow): string {
   return `保護者向け連絡 ${day.targetDate}`;
 }
 
-function buildParentNoticeShareText(text: string): string {
-  return text.trim();
+function buildParentNoticeShareText(text: string, replyUrl?: string): string {
+  const body = text.trim();
+  const url = s(replyUrl);
+
+  if (!url) return body;
+
+  return `${body}
+
+【返信はこちら】
+内容確認・お迎え予定・ご家庭での様子は、以下から入力してください。
+${url}`;
+}
+
+function buildParentReplyUrl(token: string): string {
+  const origin =
+    typeof window === "undefined"
+      ? ""
+      : window.location.origin.replace(/\/$/, "");
+
+  return `${origin}/parent-reply?token=${encodeURIComponent(token)}`;
+}
+
+function makeRandomToken(): string {
+  const uuid =
+    typeof crypto !== "undefined" && "randomUUID" in crypto
+      ? crypto.randomUUID()
+      : Math.random().toString(36).slice(2);
+
+  return `${uuid}-${Date.now().toString(36)}-${Math.random()
+    .toString(36)
+    .slice(2)}`;
+}
+
+async function sha256Hex(value: string): Promise<string> {
+  if (typeof crypto === "undefined" || !crypto.subtle) {
+    throw new Error(
+      "このブラウザでは返信URL token の作成に必要な暗号機能を利用できません。",
+    );
+  }
+
+  const encoded = new TextEncoder().encode(value);
+  const digest = await crypto.subtle.digest("SHA-256", encoded);
+
+  return Array.from(new Uint8Array(digest))
+    .map((b) => b.toString(16).padStart(2, "0"))
+    .join("");
 }
 
 export default function ParentNoticePanel(props: {
@@ -293,9 +368,31 @@ export default function ParentNoticePanel(props: {
   const [sharingParentNotice, setSharingParentNotice] = useState(false);
   const [copyingParentNotice, setCopyingParentNotice] = useState(false);
   const [markingParentNoticeSent, setMarkingParentNoticeSent] = useState(false);
+  const [creatingReplyToken, setCreatingReplyToken] = useState(false);
 
   const [parentNoticeDraft, setParentNoticeDraft] = useState("");
   const [parentNoticeManualNote, setParentNoticeManualNote] = useState("");
+
+  const [replyTokenPlain, setReplyTokenPlain] = useState("");
+  const [replyTokenDayId, setReplyTokenDayId] = useState("");
+
+  const [parentReplies, setParentReplies] = useState<ParentNoticeReplyRow[]>(
+    [],
+  );
+  const [loadingParentReplies, setLoadingParentReplies] = useState(false);
+  const [confirmingReplyId, setConfirmingReplyId] = useState("");
+
+  const currentReplyUrl = replyTokenPlain
+    ? buildParentReplyUrl(replyTokenPlain)
+    : "";
+
+  const busy =
+    generatingParentNotice ||
+    savingParentNotice ||
+    sharingParentNotice ||
+    copyingParentNotice ||
+    markingParentNoticeSent ||
+    creatingReplyToken;
 
   function mergeScheduleDay(next: ScheduleDayRow) {
     setSelectedDay(next);
@@ -341,6 +438,41 @@ export default function ParentNoticePanel(props: {
     }
   }
 
+  async function loadParentReplies(scheduleDayId: string) {
+    if (!scheduleDayId) return;
+
+    setLoadingParentReplies(true);
+
+    try {
+      const res = await client.models.ParentNoticeReply.list({
+        filter: {
+          scheduleDayId: { eq: scheduleDayId },
+        } as ListOptions,
+        limit: 1000,
+      });
+
+      if (res.errors?.length) {
+        throw new Error(
+          formatModelErrors(res.errors, "保護者返信の取得に失敗しました。"),
+        );
+      }
+
+      const rows = [...(res.data ?? [])].sort((a, b) =>
+        s(b.submittedAt).localeCompare(s(a.submittedAt)),
+      );
+
+      setParentReplies(rows);
+    } catch (e) {
+      console.error(e);
+      setMessage(
+        `保護者返信の読込エラー: ${e instanceof Error ? e.message : String(e)}`,
+      );
+      setParentReplies([]);
+    } finally {
+      setLoadingParentReplies(false);
+    }
+  }
+
   async function loadParentNoticeCandidates() {
     const date = targetDate.trim();
 
@@ -380,6 +512,11 @@ export default function ParentNoticePanel(props: {
         setSelectedDay(null);
         setParentNoticeDraft("");
         setParentNoticeManualNote("");
+        setReplyTokenPlain("");
+        setReplyTokenDayId("");
+        setParentReplies([]);
+      } else if (selectedDay) {
+        await loadParentReplies(selectedDay.id);
       }
 
       setMessage(
@@ -404,9 +541,80 @@ export default function ParentNoticePanel(props: {
       s(row.parentNoticeText) || s(row.parentNoticeDraftText),
     );
     setParentNoticeManualNote("");
+    setReplyTokenPlain("");
+    setReplyTokenDayId("");
+    void loadParentReplies(row.id);
+
     setMessage(
       `保護者連絡候補を開きました。対象日=${row.targetDate}, classroomId=${row.classroomId}`,
     );
+  }
+
+  async function ensureReplyToken(day: ScheduleDayRow): Promise<string> {
+    if (replyTokenPlain && replyTokenDayId === day.id) {
+      return replyTokenPlain;
+    }
+
+    setCreatingReplyToken(true);
+
+    try {
+      const token = makeRandomToken();
+      const tokenHash = await sha256Hex(token);
+      const now = new Date().toISOString();
+
+      const createRes = await client.models.ParentNoticeReplyToken.create({
+        tenantId,
+        owner,
+
+        scheduleDayId: day.id,
+        classroomId: day.classroomId,
+        ageTargetId: day.ageTargetId,
+        targetDate: day.targetDate,
+
+        tokenHash,
+        scopeType: "CLASSROOM",
+        status: "ACTIVE",
+
+        issuedAt: now,
+        expiresAt: addDaysIso(14),
+        issuedBySub: owner,
+        memo: "保護者連絡メニューから作成したPhase 4-1 MVP返信URLです。",
+      } as MutationInput);
+
+      if (!createRes.data) {
+        throw new Error(
+          formatModelErrors(
+            createRes.errors,
+            "保護者返信URL token の作成に失敗しました。",
+          ),
+        );
+      }
+
+      setReplyTokenPlain(token);
+      setReplyTokenDayId(day.id);
+
+      return token;
+    } finally {
+      setCreatingReplyToken(false);
+    }
+  }
+
+  async function createReplyUrlOnly() {
+    if (!selectedDay) return;
+
+    setMessage("");
+
+    try {
+      const token = await ensureReplyToken(selectedDay);
+      setMessage(
+        `保護者返信URLを作成しました。\n${buildParentReplyUrl(token)}`,
+      );
+    } catch (e) {
+      console.error(e);
+      setMessage(
+        `返信URL作成エラー: ${e instanceof Error ? e.message : String(e)}`,
+      );
+    }
   }
 
   async function generateParentNotice() {
@@ -533,6 +741,8 @@ export default function ParentNoticePanel(props: {
   async function clearParentNotice() {
     setParentNoticeDraft("");
     setParentNoticeManualNote("");
+    setReplyTokenPlain("");
+    setReplyTokenDayId("");
     await saveParentNotice("");
   }
 
@@ -582,16 +792,21 @@ export default function ParentNoticePanel(props: {
   async function copyParentNotice() {
     if (!selectedDay) return;
 
-    const text = buildParentNoticeShareText(parentNoticeDraft);
-    if (!text) {
-      setMessage("コピーする保護者向けお知らせ本文がありません。");
-      return;
-    }
-
     setCopyingParentNotice(true);
     setMessage("");
 
     try {
+      const token = await ensureReplyToken(selectedDay);
+      const text = buildParentNoticeShareText(
+        parentNoticeDraft,
+        buildParentReplyUrl(token),
+      );
+
+      if (!text) {
+        setMessage("コピーする保護者向けお知らせ本文がありません。");
+        return;
+      }
+
       if (typeof navigator === "undefined" || !navigator.clipboard?.writeText) {
         throw new Error(
           "このブラウザではクリップボードコピーを利用できません。",
@@ -604,11 +819,11 @@ export default function ParentNoticePanel(props: {
         status: "SHARED",
         deliveryMethod: "CLIPBOARD",
         sharedAt: new Date().toISOString(),
-        memo: "本文をクリップボードへコピーしました。",
+        memo: "本文と保護者返信URLをクリップボードへコピーしました。",
       });
 
       setMessage(
-        "保護者向けお知らせ本文をコピーしました。必要な連絡アプリに貼り付けて送信してください。",
+        "保護者向けお知らせ本文と返信URLをコピーしました。必要な連絡アプリに貼り付けて送信してください。",
       );
     } catch (e) {
       console.error(e);
@@ -621,16 +836,21 @@ export default function ParentNoticePanel(props: {
   async function shareParentNotice() {
     if (!selectedDay) return;
 
-    const text = buildParentNoticeShareText(parentNoticeDraft);
-    if (!text) {
-      setMessage("共有する保護者向けお知らせ本文がありません。");
-      return;
-    }
-
     setSharingParentNotice(true);
     setMessage("");
 
     try {
+      const token = await ensureReplyToken(selectedDay);
+      const text = buildParentNoticeShareText(
+        parentNoticeDraft,
+        buildParentReplyUrl(token),
+      );
+
+      if (!text) {
+        setMessage("共有する保護者向けお知らせ本文がありません。");
+        return;
+      }
+
       const shareData: NativeShareData = {
         title: buildParentNoticeShareTitle(selectedDay),
         text,
@@ -655,11 +875,11 @@ export default function ParentNoticePanel(props: {
         status: "SHARED",
         deliveryMethod: "WEB_SHARE",
         sharedAt: new Date().toISOString(),
-        memo: "iPhone共有シートへ本文を渡しました。",
+        memo: "iPhone共有シートへ本文と保護者返信URLを渡しました。",
       });
 
       setMessage(
-        "iPhone共有シートへ保護者向けお知らせを渡しました。実際の送信後に「送信済みにする」を押してください。",
+        "iPhone共有シートへ保護者向けお知らせと返信URLを渡しました。実際の送信後に「送信済みにする」を押してください。",
       );
     } catch (e) {
       console.error(e);
@@ -722,12 +942,42 @@ export default function ParentNoticePanel(props: {
     }
   }
 
-  const busy =
-    generatingParentNotice ||
-    savingParentNotice ||
-    sharingParentNotice ||
-    copyingParentNotice ||
-    markingParentNoticeSent;
+  async function confirmParentReply(reply: ParentNoticeReplyRow) {
+    if (!reply.id) return;
+
+    setConfirmingReplyId(reply.id);
+    setMessage("");
+
+    try {
+      const updateRes = await client.models.ParentNoticeReply.update({
+        id: reply.id,
+        status: "CONFIRMED",
+        confirmedAt: new Date().toISOString(),
+        confirmedBySub: owner,
+      } as MutationInput);
+
+      if (!updateRes.data) {
+        throw new Error(
+          formatModelErrors(
+            updateRes.errors,
+            "保護者返信の確認済み更新に失敗しました。",
+          ),
+        );
+      }
+
+      setParentReplies((prev) =>
+        prev.map((row) => (row.id === reply.id ? updateRes.data! : row)),
+      );
+      setMessage("保護者返信を園確認済みにしました。");
+    } catch (e) {
+      console.error(e);
+      setMessage(
+        `確認済み更新エラー: ${e instanceof Error ? e.message : String(e)}`,
+      );
+    } finally {
+      setConfirmingReplyId("");
+    }
+  }
 
   return (
     <div style={{ display: "grid", gap: 16 }}>
@@ -745,7 +995,8 @@ export default function ParentNoticePanel(props: {
           <h2 style={{ margin: 0 }}>保護者連絡</h2>
           <div style={{ fontSize: 13, color: "#555", marginTop: 4 }}>
             Schedule日案から、明日送る保護者向け連絡候補を確認・生成・確定し、
-            iPhone共有またはコピーで実際の連絡アプリへ渡します。
+            iPhone共有またはコピーで実際の連絡アプリへ渡します。 Phase
+            4では、返信URLから保護者がOKサイン・お迎え予定・家庭での様子を返せます。
           </div>
         </div>
 
@@ -812,39 +1063,23 @@ export default function ParentNoticePanel(props: {
             <table
               style={{
                 width: "100%",
+                minWidth: 1120,
                 borderCollapse: "collapse",
-                minWidth: 1040,
+                background: "#fff",
               }}
             >
               <thead>
-                <tr style={{ textAlign: "left", background: "#fff" }}>
-                  <th style={{ padding: 8, borderBottom: "1px solid #e5e7eb" }}>
-                    クラス
-                  </th>
-                  <th style={{ padding: 8, borderBottom: "1px solid #e5e7eb" }}>
-                    対象年齢
-                  </th>
-                  <th style={{ padding: 8, borderBottom: "1px solid #e5e7eb" }}>
-                    日案
-                  </th>
-                  <th style={{ padding: 8, borderBottom: "1px solid #e5e7eb" }}>
-                    連絡状態
-                  </th>
-                  <th style={{ padding: 8, borderBottom: "1px solid #e5e7eb" }}>
-                    共有方法
-                  </th>
-                  <th style={{ padding: 8, borderBottom: "1px solid #e5e7eb" }}>
-                    本文プレビュー
-                  </th>
-                  <th style={{ padding: 8, borderBottom: "1px solid #e5e7eb" }}>
-                    共有/送信
-                  </th>
-                  <th style={{ padding: 8, borderBottom: "1px solid #e5e7eb" }}>
-                    操作
-                  </th>
+                <tr style={{ textAlign: "left", background: "#f1f5f9" }}>
+                  <th style={{ padding: 8 }}>クラス</th>
+                  <th style={{ padding: 8 }}>対象年齢</th>
+                  <th style={{ padding: 8 }}>対象日</th>
+                  <th style={{ padding: 8 }}>状態</th>
+                  <th style={{ padding: 8 }}>送信方法</th>
+                  <th style={{ padding: 8 }}>本文プレビュー</th>
+                  <th style={{ padding: 8 }}>送信記録</th>
+                  <th style={{ padding: 8 }}>操作</th>
                 </tr>
               </thead>
-
               <tbody>
                 {candidates.map((row) => {
                   const selected = selectedDay?.id === row.id;
@@ -853,14 +1088,14 @@ export default function ParentNoticePanel(props: {
                     <tr
                       key={row.id}
                       style={{
-                        background: selected ? "#eff6ff" : "#fff",
+                        background: selected ? "#ecfeff" : "#fff",
                       }}
                     >
                       <td
                         style={{
                           padding: 8,
                           borderBottom: "1px solid #eef2f7",
-                          minWidth: 160,
+                          minWidth: 140,
                         }}
                       >
                         <div style={{ fontWeight: 700 }}>
@@ -998,20 +1233,6 @@ export default function ParentNoticePanel(props: {
             </div>
           </div>
 
-          <div style={{ fontSize: 12, color: "#666", lineHeight: 1.7 }}>
-            status: {parentNoticeStatusLabel(selectedDay.parentNoticeStatus)} /
-            method:{" "}
-            {parentNoticeDeliveryMethodLabel(
-              selectedDay.parentNoticeDeliveryMethod,
-            )}
-            <br />
-            generatedAt: {formatDateTime(selectedDay.parentNoticeGeneratedAt)} /
-            confirmedAt: {formatDateTime(selectedDay.parentNoticeConfirmedAt)}
-            <br />
-            sharedAt: {formatDateTime(selectedDay.parentNoticeSharedAt)} /
-            sentAt: {formatDateTime(selectedDay.parentNoticeSentAt)}
-          </div>
-
           <label>
             <div style={{ fontWeight: 700, marginBottom: 4 }}>手入力の補足</div>
             <textarea
@@ -1036,6 +1257,10 @@ export default function ParentNoticePanel(props: {
               {savingParentNotice ? "保存中..." : "候補を確定"}
             </button>
 
+            <button onClick={createReplyUrlOnly} disabled={busy}>
+              {creatingReplyToken ? "作成中..." : "返信URLを作成"}
+            </button>
+
             <button onClick={shareParentNotice} disabled={busy}>
               {sharingParentNotice ? "共有中..." : "iPhoneで送信する"}
             </button>
@@ -1051,7 +1276,35 @@ export default function ParentNoticePanel(props: {
             <button onClick={clearParentNotice} disabled={busy}>
               クリア
             </button>
+
+            <button
+              onClick={() => loadParentReplies(selectedDay.id)}
+              disabled={loadingParentReplies}
+            >
+              {loadingParentReplies ? "返信読込中..." : "返信を再読込"}
+            </button>
           </div>
+
+          {currentReplyUrl ? (
+            <div
+              style={{
+                padding: 12,
+                border: "1px solid #ccfbf1",
+                background: "#f0fdfa",
+                borderRadius: 8,
+                display: "grid",
+                gap: 6,
+              }}
+            >
+              <div style={{ fontWeight: 700 }}>保護者返信URL</div>
+              <div style={{ fontSize: 12, color: "#555" }}>
+                iPhone共有・コピー時には、このURLが本文末尾に自動で追加されます。
+              </div>
+              <code style={{ whiteSpace: "pre-wrap", wordBreak: "break-all" }}>
+                {currentReplyUrl}
+              </code>
+            </div>
+          ) : null}
 
           <label>
             <div style={{ fontWeight: 700, marginBottom: 4 }}>お知らせ本文</div>
@@ -1068,6 +1321,144 @@ export default function ParentNoticePanel(props: {
               }}
             />
           </label>
+
+          <div
+            style={{
+              padding: 16,
+              border: "1px solid #d0d7de",
+              borderRadius: 8,
+              background: "#f8fafc",
+              display: "grid",
+              gap: 12,
+            }}
+          >
+            <h3 style={{ margin: 0 }}>保護者返信一覧</h3>
+
+            {loadingParentReplies ? (
+              <div>返信を読み込み中です...</div>
+            ) : parentReplies.length === 0 ? (
+              <div style={{ color: "#666" }}>まだ保護者返信はありません。</div>
+            ) : (
+              <div style={{ overflowX: "auto" }}>
+                <table
+                  style={{
+                    width: "100%",
+                    minWidth: 980,
+                    borderCollapse: "collapse",
+                    background: "#fff",
+                  }}
+                >
+                  <thead>
+                    <tr style={{ textAlign: "left", background: "#f1f5f9" }}>
+                      <th style={{ padding: 8 }}>子ども</th>
+                      <th style={{ padding: 8 }}>OK</th>
+                      <th style={{ padding: 8 }}>お迎え</th>
+                      <th style={{ padding: 8 }}>時刻</th>
+                      <th style={{ padding: 8 }}>家庭での様子</th>
+                      <th style={{ padding: 8 }}>状態</th>
+                      <th style={{ padding: 8 }}>送信日時</th>
+                      <th style={{ padding: 8 }}>操作</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {parentReplies.map((reply) => (
+                      <tr key={reply.id}>
+                        <td
+                          style={{
+                            padding: 8,
+                            borderBottom: "1px solid #eef2f7",
+                            minWidth: 120,
+                            fontWeight: 700,
+                          }}
+                        >
+                          {reply.childName || reply.childKey || "-"}
+                        </td>
+                        <td
+                          style={{
+                            padding: 8,
+                            borderBottom: "1px solid #eef2f7",
+                            minWidth: 60,
+                          }}
+                        >
+                          {reply.okSigned ? "済" : "-"}
+                        </td>
+                        <td
+                          style={{
+                            padding: 8,
+                            borderBottom: "1px solid #eef2f7",
+                            minWidth: 160,
+                          }}
+                        >
+                          <div>{reply.pickupPersonRelation || "-"}</div>
+                          <div style={{ fontSize: 12, color: "#666" }}>
+                            {reply.pickupPersonName || ""}
+                          </div>
+                        </td>
+                        <td
+                          style={{
+                            padding: 8,
+                            borderBottom: "1px solid #eef2f7",
+                            minWidth: 80,
+                          }}
+                        >
+                          {reply.pickupPlannedTime || "-"}
+                        </td>
+                        <td
+                          style={{
+                            padding: 8,
+                            borderBottom: "1px solid #eef2f7",
+                            minWidth: 280,
+                            whiteSpace: "pre-wrap",
+                          }}
+                        >
+                          {reply.homeNote || "-"}
+                        </td>
+                        <td
+                          style={{
+                            padding: 8,
+                            borderBottom: "1px solid #eef2f7",
+                            minWidth: 110,
+                          }}
+                        >
+                          {parentReplyStatusLabel(reply.status)}
+                        </td>
+                        <td
+                          style={{
+                            padding: 8,
+                            borderBottom: "1px solid #eef2f7",
+                            minWidth: 150,
+                            fontSize: 12,
+                          }}
+                        >
+                          {formatDateTime(reply.submittedAt)}
+                        </td>
+                        <td
+                          style={{
+                            padding: 8,
+                            borderBottom: "1px solid #eef2f7",
+                            minWidth: 120,
+                          }}
+                        >
+                          {s(reply.status).toUpperCase() === "CONFIRMED" ? (
+                            "確認済み"
+                          ) : (
+                            <button
+                              onClick={() => confirmParentReply(reply)}
+                              disabled={confirmingReplyId === reply.id}
+                            >
+                              {confirmingReplyId === reply.id
+                                ? "更新中..."
+                                : "確認済みにする"}
+                            </button>
+                          )}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </div>
         </div>
       ) : (
         <div

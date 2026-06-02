@@ -7,22 +7,44 @@ import "@aws-amplify/ui-react/styles.css";
 
 import { Amplify } from "aws-amplify";
 import { fetchAuthSession } from "aws-amplify/auth";
+import type { AuthUser } from "aws-amplify/auth";
 import { generateClient } from "aws-amplify/data";
 
 import outputs from "../amplify_outputs.json";
 import type { Schema } from "../amplify/data/resource";
 
 import SignedInApp from "./SignedInApp";
+import ParentReplyForm from "./features/parent-reply/ParentReplyForm";
 
 Amplify.configure(outputs);
 
-function AuthenticatedShell(props: { signOut?: () => void; user: any }) {
+function errorMessage(error: unknown): string {
+  if (error instanceof Error) return error.message;
+  return String(error);
+}
+
+function isParentReplyRoute(): boolean {
+  if (typeof window === "undefined") return false;
+
+  const path = window.location.pathname;
+  const params = new URLSearchParams(window.location.search);
+
+  return (
+    path === "/parent-reply" ||
+    params.has("parentReplyToken") ||
+    params.has("replyToken")
+  );
+}
+
+function AuthenticatedShell(props: { signOut?: () => void; user?: AuthUser }) {
   const { signOut, user } = props;
 
   const client = useMemo(() => generateClient<Schema>(), []);
 
   const [sub, setSub] = useState<string | null>(null);
-  const [profile, setProfile] = useState<Schema["UserProfile"]["type"] | null>(null);
+  const [profile, setProfile] = useState<Schema["UserProfile"]["type"] | null>(
+    null,
+  );
   const [profileLoading, setProfileLoading] = useState(false);
   const [profileError, setProfileError] = useState<string | null>(null);
 
@@ -39,12 +61,13 @@ function AuthenticatedShell(props: { signOut?: () => void; user: any }) {
 
         const session = await fetchAuthSession();
         const tokenSub = session.tokens?.idToken?.payload?.sub;
+
         if (!cancelled) {
           setSub(typeof tokenSub === "string" ? tokenSub : null);
         }
-      } catch (e: any) {
+      } catch (e: unknown) {
         if (!cancelled) {
-          setProfileError(e?.message ?? String(e));
+          setProfileError(errorMessage(e));
         }
       }
     })();
@@ -65,6 +88,7 @@ function AuthenticatedShell(props: { signOut?: () => void; user: any }) {
         setProfileError(null);
 
         const res = await client.models.UserProfile.get({ userId: sub });
+
         if (res.errors?.length) {
           throw new Error(res.errors.map((e) => e.message).join("\n"));
         }
@@ -72,9 +96,9 @@ function AuthenticatedShell(props: { signOut?: () => void; user: any }) {
         if (!cancelled) {
           setProfile(res.data ?? null);
         }
-      } catch (e: any) {
+      } catch (e: unknown) {
         if (!cancelled) {
-          setProfileError(e?.message ?? String(e));
+          setProfileError(errorMessage(e));
         }
       } finally {
         if (!cancelled) {
@@ -102,7 +126,8 @@ function AuthenticatedShell(props: { signOut?: () => void; user: any }) {
         }}
       >
         <div>
-          <b>signedInAs:</b> {user?.signInDetails?.loginId ?? user?.username ?? "(unknown)"}
+          <b>signedInAs:</b>{" "}
+          {user?.signInDetails?.loginId ?? user?.username ?? "(unknown)"}
         </div>
         <div>
           <b>tenant:</b> {profile?.tenantId ?? "(未設定)"}
@@ -120,9 +145,7 @@ function AuthenticatedShell(props: { signOut?: () => void; user: any }) {
           </div>
         )}
         {!profileLoading && !profile && !profileError && (
-          <div style={{ color: "#8a6d3b" }}>
-            UserProfile が未登録です
-          </div>
+          <div style={{ color: "#8a6d3b" }}>UserProfile が未登録です</div>
         )}
       </div>
 
@@ -132,6 +155,10 @@ function AuthenticatedShell(props: { signOut?: () => void; user: any }) {
 }
 
 export default function App() {
+  if (isParentReplyRoute()) {
+    return <ParentReplyForm />;
+  }
+
   return (
     <Authenticator>
       {({ signOut, user }) => (
