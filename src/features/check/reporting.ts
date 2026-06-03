@@ -2269,8 +2269,9 @@ export async function recommendWeekendPlayHints(args: {
   limit?: number;
 }): Promise<WeekendPlayHintRow[]> {
   const { client, bundle, seedKey, limit = 3 } = args;
+  const targetLimit = Math.max(0, limit);
 
-  if (bundle.abilityRows.length === 0) {
+  if (targetLimit === 0 || bundle.abilityRows.length === 0) {
     return [];
   }
 
@@ -2290,10 +2291,12 @@ export async function recommendWeekendPlayHints(args: {
     abilityCountMap.set(abilityCode, row);
   }
 
-  const candidateMap = new Map<
-    string,
-    WeekendPlayHintRow & { score: number }
-  >();
+  type WeekendPlayCandidateRow = WeekendPlayHintRow & {
+    score: number;
+    abilityCount: number;
+  };
+
+  const candidateMap = new Map<string, WeekendPlayCandidateRow>();
 
   for (const link of master.links) {
     if (!isActiveStatus(link.status)) continue;
@@ -2306,15 +2309,21 @@ export async function recommendWeekendPlayHints(args: {
     if (!play) continue;
 
     const abilityRow = abilityCountMap.get(abilityCode);
+    const abilityCount = abilityRow?.count ?? 0;
     const baseWeight = Math.max(1, normalizeNumber(link.weight));
-    const countBoost = abilityRow?.count ?? 0;
     const randomTieBreak = seededScore(seedKey, `${playId}::${abilityCode}`);
-    const score = baseWeight * 10 + countBoost * 3 + randomTieBreak;
+    const score = baseWeight * 10 + abilityCount * 3 + randomTieBreak;
 
-    const existing = candidateMap.get(playId);
+    // 重要:
+    // 以前は playId だけで candidateMap を作っていたため、
+    // 「遊びの重複」は避けられても「Ability の重複」は避けられなかった。
+    // ここでは abilityCode + playId の組み合わせで候補化し、
+    // 後段で abilityCode ごとに1件ずつ選ぶ。
+    const candidateKey = `${abilityCode}::${playId}`;
+    const existing = candidateMap.get(candidateKey);
     if (existing && existing.score >= score) continue;
 
-    candidateMap.set(playId, {
+    candidateMap.set(candidateKey, {
       playId,
       playTitle:
         normalizeText(link.playTitle) ||
@@ -2335,27 +2344,112 @@ export async function recommendWeekendPlayHints(args: {
       parentHint: normalizeText(play.parentHint),
       playDescriptionDraft: normalizeText(play.playDescriptionDraft),
       score,
+      abilityCount,
     });
   }
 
-  return [...candidateMap.values()]
-    .sort((a, b) => b.score - a.score)
-    .slice(0, limit)
-    .map((row) => ({
-      playId: row.playId,
-      playTitle: row.playTitle,
-      playType: row.playType,
-      setting: row.setting,
-      abilityCode: row.abilityCode,
-      abilityName: row.abilityName,
-      domain: row.domain,
-      category: row.category,
-      relationType: row.relationType,
-      weight: row.weight,
-      reason: row.reason,
-      parentHint: row.parentHint,
-      playDescriptionDraft: row.playDescriptionDraft,
-    }));
+  const candidates = [...candidateMap.values()];
+  if (candidates.length === 0) {
+    return [];
+  }
+
+  const sortCandidate = (
+    a: WeekendPlayCandidateRow,
+    b: WeekendPlayCandidateRow,
+  ) => {
+    const scoreDiff = b.score - a.score;
+    if (scoreDiff !== 0) return scoreDiff;
+
+    const abilityCountDiff = b.abilityCount - a.abilityCount;
+    if (abilityCountDiff !== 0) return abilityCountDiff;
+
+    return a.playId.localeCompare(b.playId);
+  };
+
+  const candidatesByAbility = new Map<string, WeekendPlayCandidateRow[]>();
+  for (const candidate of candidates) {
+    const rows = candidatesByAbility.get(candidate.abilityCode) ?? [];
+    rows.push(candidate);
+    candidatesByAbility.set(candidate.abilityCode, rows);
+  }
+
+  for (const rows of candidatesByAbility.values()) {
+    rows.sort(sortCandidate);
+  }
+
+  // 育ちのポイントに出ている Ability を優先する。
+  // count が同数の場合は seedKey で安定的にゆらぎを入れ、
+  // 毎回同じAbilityだけに固定されにくくする。
+  const abilityRows = [...abilityCountMap.values()].sort((a, b) => {
+    const countDiff = b.count - a.count;
+    if (countDiff !== 0) return countDiff;
+
+    const aCode = normalizeAbilityCode(a.abilityCode);
+    const bCode = normalizeAbilityCode(b.abilityCode);
+    const seedDiff =
+      seededScore(seedKey, `ability::${bCode}`) -
+      seededScore(seedKey, `ability::${aCode}`);
+    if (seedDiff !== 0) return seedDiff;
+
+    return aCode.localeCompare(bCode);
+  });
+
+  const picked: WeekendPlayCandidateRow[] = [];
+  const usedAbilityCodes = new Set<string>();
+  const usedPlayIds = new Set<string>();
+
+  // 第1段階:
+  // Ability を分散させるため、1 Ability から最大1件だけ選ぶ。
+  for (const abilityRow of abilityRows) {
+    if (picked.length >= targetLimit) break;
+
+    const abilityCode = normalizeAbilityCode(abilityRow.abilityCode);
+    if (!abilityCode || usedAbilityCodes.has(abilityCode)) continue;
+
+    const abilityCandidates = candidatesByAbility.get(abilityCode) ?? [];
+    const candidate = abilityCandidates.find(
+      (row) => !usedPlayIds.has(row.playId),
+    );
+
+    if (!candidate) continue;
+
+    picked.push(candidate);
+    usedAbilityCodes.add(candidate.abilityCode);
+    usedPlayIds.add(candidate.playId);
+  }
+
+  // 第2段階:
+  // 候補Abilityが少ない、またはマスター紐づけが不足していて3件に満たない場合のみ、
+  // 遊びの重複を避けたうえで追加する。
+  // この場合は Ability 重複を許容するが、あくまで不足時のフォールバック。
+  if (picked.length < targetLimit) {
+    const fallbackCandidates = [...candidates].sort(sortCandidate);
+
+    for (const candidate of fallbackCandidates) {
+      if (picked.length >= targetLimit) break;
+      if (usedPlayIds.has(candidate.playId)) continue;
+
+      picked.push(candidate);
+      usedAbilityCodes.add(candidate.abilityCode);
+      usedPlayIds.add(candidate.playId);
+    }
+  }
+
+  return picked.slice(0, targetLimit).map((row) => ({
+    playId: row.playId,
+    playTitle: row.playTitle,
+    playType: row.playType,
+    setting: row.setting,
+    abilityCode: row.abilityCode,
+    abilityName: row.abilityName,
+    domain: row.domain,
+    category: row.category,
+    relationType: row.relationType,
+    weight: row.weight,
+    reason: row.reason,
+    parentHint: row.parentHint,
+    playDescriptionDraft: row.playDescriptionDraft,
+  }));
 }
 
 function buildDomainSummaryLine(counts: DomainCounts) {

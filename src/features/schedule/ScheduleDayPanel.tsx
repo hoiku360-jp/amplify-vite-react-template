@@ -518,6 +518,42 @@ function latestScheduleDaysByClassroom(
   return [...map.values()].sort(parentNoticeCandidateSort);
 }
 
+function scheduleDaySort(a: ScheduleDayRow, b: ScheduleDayRow): number {
+  const classDiff = s(a.classroomId).localeCompare(s(b.classroomId));
+  if (classDiff !== 0) return classDiff;
+
+  const versionDiff = (b.issueVersion ?? 0) - (a.issueVersion ?? 0);
+  if (versionDiff !== 0) return versionDiff;
+
+  return s(b.issuedAt).localeCompare(s(a.issuedAt));
+}
+
+function latestScheduleDaysByClassroomForDay(
+  rows: ScheduleDayRow[],
+): ScheduleDayRow[] {
+  const map = new Map<string, ScheduleDayRow>();
+
+  for (const row of [...rows].sort(scheduleDaySort)) {
+    const key = s(row.classroomId) || row.id;
+    if (!map.has(key)) {
+      map.set(key, row);
+    }
+  }
+
+  return [...map.values()].sort(scheduleDaySort);
+}
+
+function scheduleDayCandidateLabel(
+  row: ScheduleDayRow,
+  classroomLabels: Record<string, string>,
+  ageTargetLabels: Record<string, string>,
+): string {
+  const classroomLabel = classroomLabels[row.classroomId] || row.classroomId;
+  const ageTargetLabel = ageTargetLabels[row.ageTargetId] || row.ageTargetId;
+
+  return `${classroomLabel} / ${ageTargetLabel} / version=${row.issueVersion}`;
+}
+
 function parseLocalDate(dateStr: string): Date {
   const [y, m, d] = dateStr.split("-").map(Number);
   return new Date(y, (m || 1) - 1, d || 1);
@@ -992,6 +1028,10 @@ export default function ScheduleDayPanel(props: { owner: string }) {
   const [dayHeaderAgeTargetLabels, setDayHeaderAgeTargetLabels] = useState<
     Record<string, string>
   >({});
+  const [scheduleDayCandidates, setScheduleDayCandidates] = useState<
+    ScheduleDayRow[]
+  >([]);
+  const [selectedScheduleDayId, setSelectedScheduleDayId] = useState("");
 
   const [day, setDay] = useState<Schema["ScheduleDay"]["type"] | null>(null);
   const [items, setItems] = useState<Array<Schema["ScheduleDayItem"]["type"]>>(
@@ -1475,6 +1515,9 @@ export default function ScheduleDayPanel(props: { owner: string }) {
   async function loadScheduleDay() {
     setLoading(true);
     setMessage("");
+
+    const previousClassroomId = s(day?.classroomId);
+
     setDay(null);
     setItems([]);
     setRecords([]);
@@ -1491,21 +1534,58 @@ export default function ScheduleDayPanel(props: { owner: string }) {
           owner: { eq: owner },
           targetDate: { eq: targetDate },
         } as ListOptions,
+        limit: 1000,
       });
 
-      const foundDay =
-        [...(dayRes.data ?? [])].sort((a, b) => {
-          const versionDiff = (b.issueVersion ?? 0) - (a.issueVersion ?? 0);
-          if (versionDiff !== 0) return versionDiff;
-          return String(b.issuedAt ?? "").localeCompare(
-            String(a.issuedAt ?? ""),
-          );
-        })[0] ?? null;
+      if (dayRes.errors?.length) {
+        throw new Error(
+          formatModelErrors(
+            dayRes.errors,
+            "ScheduleDay の取得に失敗しました。",
+          ),
+        );
+      }
 
-      if (!foundDay) {
+      const candidateRows = latestScheduleDaysByClassroomForDay(
+        dayRes.data ?? [],
+      );
+
+      setScheduleDayCandidates(candidateRows);
+
+      if (candidateRows.length === 0) {
+        setSelectedScheduleDayId("");
         setMessage(`対象日 ${targetDate} の日案はありません。`);
         return;
       }
+
+      // 候補が複数ある場合:
+      // 1. 画面で選択済みの日案ID
+      // 2. 直前に表示していたクラスと同じクラス
+      // 3. 候補が1件だけならそれ
+      // の順に選ぶ。
+      let foundDay =
+        candidateRows.find((row) => row.id === selectedScheduleDayId) ?? null;
+
+      if (!foundDay && previousClassroomId) {
+        foundDay =
+          candidateRows.find(
+            (row) => s(row.classroomId) === previousClassroomId,
+          ) ?? null;
+      }
+
+      if (!foundDay && candidateRows.length === 1) {
+        foundDay = candidateRows[0];
+      }
+
+      if (!foundDay) {
+        await loadDayHeaderLabels(candidateRows[0]);
+        setMessage(
+          `対象日 ${targetDate} の日案候補が ${candidateRows.length} 件あります。クラスを選択してから「日案を表示」を押してください。`,
+        );
+        return;
+      }
+
+      setSelectedScheduleDayId(foundDay.id);
 
       let normalizedDay = foundDay;
 
@@ -1534,6 +1614,15 @@ export default function ScheduleDayPanel(props: { owner: string }) {
           scheduleDayId: { eq: normalizedDay.id },
         } as ListOptions,
       });
+
+      if (itemsRes.errors?.length) {
+        throw new Error(
+          formatModelErrors(
+            itemsRes.errors,
+            "ScheduleDayItem の取得に失敗しました。",
+          ),
+        );
+      }
 
       const sortedItems = [...(itemsRes.data ?? [])].sort(
         (a, b) => (a.sortOrder ?? 0) - (b.sortOrder ?? 0),
@@ -1567,7 +1656,15 @@ export default function ScheduleDayPanel(props: { owner: string }) {
       const calendarRows = await fetchCalendarEventsForDay(normalizedDay);
       setCalendarEvents(calendarRows);
 
-      setMessage(`日案を読み込みました。 itemCount=${sortedItems.length}`);
+      const selectedClassroomLabel =
+        dayHeaderClassroomLabels[normalizedDay.classroomId] ||
+        normalizedDay.classroomId;
+
+      setMessage(
+        candidateRows.length > 1
+          ? `日案を読み込みました。 itemCount=${sortedItems.length} / 候補=${candidateRows.length} / classroom=${selectedClassroomLabel}`
+          : `日案を読み込みました。 itemCount=${sortedItems.length}`,
+      );
     } catch (e) {
       console.error(e);
       setMessage(`読込エラー: ${e instanceof Error ? e.message : String(e)}`);
@@ -2662,10 +2759,36 @@ export default function ScheduleDayPanel(props: { owner: string }) {
             <input
               type="date"
               value={targetDate}
-              onChange={(e) => setTargetDate(e.target.value)}
+              onChange={(e) => {
+                setTargetDate(e.target.value);
+                setSelectedScheduleDayId("");
+                setScheduleDayCandidates([]);
+              }}
               style={{ marginLeft: 8 }}
             />
           </label>
+
+          {scheduleDayCandidates.length > 1 ? (
+            <label>
+              日案候補：
+              <select
+                value={selectedScheduleDayId}
+                onChange={(e) => setSelectedScheduleDayId(e.target.value)}
+                style={{ marginLeft: 8, minWidth: 320 }}
+              >
+                <option value="">選択してください</option>
+                {scheduleDayCandidates.map((candidate) => (
+                  <option key={candidate.id} value={candidate.id}>
+                    {scheduleDayCandidateLabel(
+                      candidate,
+                      dayHeaderClassroomLabels,
+                      dayHeaderAgeTargetLabels,
+                    )}
+                  </option>
+                ))}
+              </select>
+            </label>
+          ) : null}
 
           <button onClick={loadScheduleDay} disabled={loading}>
             {loading ? "読込中..." : "日案を表示"}
