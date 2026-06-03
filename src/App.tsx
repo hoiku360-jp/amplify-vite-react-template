@@ -23,17 +23,48 @@ function errorMessage(error: unknown): string {
   return String(error);
 }
 
+function hasParentReplyToken(params: URLSearchParams): boolean {
+  return (
+    params.has("token") ||
+    params.has("replyToken") ||
+    params.has("parentReplyToken")
+  );
+}
+
 function isParentReplyRoute(): boolean {
   if (typeof window === "undefined") return false;
 
   const path = window.location.pathname;
-  const params = new URLSearchParams(window.location.search);
+  const searchParams = new URLSearchParams(window.location.search);
 
-  return (
-    path === "/parent-reply" ||
-    params.has("parentReplyToken") ||
-    params.has("replyToken")
-  );
+  // 通常形:
+  // /parent-reply?token=...
+  if (path === "/parent-reply" || path.endsWith("/parent-reply")) {
+    return true;
+  }
+
+  // Amplify Hosting / メールアプリ / ブラウザによって path が落ちても、
+  // ?token=... が残っていれば保護者返信画面として扱う。
+  if (hasParentReplyToken(searchParams)) {
+    return true;
+  }
+
+  // 念のため hash routing 風になった場合にも対応。
+  // 例: /#/parent-reply?token=...
+  const hash = window.location.hash || "";
+  if (hash.includes("parent-reply")) {
+    return true;
+  }
+
+  const hashQueryIndex = hash.indexOf("?");
+  if (hashQueryIndex >= 0) {
+    const hashParams = new URLSearchParams(hash.slice(hashQueryIndex + 1));
+    if (hasParentReplyToken(hashParams)) {
+      return true;
+    }
+  }
+
+  return false;
 }
 
 function AuthenticatedShell(props: { signOut?: () => void; user?: AuthUser }) {
