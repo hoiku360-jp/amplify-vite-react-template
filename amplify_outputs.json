@@ -4530,6 +4530,460 @@
             "sortKeyFieldNames": []
           }
         },
+        "AttendanceSheet": {
+          "name": "AttendanceSheet",
+          "fields": {
+            "id": {
+              "name": "id",
+              "isArray": false,
+              "type": "ID",
+              "isRequired": true,
+              "attributes": []
+            },
+            "tenantId": {
+              "name": "tenantId",
+              "isArray": false,
+              "type": "String",
+              "isRequired": true,
+              "attributes": []
+            },
+            "owner": {
+              "name": "owner",
+              "isArray": false,
+              "type": "String",
+              "isRequired": true,
+              "attributes": []
+            },
+            "classroomId": {
+              "name": "classroomId",
+              "isArray": false,
+              "type": "ID",
+              "isRequired": true,
+              "attributes": []
+            },
+            "ageTargetId": {
+              "name": "ageTargetId",
+              "isArray": false,
+              "type": "ID",
+              "isRequired": false,
+              "attributes": []
+            },
+            "targetDate": {
+              "name": "targetDate",
+              "isArray": false,
+              "type": "AWSDate",
+              "isRequired": true,
+              "attributes": []
+            },
+            "status": {
+              "name": "status",
+              "isArray": false,
+              "type": "String",
+              "isRequired": true,
+              "attributes": []
+            },
+            "issueType": {
+              "name": "issueType",
+              "isArray": false,
+              "type": "String",
+              "isRequired": false,
+              "attributes": []
+            },
+            "issueVersion": {
+              "name": "issueVersion",
+              "isArray": false,
+              "type": "Int",
+              "isRequired": false,
+              "attributes": []
+            },
+            "issuedAt": {
+              "name": "issuedAt",
+              "isArray": false,
+              "type": "AWSDateTime",
+              "isRequired": false,
+              "attributes": []
+            },
+            "openedAt": {
+              "name": "openedAt",
+              "isArray": false,
+              "type": "AWSDateTime",
+              "isRequired": false,
+              "attributes": []
+            },
+            "closedAt": {
+              "name": "closedAt",
+              "isArray": false,
+              "type": "AWSDateTime",
+              "isRequired": false,
+              "attributes": []
+            },
+            "closedBySub": {
+              "name": "closedBySub",
+              "isArray": false,
+              "type": "String",
+              "isRequired": false,
+              "attributes": []
+            },
+            "sourceScheduleDayId": {
+              "name": "sourceScheduleDayId",
+              "isArray": false,
+              "type": "ID",
+              "isRequired": false,
+              "attributes": []
+            },
+            "memo": {
+              "name": "memo",
+              "isArray": false,
+              "type": "String",
+              "isRequired": false,
+              "attributes": []
+            },
+            "records": {
+              "name": "records",
+              "isArray": true,
+              "type": {
+                "model": "AttendanceRecord"
+              },
+              "isRequired": false,
+              "attributes": [],
+              "isArrayNullable": true,
+              "association": {
+                "connectionType": "HAS_MANY",
+                "associatedWith": [
+                  "attendanceSheetId"
+                ]
+              }
+            },
+            "createdAt": {
+              "name": "createdAt",
+              "isArray": false,
+              "type": "AWSDateTime",
+              "isRequired": false,
+              "attributes": [],
+              "isReadOnly": true
+            },
+            "updatedAt": {
+              "name": "updatedAt",
+              "isArray": false,
+              "type": "AWSDateTime",
+              "isRequired": false,
+              "attributes": [],
+              "isReadOnly": true
+            }
+          },
+          "syncable": true,
+          "pluralName": "AttendanceSheets",
+          "attributes": [
+            {
+              "type": "model",
+              "properties": {}
+            },
+            {
+              "type": "key",
+              "properties": {
+                "name": "attendanceSheetsByTenantIdAndTargetDateAndClassroomId",
+                "queryField": "listAttendanceSheetsByTenantDateClassroom",
+                "fields": [
+                  "tenantId",
+                  "targetDate",
+                  "classroomId"
+                ]
+              }
+            },
+            {
+              "type": "key",
+              "properties": {
+                "name": "attendanceSheetsByOwnerAndTargetDate",
+                "queryField": "listAttendanceSheetsByOwnerDate",
+                "fields": [
+                  "owner",
+                  "targetDate"
+                ]
+              }
+            },
+            {
+              "type": "key",
+              "properties": {
+                "name": "attendanceSheetsByClassroomIdAndTargetDate",
+                "queryField": "listAttendanceSheetsByClassroomDate",
+                "fields": [
+                  "classroomId",
+                  "targetDate"
+                ]
+              }
+            },
+            {
+              "type": "auth",
+              "properties": {
+                "rules": [
+                  {
+                    "provider": "userPools",
+                    "ownerField": "owner",
+                    "allow": "owner",
+                    "identityClaim": "cognito:username",
+                    "operations": [
+                      "create",
+                      "update",
+                      "delete",
+                      "read"
+                    ]
+                  },
+                  {
+                    "allow": "private",
+                    "operations": [
+                      "read",
+                      "create",
+                      "update",
+                      "delete"
+                    ]
+                  }
+                ]
+              }
+            }
+          ],
+          "primaryKeyInfo": {
+            "isCustomPrimaryKey": false,
+            "primaryKeyFieldName": "id",
+            "sortKeyFieldNames": []
+          }
+        },
+        "AttendanceRecord": {
+          "name": "AttendanceRecord",
+          "fields": {
+            "id": {
+              "name": "id",
+              "isArray": false,
+              "type": "ID",
+              "isRequired": true,
+              "attributes": []
+            },
+            "tenantId": {
+              "name": "tenantId",
+              "isArray": false,
+              "type": "String",
+              "isRequired": true,
+              "attributes": []
+            },
+            "owner": {
+              "name": "owner",
+              "isArray": false,
+              "type": "String",
+              "isRequired": true,
+              "attributes": []
+            },
+            "attendanceSheetId": {
+              "name": "attendanceSheetId",
+              "isArray": false,
+              "type": "ID",
+              "isRequired": true,
+              "attributes": []
+            },
+            "attendanceSheet": {
+              "name": "attendanceSheet",
+              "isArray": false,
+              "type": {
+                "model": "AttendanceSheet"
+              },
+              "isRequired": false,
+              "attributes": [],
+              "association": {
+                "connectionType": "BELONGS_TO",
+                "targetNames": [
+                  "attendanceSheetId"
+                ]
+              }
+            },
+            "classroomId": {
+              "name": "classroomId",
+              "isArray": false,
+              "type": "ID",
+              "isRequired": true,
+              "attributes": []
+            },
+            "ageTargetId": {
+              "name": "ageTargetId",
+              "isArray": false,
+              "type": "ID",
+              "isRequired": false,
+              "attributes": []
+            },
+            "targetDate": {
+              "name": "targetDate",
+              "isArray": false,
+              "type": "AWSDate",
+              "isRequired": true,
+              "attributes": []
+            },
+            "childKey": {
+              "name": "childKey",
+              "isArray": false,
+              "type": "String",
+              "isRequired": true,
+              "attributes": []
+            },
+            "childName": {
+              "name": "childName",
+              "isArray": false,
+              "type": "String",
+              "isRequired": true,
+              "attributes": []
+            },
+            "sortOrder": {
+              "name": "sortOrder",
+              "isArray": false,
+              "type": "Int",
+              "isRequired": true,
+              "attributes": []
+            },
+            "arrivalTime": {
+              "name": "arrivalTime",
+              "isArray": false,
+              "type": "String",
+              "isRequired": false,
+              "attributes": []
+            },
+            "arrivalRecordedAt": {
+              "name": "arrivalRecordedAt",
+              "isArray": false,
+              "type": "AWSDateTime",
+              "isRequired": false,
+              "attributes": []
+            },
+            "arrivalRecordedBySub": {
+              "name": "arrivalRecordedBySub",
+              "isArray": false,
+              "type": "String",
+              "isRequired": false,
+              "attributes": []
+            },
+            "departureTime": {
+              "name": "departureTime",
+              "isArray": false,
+              "type": "String",
+              "isRequired": false,
+              "attributes": []
+            },
+            "departureRecordedAt": {
+              "name": "departureRecordedAt",
+              "isArray": false,
+              "type": "AWSDateTime",
+              "isRequired": false,
+              "attributes": []
+            },
+            "departureRecordedBySub": {
+              "name": "departureRecordedBySub",
+              "isArray": false,
+              "type": "String",
+              "isRequired": false,
+              "attributes": []
+            },
+            "status": {
+              "name": "status",
+              "isArray": false,
+              "type": "String",
+              "isRequired": true,
+              "attributes": []
+            },
+            "memo": {
+              "name": "memo",
+              "isArray": false,
+              "type": "String",
+              "isRequired": false,
+              "attributes": []
+            },
+            "createdAt": {
+              "name": "createdAt",
+              "isArray": false,
+              "type": "AWSDateTime",
+              "isRequired": false,
+              "attributes": [],
+              "isReadOnly": true
+            },
+            "updatedAt": {
+              "name": "updatedAt",
+              "isArray": false,
+              "type": "AWSDateTime",
+              "isRequired": false,
+              "attributes": [],
+              "isReadOnly": true
+            }
+          },
+          "syncable": true,
+          "pluralName": "AttendanceRecords",
+          "attributes": [
+            {
+              "type": "model",
+              "properties": {}
+            },
+            {
+              "type": "key",
+              "properties": {
+                "name": "attendanceRecordsByAttendanceSheetIdAndSortOrder",
+                "queryField": "listAttendanceRecordsBySheetSort",
+                "fields": [
+                  "attendanceSheetId",
+                  "sortOrder"
+                ]
+              }
+            },
+            {
+              "type": "key",
+              "properties": {
+                "name": "attendanceRecordsByClassroomIdAndTargetDateAndSortOrder",
+                "queryField": "listAttendanceRecordsByClassroomDate",
+                "fields": [
+                  "classroomId",
+                  "targetDate",
+                  "sortOrder"
+                ]
+              }
+            },
+            {
+              "type": "key",
+              "properties": {
+                "name": "attendanceRecordsByChildKeyAndTargetDate",
+                "queryField": "listAttendanceRecordsByChildDate",
+                "fields": [
+                  "childKey",
+                  "targetDate"
+                ]
+              }
+            },
+            {
+              "type": "auth",
+              "properties": {
+                "rules": [
+                  {
+                    "provider": "userPools",
+                    "ownerField": "owner",
+                    "allow": "owner",
+                    "identityClaim": "cognito:username",
+                    "operations": [
+                      "create",
+                      "update",
+                      "delete",
+                      "read"
+                    ]
+                  },
+                  {
+                    "allow": "private",
+                    "operations": [
+                      "read",
+                      "create",
+                      "update",
+                      "delete"
+                    ]
+                  }
+                ]
+              }
+            }
+          ],
+          "primaryKeyInfo": {
+            "isCustomPrimaryKey": false,
+            "primaryKeyFieldName": "id",
+            "sortKeyFieldNames": []
+          }
+        },
         "ScheduleDayItem": {
           "name": "ScheduleDayItem",
           "fields": {

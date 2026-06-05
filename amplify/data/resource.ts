@@ -1115,6 +1115,99 @@ const schema = a
         allow.authenticated().to(["read", "create", "update", "delete"]),
       ]),
 
+    AttendanceSheet: a
+      .model({
+        tenantId: a.string().required(),
+        owner: a.string().required(),
+
+        classroomId: a.id().required(),
+        ageTargetId: a.id(),
+
+        targetDate: a.date().required(),
+
+        // ISSUED / IN_PROGRESS / CLOSED
+        status: a.string().required(),
+
+        // AUTO / MANUAL / MANUAL_REISSUE
+        issueType: a.string(),
+        issueVersion: a.integer(),
+
+        issuedAt: a.datetime(),
+        openedAt: a.datetime(),
+        closedAt: a.datetime(),
+        closedBySub: a.string(),
+
+        // 日案とは分離するが、同時発行した日案を辿れるように任意で保持
+        sourceScheduleDayId: a.id(),
+
+        memo: a.string(),
+
+        records: a.hasMany("AttendanceRecord", "attendanceSheetId"),
+      })
+      .secondaryIndexes((index) => [
+        index("classroomId")
+          .sortKeys(["targetDate"])
+          .queryField("listAttendanceSheetsByClassroomDate"),
+        index("owner")
+          .sortKeys(["targetDate"])
+          .queryField("listAttendanceSheetsByOwnerDate"),
+        index("tenantId")
+          .sortKeys(["targetDate", "classroomId"])
+          .queryField("listAttendanceSheetsByTenantDateClassroom"),
+      ])
+      .authorization((allow) => [
+        allow.ownerDefinedIn("owner"),
+        allow.authenticated().to(["read", "create", "update", "delete"]),
+      ]),
+
+    AttendanceRecord: a
+      .model({
+        tenantId: a.string().required(),
+        owner: a.string().required(),
+
+        attendanceSheetId: a.id().required(),
+        attendanceSheet: a.belongsTo("AttendanceSheet", "attendanceSheetId"),
+
+        classroomId: a.id().required(),
+        ageTargetId: a.id(),
+
+        targetDate: a.date().required(),
+
+        childKey: a.string().required(),
+        childName: a.string().required(),
+        sortOrder: a.integer().required(),
+
+        // 登園実績
+        arrivalTime: a.string(),
+        arrivalRecordedAt: a.datetime(),
+        arrivalRecordedBySub: a.string(),
+
+        // 降園実績
+        departureTime: a.string(),
+        departureRecordedAt: a.datetime(),
+        departureRecordedBySub: a.string(),
+
+        // ISSUED / ARRIVED / DEPARTED / ABSENT
+        status: a.string().required(),
+
+        memo: a.string(),
+      })
+      .secondaryIndexes((index) => [
+        index("attendanceSheetId")
+          .sortKeys(["sortOrder"])
+          .queryField("listAttendanceRecordsBySheetSort"),
+        index("classroomId")
+          .sortKeys(["targetDate", "sortOrder"])
+          .queryField("listAttendanceRecordsByClassroomDate"),
+        index("childKey")
+          .sortKeys(["targetDate"])
+          .queryField("listAttendanceRecordsByChildDate"),
+      ])
+      .authorization((allow) => [
+        allow.ownerDefinedIn("owner"),
+        allow.authenticated().to(["read", "create", "update", "delete"]),
+      ]),
+
     ScheduleDayItem: a
       .model({
         tenantId: a.string().required(),

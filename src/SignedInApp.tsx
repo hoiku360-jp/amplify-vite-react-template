@@ -12,12 +12,14 @@ import ParentNoticePanel from "./features/parent-notice/ParentNoticePanel";
 import AbilityDashboardPanel from "./features/check/AbilityDashboardPanel";
 import ClassWeeklyReportPanel from "./features/check/ClassWeeklyReportPanel";
 import ChildWeekendLetterPanel from "./features/check/ChildWeekendLetterPanel";
+import AttendancePanel from "./features/attendance/AttendancePanel";
 
 type TabKey =
   | "planV2Workspace"
   | "schedulePlan"
   | "scheduleDay"
   | "parentNotice"
+  | "attendance"
   | "abilityDashboard"
   | "classWeeklyReport"
   | "childWeekendLetter"
@@ -59,6 +61,7 @@ export default function SignedInApp(props: {
         <button onClick={() => setTab("schedulePlan")}>月案＞週案</button>
         <button onClick={() => setTab("scheduleDay")}>日案</button>
         <button onClick={() => setTab("parentNotice")}>保護者連絡</button>
+        <button onClick={() => setTab("attendance")}>登園・降園</button>
         <button onClick={() => setTab("abilityDashboard")}>
           5領域ダッシュボード
         </button>
@@ -84,6 +87,10 @@ export default function SignedInApp(props: {
 
       {tab === "parentNotice" && (
         <ParentNoticePanel owner={owner} tenantId={tenantId} />
+      )}
+
+      {tab === "attendance" && (
+        <AttendancePanel owner={owner} tenantId={tenantId} />
       )}
 
       {tab === "abilityDashboard" && (
