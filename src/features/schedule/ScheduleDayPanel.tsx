@@ -29,13 +29,15 @@ function tomorrowYYYYMMDD() {
 }
 
 // 仮の子ども一覧（後で Child モデルに置き換え）
-const MORNING_CHECK_CHILDREN = [
-  "さくら",
-  "たろう",
-  "みお",
-  "ゆうと",
-  "りん",
-] as const;
+// デモ用のクラス別子ども一覧（後で Child モデルに置き換え）
+const DEMO_CHILDREN_BY_CLASSROOM_NAME: Record<string, string[]> = {
+  さくら組: ["さくら", "たろう", "みお", "ゆうと", "りん"],
+  すみれ組: ["さくら", "たろう", "みお", "ゆうと", "りん"],
+  あさがお組: ["あおい", "はる", "こと", "そうた", "めい"],
+  ひまわり組: ["ゆい", "れん", "なな", "かい", "まな"],
+};
+
+const DEFAULT_DEMO_CHILDREN = DEMO_CHILDREN_BY_CLASSROOM_NAME["さくら組"];
 
 type ObservationAbility = {
   abilityCode: string;
@@ -425,6 +427,30 @@ function s(value: unknown): string {
   return String(value ?? "").trim();
 }
 
+function normalizeClassroomName(value: unknown): string {
+  return s(value).replace(/\s+/g, "");
+}
+
+function demoChildrenForClassroomName(classroomName: string): string[] {
+  const normalized = normalizeClassroomName(classroomName);
+
+  const foundKey = Object.keys(DEMO_CHILDREN_BY_CLASSROOM_NAME).find(
+    (key) => normalizeClassroomName(key) === normalized,
+  );
+
+  return foundKey
+    ? DEMO_CHILDREN_BY_CLASSROOM_NAME[foundKey]
+    : DEFAULT_DEMO_CHILDREN;
+}
+
+function classroomNameForScheduleDay(
+  scheduleDay: ScheduleDayRow | null,
+  classroomLabels: Record<string, string>,
+): string {
+  if (!scheduleDay) return "";
+  return classroomLabels[scheduleDay.classroomId] || scheduleDay.classroomId;
+}
+
 function parentNoticeStatusLabel(value?: string | null): string {
   const status = s(value).toUpperCase();
 
@@ -686,15 +712,30 @@ function createEmptyAttendanceRow(): AttendanceDraft {
   };
 }
 
-function createEmptyTranscriptDraft(): TranscriptDraft {
+function createEmptyTranscriptDraft(childNamesText = ""): TranscriptDraft {
   return {
-    childNamesText: "",
+    childNamesText,
     transcriptText: "",
     audioFile: null,
     audioFileName: "",
     audioJobId: "",
     audioStatusText: "",
   };
+}
+
+function buildInitialTranscriptDrafts(
+  items: ScheduleDayItemRow[],
+  childNamesText: string,
+): Record<string, TranscriptDraft> {
+  const drafts: Record<string, TranscriptDraft> = {};
+
+  for (const item of items) {
+    if (item.sourceType === "PLANNED") {
+      drafts[item.id] = createEmptyTranscriptDraft(childNamesText);
+    }
+  }
+
+  return drafts;
 }
 
 function isMorningCheckItem(item: ScheduleDayItemRow) {
@@ -704,6 +745,7 @@ function isMorningCheckItem(item: ScheduleDayItemRow) {
 function buildInitialAttendanceDrafts(
   items: ScheduleDayItemRow[],
   records: ScheduleRecordRow[],
+  childNames: string[],
 ): Record<string, Record<string, AttendanceDraft>> {
   const drafts: Record<string, Record<string, AttendanceDraft>> = {};
 
@@ -711,7 +753,7 @@ function buildInitialAttendanceDrafts(
     if (!isMorningCheckItem(item)) continue;
 
     drafts[item.id] = {};
-    for (const childName of MORNING_CHECK_CHILDREN) {
+    for (const childName of childNames) {
       drafts[item.id][childName] = createEmptyAttendanceRow();
     }
 
@@ -787,6 +829,7 @@ function parseChildNamesText(input: string): string[] {
 function getLatestAttendanceByChild(
   itemId: string,
   records: ScheduleRecordRow[],
+  childNames: string[],
 ) {
   const latestMap = new Map<
     string,
@@ -805,7 +848,7 @@ function getLatestAttendanceByChild(
     latestMap.set(payload.childName, { record, payload });
   }
 
-  return MORNING_CHECK_CHILDREN.map((childName) => {
+  return childNames.map((childName) => {
     const latest = latestMap.get(childName);
     return {
       childName,
@@ -1052,6 +1095,21 @@ export default function ScheduleDayPanel(props: { owner: string }) {
     Record<string, TranscriptDraft>
   >({});
 
+  const activeClassroomName = classroomNameForScheduleDay(
+    day,
+    dayHeaderClassroomLabels,
+  );
+
+  const activeDemoChildren = useMemo(
+    () => demoChildrenForClassroomName(activeClassroomName),
+    [activeClassroomName],
+  );
+
+  const activeDemoChildrenText = useMemo(
+    () => activeDemoChildren.join(", "),
+    [activeDemoChildren],
+  );
+
   function sortRecordsByRecordedAt(
     rows: ScheduleRecordRow[],
   ): ScheduleRecordRow[] {
@@ -1074,7 +1132,7 @@ export default function ScheduleDayPanel(props: { owner: string }) {
     setTranscriptDrafts((prev) => ({
       ...prev,
       [itemId]: {
-        ...(prev[itemId] ?? createEmptyTranscriptDraft()),
+        ...(prev[itemId] ?? createEmptyTranscriptDraft(activeDemoChildrenText)),
         ...patch,
       },
     }));
@@ -1175,12 +1233,16 @@ export default function ScheduleDayPanel(props: { owner: string }) {
   }
 
   function hasUnsavedTranscriptDraft(itemId: string): boolean {
-    const draft = transcriptDrafts[itemId] ?? createEmptyTranscriptDraft();
+    const draft =
+      transcriptDrafts[itemId] ??
+      createEmptyTranscriptDraft(activeDemoChildrenText);
+    const defaultChildNamesText = activeDemoChildrenText.trim();
+    const currentChildNamesText = draft.childNamesText.trim();
 
     return Boolean(
       draft.transcriptText.trim() ||
-      draft.childNamesText.trim() ||
-      draft.audioFile,
+      draft.audioFile ||
+      currentChildNamesText !== defaultChildNamesText,
     );
   }
 
@@ -1384,7 +1446,18 @@ export default function ScheduleDayPanel(props: { owner: string }) {
 
       setTargetDate(normalizedDay.targetDate);
       setDay(normalizedDay);
-      await loadDayHeaderLabels(normalizedDay);
+
+      const headerLabels = await loadDayHeaderLabels(normalizedDay);
+
+      const selectedClassroomName = classroomNameForScheduleDay(
+        normalizedDay,
+        headerLabels.classroomLabels,
+      );
+      const selectedDemoChildren = demoChildrenForClassroomName(
+        selectedClassroomName,
+      );
+      const selectedDemoChildrenText = selectedDemoChildren.join(", ");
+
       setParentNoticeDraft(
         s(normalizedDay.parentNoticeText) ||
           s(normalizedDay.parentNoticeDraftText),
@@ -1423,16 +1496,16 @@ export default function ScheduleDayPanel(props: { owner: string }) {
       setRecords(recordRows);
 
       setAttendanceDrafts(
-        buildInitialAttendanceDrafts(sortedItems, recordRows),
+        buildInitialAttendanceDrafts(
+          sortedItems,
+          recordRows,
+          selectedDemoChildren,
+        ),
       );
 
-      const initialTranscriptDrafts: Record<string, TranscriptDraft> = {};
-      for (const item of sortedItems) {
-        if (item.sourceType === "PLANNED") {
-          initialTranscriptDrafts[item.id] = createEmptyTranscriptDraft();
-        }
-      }
-      setTranscriptDrafts(initialTranscriptDrafts);
+      setTranscriptDrafts(
+        buildInitialTranscriptDrafts(sortedItems, selectedDemoChildrenText),
+      );
 
       const calendarRows = await fetchCalendarEventsForDay(normalizedDay);
       setCalendarEvents(calendarRows);
@@ -1450,13 +1523,20 @@ export default function ScheduleDayPanel(props: { owner: string }) {
     }
   }
 
-  async function loadDayHeaderLabels(scheduleDay: ScheduleDayRow) {
+  async function loadDayHeaderLabels(scheduleDay: ScheduleDayRow): Promise<{
+    classroomLabels: Record<string, string>;
+    ageTargetLabels: Record<string, string>;
+  }> {
     const tenantId = s(scheduleDay.tenantId);
+    const empty = {
+      classroomLabels: {} as Record<string, string>,
+      ageTargetLabels: {} as Record<string, string>,
+    };
 
     if (!tenantId) {
       setDayHeaderClassroomLabels({});
       setDayHeaderAgeTargetLabels({});
-      return;
+      return empty;
     }
 
     try {
@@ -1470,10 +1550,14 @@ export default function ScheduleDayPanel(props: { owner: string }) {
         client.models.SchoolAnnualAgeTarget.list({
           filter: {
             tenantId: { eq: tenantId },
+            fiscalYear: { eq: Number(s(scheduleDay.targetDate).slice(0, 4)) },
           } as ListOptions,
           limit: 1000,
         }),
       ]);
+
+      const classroomLabels: Record<string, string> = {};
+      const ageTargetLabels: Record<string, string> = {};
 
       if (classroomRes.errors?.length) {
         console.warn(
@@ -1483,13 +1567,11 @@ export default function ScheduleDayPanel(props: { owner: string }) {
           ),
         );
       } else {
-        const labels: Record<string, string> = {};
         for (const classroom of classroomRes.data ?? []) {
-          labels[classroom.id] = classroomDisplayLabel(
+          classroomLabels[classroom.id] = classroomDisplayLabel(
             classroom as ClassroomDisplayRow,
           );
         }
-        setDayHeaderClassroomLabels(labels);
       }
 
       if (ageTargetRes.errors?.length) {
@@ -1500,16 +1582,25 @@ export default function ScheduleDayPanel(props: { owner: string }) {
           ),
         );
       } else {
-        const labels: Record<string, string> = {};
         for (const ageTarget of ageTargetRes.data ?? []) {
-          labels[ageTarget.id] = ageTargetDisplayLabel(
+          ageTargetLabels[ageTarget.id] = ageTargetDisplayLabel(
             ageTarget as AgeTargetDisplayRow,
           );
         }
-        setDayHeaderAgeTargetLabels(labels);
       }
+
+      setDayHeaderClassroomLabels(classroomLabels);
+      setDayHeaderAgeTargetLabels(ageTargetLabels);
+
+      return {
+        classroomLabels,
+        ageTargetLabels,
+      };
     } catch (e) {
       console.warn("日案ヘッダ表示名の取得に失敗しました。", e);
+      setDayHeaderClassroomLabels({});
+      setDayHeaderAgeTargetLabels({});
+      return empty;
     }
   }
   async function loadScheduleDay() {
@@ -1602,7 +1693,17 @@ export default function ScheduleDayPanel(props: { owner: string }) {
       }
 
       setDay(normalizedDay);
-      await loadDayHeaderLabels(normalizedDay);
+      const headerLabels = await loadDayHeaderLabels(normalizedDay);
+
+      const selectedClassroomName = classroomNameForScheduleDay(
+        normalizedDay,
+        headerLabels.classroomLabels,
+      );
+      const selectedDemoChildren = demoChildrenForClassroomName(
+        selectedClassroomName,
+      );
+      const selectedDemoChildrenText = selectedDemoChildren.join(", ");
+
       setParentNoticeDraft(
         s(normalizedDay.parentNoticeText) ||
           s(normalizedDay.parentNoticeDraftText),
@@ -1642,16 +1743,16 @@ export default function ScheduleDayPanel(props: { owner: string }) {
       setRecords(recordRows);
 
       setAttendanceDrafts(
-        buildInitialAttendanceDrafts(sortedItems, recordRows),
+        buildInitialAttendanceDrafts(
+          sortedItems,
+          recordRows,
+          selectedDemoChildren,
+        ),
       );
 
-      const initialTranscriptDrafts: Record<string, TranscriptDraft> = {};
-      for (const item of sortedItems) {
-        if (item.sourceType === "PLANNED") {
-          initialTranscriptDrafts[item.id] = createEmptyTranscriptDraft();
-        }
-      }
-      setTranscriptDrafts(initialTranscriptDrafts);
+      setTranscriptDrafts(
+        buildInitialTranscriptDrafts(sortedItems, selectedDemoChildrenText),
+      );
 
       const calendarRows = await fetchCalendarEventsForDay(normalizedDay);
       setCalendarEvents(calendarRows);
@@ -2058,7 +2159,7 @@ export default function ScheduleDayPanel(props: { owner: string }) {
     try {
       const createdRecords: ScheduleRecordRow[] = [];
 
-      for (const childName of MORNING_CHECK_CHILDREN) {
+      for (const childName of activeDemoChildren) {
         const draft = draftMap[childName] ?? createEmptyAttendanceRow();
         const payload = buildAttendancePayload(childName, draft);
         const body = buildAttendanceBody(childName, draft);
@@ -2197,7 +2298,9 @@ export default function ScheduleDayPanel(props: { owner: string }) {
   }
 
   async function checkTranscriptJobNow(item: ScheduleDayItemRow) {
-    const draft = transcriptDrafts[item.id] ?? createEmptyTranscriptDraft();
+    const draft =
+      transcriptDrafts[item.id] ??
+      createEmptyTranscriptDraft(activeDemoChildrenText);
     const jobId = draft.audioJobId.trim();
 
     if (!jobId) {
@@ -2261,7 +2364,9 @@ export default function ScheduleDayPanel(props: { owner: string }) {
       return;
     }
 
-    const draft = transcriptDrafts[item.id] ?? createEmptyTranscriptDraft();
+    const draft =
+      transcriptDrafts[item.id] ??
+      createEmptyTranscriptDraft(activeDemoChildrenText);
     const file = draft.audioFile;
 
     if (!file) {
@@ -2435,7 +2540,9 @@ export default function ScheduleDayPanel(props: { owner: string }) {
       return;
     }
 
-    const draft = transcriptDrafts[item.id] ?? createEmptyTranscriptDraft();
+    const draft =
+      transcriptDrafts[item.id] ??
+      createEmptyTranscriptDraft(activeDemoChildrenText);
     const transcriptText = draft.transcriptText.trim();
     const childNames = parseChildNamesText(draft.childNamesText);
 
@@ -2515,7 +2622,9 @@ export default function ScheduleDayPanel(props: { owner: string }) {
       return;
     }
 
-    const draft = transcriptDrafts[item.id] ?? createEmptyTranscriptDraft();
+    const draft =
+      transcriptDrafts[item.id] ??
+      createEmptyTranscriptDraft(activeDemoChildrenText);
     const transcriptText = draft.transcriptText.trim();
     const childNames = parseChildNamesText(draft.childNamesText);
 
@@ -2561,7 +2670,7 @@ export default function ScheduleDayPanel(props: { owner: string }) {
 
       setTranscriptDrafts((prev) => ({
         ...prev,
-        [item.id]: createEmptyTranscriptDraft(),
+        [item.id]: createEmptyTranscriptDraft(activeDemoChildrenText),
       }));
 
       setMessage(
@@ -3380,10 +3489,12 @@ export default function ScheduleDayPanel(props: { owner: string }) {
                 getStructuredObservationRecordsForItem(item.id);
               const itemMemoRecords = getNonTranscriptRecordsForItem(item.id);
               const transcriptDraft =
-                transcriptDrafts[item.id] ?? createEmptyTranscriptDraft();
+                transcriptDrafts[item.id] ??
+                createEmptyTranscriptDraft(activeDemoChildrenText);
               const latestAttendanceRows = getLatestAttendanceByChild(
                 item.id,
                 records,
+                activeDemoChildren,
               );
 
               return (
@@ -3538,7 +3649,7 @@ export default function ScheduleDayPanel(props: { owner: string }) {
                             </tr>
                           </thead>
                           <tbody>
-                            {MORNING_CHECK_CHILDREN.map((childName) => {
+                            {activeDemoChildren.map((childName) => {
                               const draft =
                                 attendanceDrafts[item.id]?.[childName] ??
                                 createEmptyAttendanceRow();
