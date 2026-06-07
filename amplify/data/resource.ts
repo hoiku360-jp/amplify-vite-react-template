@@ -267,8 +267,8 @@ const schema = a
     cleanupTranscriptText: a
       .mutation()
       .arguments({
-        scheduleDayId: a.id().required(),
-        scheduleDayItemId: a.id().required(),
+        scheduleDayId: a.id(),
+        scheduleDayItemId: a.id(),
         practiceCode: a.string(),
         childNames: a.string().array(),
         transcriptText: a.string().required(),

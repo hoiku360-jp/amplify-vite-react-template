@@ -11110,13 +11110,13 @@
               "name": "scheduleDayId",
               "isArray": false,
               "type": "ID",
-              "isRequired": true
+              "isRequired": false
             },
             "scheduleDayItemId": {
               "name": "scheduleDayItemId",
               "isArray": false,
               "type": "ID",
-              "isRequired": true
+              "isRequired": false
             },
             "practiceCode": {
               "name": "practiceCode",

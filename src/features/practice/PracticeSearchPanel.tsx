@@ -339,6 +339,12 @@ export default function PracticeSearchPanel(props: { owner?: string }) {
   );
   const [savingSuggestionId, setSavingSuggestionId] = useState("");
 
+  const [editingPracticeId, setEditingPracticeId] = useState("");
+  const [editingPracticeName, setEditingPracticeName] = useState("");
+  const [editingPracticeMemo, setEditingPracticeMemo] = useState("");
+  const [savingPracticeEditId, setSavingPracticeEditId] = useState("");
+  const [editPracticeMessage, setEditPracticeMessage] = useState("");
+
   const listAbilityCodes = useCallback(async () => {
     return listAll<
       AbilityCodeRow,
@@ -793,11 +799,136 @@ export default function PracticeSearchPanel(props: { owner?: string }) {
     return list[0] ?? null;
   }
 
+  function beginEditPracticeResult(
+    practice: PracticeLite | PracticeCodeRow | null | undefined,
+  ) {
+    const practiceId = s(practice?.id);
+    if (!practiceId) {
+      setError("PracticeCode の id が空のため編集できません。");
+      return;
+    }
+
+    setError("");
+    setEditPracticeMessage("");
+    setEditingPracticeId(practiceId);
+    setEditingPracticeName(s(practice?.name));
+    setEditingPracticeMemo(s(practice?.memo));
+  }
+
+  function cancelEditPracticeResult() {
+    setEditingPracticeId("");
+    setEditingPracticeName("");
+    setEditingPracticeMemo("");
+    setSavingPracticeEditId("");
+    setEditPracticeMessage("");
+  }
+
+  async function savePracticeResultEdit(
+    practice: PracticeLite | PracticeCodeRow | null | undefined,
+  ) {
+    const practiceId = s(practice?.id);
+    const practiceCode = s(practice?.practice_code);
+    const nextName = s(editingPracticeName);
+    const nextMemo = s(editingPracticeMemo);
+
+    if (!practiceId) {
+      setError("PracticeCode の id が空のため保存できません。");
+      return;
+    }
+
+    if (!nextName) {
+      setError("Practice名を入力してください。");
+      return;
+    }
+
+    if (!nextMemo) {
+      setError("memoを入力してください。");
+      return;
+    }
+
+    setSavingPracticeEditId(practiceId);
+    setError("");
+    setEditPracticeMessage("");
+
+    try {
+      const updatePayload = {
+        id: practiceId,
+        name: nextName,
+        memo: nextMemo,
+        updatedBy: "practice-search-panel",
+      };
+
+      const result = await client.models.PracticeCode.update(
+        updatePayload as unknown as Parameters<
+          typeof client.models.PracticeCode.update
+        >[0],
+      );
+
+      if (result.errors?.length) {
+        throw new Error(errorText(result.errors));
+      }
+
+      const savedName = s(result.data?.name) || nextName;
+      const savedMemo = s(result.data?.memo) || nextMemo;
+
+      if (practiceCode) {
+        setPracticeByCode((prev) => {
+          const current = prev[practiceCode];
+          if (!current) return prev;
+
+          return {
+            ...prev,
+            [practiceCode]: {
+              ...current,
+              name: savedName,
+              memo: savedMemo,
+              updatedBy: "practice-search-panel",
+            },
+          };
+        });
+      }
+
+      setDebugRows((prev) =>
+        prev.map((row) => {
+          const sameId = s(row.id) === practiceId;
+          const sameCode =
+            practiceCode && s(row.practice_code) === practiceCode;
+
+          if (!sameId && !sameCode) return row;
+
+          return {
+            ...row,
+            name: savedName,
+            memo: savedMemo,
+            updatedBy: "practice-search-panel",
+          };
+        }),
+      );
+
+      setEditingPracticeId("");
+      setEditingPracticeName("");
+      setEditingPracticeMemo("");
+      setEditPracticeMessage(
+        "Practice名とmemoを保存しました。次に Ability候補を生成してください。",
+      );
+      setPracticeReloadKey((k) => k + 1);
+    } catch (e) {
+      setError(
+        e instanceof Error
+          ? e.message
+          : "Practice名とmemoの保存に失敗しました。",
+      );
+    } finally {
+      setSavingPracticeEditId("");
+    }
+  }
+
   async function handleAnalyzePractice(practiceId: string) {
     setAnalyzeMessage("");
     setSuggestMessage("");
     setRegisterMessage("");
     setArchiveMessage("");
+    setEditPracticeMessage("");
     setError("");
     setAnalyzingPracticeId(practiceId);
 
@@ -828,6 +959,7 @@ export default function PracticeSearchPanel(props: { owner?: string }) {
     setAnalyzeMessage("");
     setRegisterMessage("");
     setArchiveMessage("");
+    setEditPracticeMessage("");
     setError("");
     setSuggestingPracticeId(practiceId);
 
@@ -938,6 +1070,7 @@ export default function PracticeSearchPanel(props: { owner?: string }) {
   async function handleRegisterPracticeLinks(practiceCode: string) {
     setRegisterMessage("");
     setArchiveMessage("");
+    setEditPracticeMessage("");
     setError("");
     setRegisteringPracticeCode(practiceCode);
 
@@ -975,6 +1108,7 @@ export default function PracticeSearchPanel(props: { owner?: string }) {
     setAnalyzeMessage("");
     setSuggestMessage("");
     setRegisterMessage("");
+    setEditPracticeMessage("");
     setArchivingPracticeCode(normalizedPracticeCode);
 
     try {
@@ -1465,6 +1599,21 @@ export default function PracticeSearchPanel(props: { owner?: string }) {
         </pre>
       ) : null}
 
+      {editPracticeMessage ? (
+        <pre
+          style={{
+            margin: 0,
+            padding: 10,
+            background: "#f0fdf4",
+            border: "1px solid #bbf7d0",
+            borderRadius: 8,
+            whiteSpace: "pre-wrap",
+          }}
+        >
+          {editPracticeMessage}
+        </pre>
+      ) : null}
+
       {error ? (
         <pre
           style={{
@@ -1524,6 +1673,9 @@ export default function PracticeSearchPanel(props: { owner?: string }) {
                     const isArchived =
                       s(practice?.status).toUpperCase() === "ARCHIVED";
                     const isArchiving = archivingPracticeCode === practiceCode;
+                    const isEditingPractice = editingPracticeId === practiceId;
+                    const isSavingPracticeEdit =
+                      savingPracticeEditId === practiceId;
                     const canAnalyze = Boolean(practiceId);
                     const canSuggest = Boolean(practiceId);
                     const isSelected = selectedPracticeCode === practiceCode;
@@ -1539,9 +1691,26 @@ export default function PracticeSearchPanel(props: { owner?: string }) {
                           }}
                         >
                           <div style={{ fontWeight: 700 }}>{practiceCode}</div>
-                          <div>
-                            {s(practice?.name) || "（PracticeCode未取得）"}
-                          </div>
+                          {isEditingPractice ? (
+                            <input
+                              value={editingPracticeName}
+                              disabled={isSavingPracticeEdit}
+                              onChange={(e) =>
+                                setEditingPracticeName(e.target.value)
+                              }
+                              placeholder="Practice名"
+                              style={{
+                                width: "100%",
+                                boxSizing: "border-box",
+                                marginTop: 6,
+                                padding: 6,
+                              }}
+                            />
+                          ) : (
+                            <div>
+                              {s(practice?.name) || "（PracticeCode未取得）"}
+                            </div>
+                          )}
                         </td>
                         <td
                           style={{
@@ -1601,10 +1770,29 @@ export default function PracticeSearchPanel(props: { owner?: string }) {
                             verticalAlign: "top",
                           }}
                         >
-                          {practiceMemoDisplay(
-                            practice?.memo,
-                            practice?.transcriptText,
-                          ) || "-"}
+                          {isEditingPractice ? (
+                            <textarea
+                              value={editingPracticeMemo}
+                              disabled={isSavingPracticeEdit}
+                              onChange={(e) =>
+                                setEditingPracticeMemo(e.target.value)
+                              }
+                              placeholder="概要memo"
+                              style={{
+                                width: "100%",
+                                minHeight: 120,
+                                boxSizing: "border-box",
+                                padding: 8,
+                                lineHeight: 1.6,
+                                fontFamily: "inherit",
+                              }}
+                            />
+                          ) : (
+                            practiceMemoDisplay(
+                              practice?.memo,
+                              practice?.transcriptText,
+                            ) || "-"
+                          )}
                         </td>
                         <td
                           style={{
@@ -1614,6 +1802,44 @@ export default function PracticeSearchPanel(props: { owner?: string }) {
                           }}
                         >
                           <div style={{ display: "grid", gap: 6 }}>
+                            {isEditingPractice ? (
+                              <>
+                                <button
+                                  onClick={() =>
+                                    savePracticeResultEdit(practice)
+                                  }
+                                  disabled={isSavingPracticeEdit}
+                                >
+                                  {isSavingPracticeEdit ? "保存中..." : "保存"}
+                                </button>
+                                <button
+                                  onClick={cancelEditPracticeResult}
+                                  disabled={isSavingPracticeEdit}
+                                >
+                                  キャンセル
+                                </button>
+                              </>
+                            ) : (
+                              <button
+                                onClick={() =>
+                                  beginEditPracticeResult(practice)
+                                }
+                                disabled={!practiceId || isArchived}
+                              >
+                                Practice名・memoを編集
+                              </button>
+                            )}
+
+                            <div
+                              style={{
+                                fontSize: 12,
+                                color: "#666",
+                                lineHeight: 1.5,
+                              }}
+                            >
+                              Ability候補生成前に確認・修正
+                            </div>
+
                             <button
                               onClick={() => handleAnalyzePractice(practiceId)}
                               disabled={
@@ -1744,6 +1970,9 @@ export default function PracticeSearchPanel(props: { owner?: string }) {
                   const isArchived =
                     s(practice.status).toUpperCase() === "ARCHIVED";
                   const isArchiving = archivingPracticeCode === practiceCode;
+                  const isEditingPractice = editingPracticeId === practiceId;
+                  const isSavingPracticeEdit =
+                    savingPracticeEditId === practiceId;
                   const isSelected = selectedPracticeCode === practiceCode;
                   const canAnalyze = Boolean(practiceId);
                   const canSuggest = Boolean(practiceId);
@@ -1767,7 +1996,23 @@ export default function PracticeSearchPanel(props: { owner?: string }) {
                           verticalAlign: "top",
                         }}
                       >
-                        {s(practice.name) || "-"}
+                        {isEditingPractice ? (
+                          <input
+                            value={editingPracticeName}
+                            disabled={isSavingPracticeEdit}
+                            onChange={(e) =>
+                              setEditingPracticeName(e.target.value)
+                            }
+                            placeholder="Practice名"
+                            style={{
+                              width: "100%",
+                              boxSizing: "border-box",
+                              padding: 6,
+                            }}
+                          />
+                        ) : (
+                          s(practice.name) || "-"
+                        )}
                       </td>
                       <td
                         style={{
@@ -1851,7 +2096,26 @@ export default function PracticeSearchPanel(props: { owner?: string }) {
                           verticalAlign: "top",
                         }}
                       >
-                        {practiceMemoDisplay(practice.memo, "") || "-"}
+                        {isEditingPractice ? (
+                          <textarea
+                            value={editingPracticeMemo}
+                            disabled={isSavingPracticeEdit}
+                            onChange={(e) =>
+                              setEditingPracticeMemo(e.target.value)
+                            }
+                            placeholder="概要memo"
+                            style={{
+                              width: "100%",
+                              minHeight: 120,
+                              boxSizing: "border-box",
+                              padding: 8,
+                              lineHeight: 1.6,
+                              fontFamily: "inherit",
+                            }}
+                          />
+                        ) : (
+                          practiceMemoDisplay(practice.memo, "") || "-"
+                        )}
                       </td>
                       <td
                         style={{
@@ -1861,6 +2125,40 @@ export default function PracticeSearchPanel(props: { owner?: string }) {
                         }}
                       >
                         <div style={{ display: "grid", gap: 6 }}>
+                          {isEditingPractice ? (
+                            <>
+                              <button
+                                onClick={() => savePracticeResultEdit(practice)}
+                                disabled={isSavingPracticeEdit}
+                              >
+                                {isSavingPracticeEdit ? "保存中..." : "保存"}
+                              </button>
+                              <button
+                                onClick={cancelEditPracticeResult}
+                                disabled={isSavingPracticeEdit}
+                              >
+                                キャンセル
+                              </button>
+                            </>
+                          ) : (
+                            <button
+                              onClick={() => beginEditPracticeResult(practice)}
+                              disabled={!practiceId || isArchived}
+                            >
+                              Practice名・memoを編集
+                            </button>
+                          )}
+
+                          <div
+                            style={{
+                              fontSize: 12,
+                              color: "#666",
+                              lineHeight: 1.5,
+                            }}
+                          >
+                            Ability候補生成前に確認・修正
+                          </div>
+
                           <button
                             onClick={() => handleAnalyzePractice(practiceId)}
                             disabled={

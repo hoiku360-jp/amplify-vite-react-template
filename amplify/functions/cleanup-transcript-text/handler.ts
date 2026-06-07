@@ -7,8 +7,8 @@ import {
 import { env } from "$amplify/env/cleanup-transcript-text";
 
 type HandlerArgs = {
-  scheduleDayId: string;
-  scheduleDayItemId: string;
+  scheduleDayId?: string | null;
+  scheduleDayItemId?: string | null;
   practiceCode?: string | null;
   childNames?: string[] | null;
   transcriptText: string;
