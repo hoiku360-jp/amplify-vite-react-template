@@ -46,6 +46,7 @@ type AbilityPracticeAggRow = Schema["AbilityPracticeAgg"]["type"] & {
 type AbilityPracticeLinkRow = Schema["AbilityPracticeLink"]["type"] & {
   abilityCode?: string | null;
   practiceCode?: string | null;
+  score?: number | null;
 };
 
 type PracticeCodeRow = Schema["PracticeCode"]["type"] & {
@@ -296,6 +297,9 @@ export default function PracticeSearchPanel(props: { owner?: string }) {
   const [abilityOptions, setAbilityOptions] = useState<AbilityCodeRow[]>([]);
   const [allAbilityCodes, setAllAbilityCodes] = useState<AbilityCodeRow[]>([]);
   const [selectedAbility, setSelectedAbility] = useState("");
+  const [selectedLeafAbility, setSelectedLeafAbility] = useState("");
+
+  const selectedSearchAbility = selectedLeafAbility || selectedAbility;
 
   const [sortKey, setSortKey] = useState<SortKey>("scoreSum");
   const [rows, setRows] = useState<AbilityPracticeAggRow[]>([]);
@@ -444,7 +448,9 @@ export default function PracticeSearchPanel(props: { owner?: string }) {
         const filtered = raw.filter((x) => {
           const status = s(x.status || "active").toLowerCase();
           const level = n(x.level);
-          return (level === 1 || level === 2) && status === "active";
+          return (
+            (level === 1 || level === 2 || level === 3) && status === "active"
+          );
         });
 
         const items = [...filtered].sort((a, b) => {
@@ -458,6 +464,7 @@ export default function PracticeSearchPanel(props: { owner?: string }) {
 
         const first = items.find((i) => n(i.level) === 2) ?? items[0];
         setSelectedAbility(first?.code ? s(first.code) : "");
+        setSelectedLeafAbility("");
       } catch (e) {
         if (ignore) return;
         setError(e instanceof Error ? e.message : JSON.stringify(e, null, 2));
@@ -465,6 +472,7 @@ export default function PracticeSearchPanel(props: { owner?: string }) {
         setAbilityOptions([]);
         setAllAbilityCodes([]);
         setSelectedAbility("");
+        setSelectedLeafAbility("");
       } finally {
         if (!ignore) setLoadingAbility(false);
       }
@@ -478,7 +486,7 @@ export default function PracticeSearchPanel(props: { owner?: string }) {
   useEffect(() => {
     let ignore = false;
 
-    if (!selectedAbility) {
+    if (!selectedSearchAbility) {
       setRows([]);
       return () => {
         ignore = true;
@@ -491,12 +499,41 @@ export default function PracticeSearchPanel(props: { owner?: string }) {
 
       try {
         const list = await listAbilityPracticeAggs({
-          abilityCode: { eq: selectedAbility },
+          abilityCode: { eq: selectedSearchAbility },
         });
 
         if (ignore) return;
 
-        const onlyPR = list.filter((r) => s(r.practiceCode).startsWith("PR-"));
+        const fallbackRows: AbilityPracticeAggRow[] =
+          selectedLeafAbility && list.length === 0
+            ? (
+                await listAbilityPracticeLinks({
+                  abilityCode: { eq: selectedLeafAbility },
+                })
+              ).map((link) => {
+                const abilityCode = s(link.abilityCode) || selectedLeafAbility;
+                const practiceCode = s(link.practiceCode);
+                const score = n(link.score, 1);
+
+                return {
+                  id: `fallback-${abilityCode}-${practiceCode}`,
+                  abilityCode,
+                  practiceCode,
+                  scoreSum: score,
+                  scoreMax: score,
+                  linkCount: 1,
+                  level: 3,
+                  createdAt: "",
+                  updatedAt: "",
+                } satisfies AbilityPracticeAggRow;
+              })
+            : [];
+
+        const sourceRows: AbilityPracticeAggRow[] =
+          list.length > 0 ? list : fallbackRows;
+        const onlyPR = sourceRows.filter((r) =>
+          s(r.practiceCode).startsWith("PR-"),
+        );
 
         const sorted = [...onlyPR].sort((a, b) => {
           const av = n(a[sortKey]);
@@ -518,7 +555,14 @@ export default function PracticeSearchPanel(props: { owner?: string }) {
     return () => {
       ignore = true;
     };
-  }, [listAbilityPracticeAggs, selectedAbility, sortKey, practiceReloadKey]);
+  }, [
+    listAbilityPracticeAggs,
+    listAbilityPracticeLinks,
+    selectedLeafAbility,
+    selectedSearchAbility,
+    sortKey,
+    practiceReloadKey,
+  ]);
 
   useEffect(() => {
     let ignore = false;
@@ -660,8 +704,19 @@ export default function PracticeSearchPanel(props: { owner?: string }) {
   const abilityGroups = useMemo(() => {
     const parents = abilityOptions.filter((a) => n(a.level) === 1);
     const children = abilityOptions.filter((a) => n(a.level) === 2);
+    const leaves = abilityOptions.filter((a) => n(a.level) >= 3 || a.is_leaf);
+
+    const sortAbilityRows = (items: AbilityCodeRow[]) => {
+      items.sort((a, b) => {
+        const sa = n(a.sort_order, 999999);
+        const sb = n(b.sort_order, 999999);
+        if (sa !== sb) return sa - sb;
+        return s(a.code).localeCompare(s(b.code));
+      });
+    };
 
     const childrenByParent = new Map<string, AbilityCodeRow[]>();
+    const leavesByParent = new Map<string, AbilityCodeRow[]>();
 
     for (const child of children) {
       const parentCode = s(child.parent_code);
@@ -671,33 +726,49 @@ export default function PracticeSearchPanel(props: { owner?: string }) {
       childrenByParent.get(parentCode)?.push(child);
     }
 
+    for (const leaf of leaves) {
+      const parentCode = s(leaf.parent_code);
+      if (!leavesByParent.has(parentCode)) {
+        leavesByParent.set(parentCode, []);
+      }
+      leavesByParent.get(parentCode)?.push(leaf);
+    }
+
     for (const [key, value] of childrenByParent.entries()) {
-      value.sort((a, b) => {
-        const sa = n(a.sort_order, 999999);
-        const sb = n(b.sort_order, 999999);
-        if (sa !== sb) return sa - sb;
-        return s(a.code).localeCompare(s(b.code));
-      });
+      sortAbilityRows(value);
       childrenByParent.set(key, value);
     }
 
-    parents.sort((a, b) => {
-      const sa = n(a.sort_order, 999999);
-      const sb = n(b.sort_order, 999999);
-      if (sa !== sb) return sa - sb;
-      return s(a.code).localeCompare(s(b.code));
-    });
+    for (const [key, value] of leavesByParent.entries()) {
+      sortAbilityRows(value);
+      leavesByParent.set(key, value);
+    }
 
-    return { parents, childrenByParent };
+    sortAbilityRows(parents);
+
+    return { parents, childrenByParent, leavesByParent };
   }, [abilityOptions]);
 
-  const selectedAbilityLabel = useMemo(() => {
-    const found = abilityOptions.find((x) => s(x.code) === s(selectedAbility));
+  const leafAbilityOptions = useMemo(() => {
+    return abilityGroups.leavesByParent.get(s(selectedAbility)) ?? [];
+  }, [abilityGroups, selectedAbility]);
+
+  const selectedSearchAbilityLabel = useMemo(() => {
+    const found = abilityOptions.find(
+      (x) => s(x.code) === s(selectedSearchAbility),
+    );
     if (!found) return "";
 
     const level = n(found.level);
     const prefix = level === 1 ? "大分類" : level === 2 ? "中分類" : "小分類";
     return `${prefix}：${s(found.name)}（${s(found.code)}）`;
+  }, [abilityOptions, selectedSearchAbility]);
+
+  const selectedMiddleAbilityLabel = useMemo(() => {
+    const found = abilityOptions.find((x) => s(x.code) === s(selectedAbility));
+    if (!found) return "";
+
+    return `中分類：${s(found.name)}（${s(found.code)}）`;
   }, [abilityOptions, selectedAbility]);
 
   const totalScoreSum = useMemo(() => {
@@ -1363,7 +1434,7 @@ export default function PracticeSearchPanel(props: { owner?: string }) {
           }}
           disabled={viewMode === "debug"}
         >
-          Practice一覧（確認用）
+          Practice一覧・メンテ
         </button>
 
         <button
@@ -1389,11 +1460,12 @@ export default function PracticeSearchPanel(props: { owner?: string }) {
             }}
           >
             <label style={{ display: "flex", alignItems: "center", gap: 8 }}>
-              Ability
+              10の姿
               <select
                 value={selectedAbility}
                 onChange={(e) => {
                   setSelectedAbility(e.target.value);
+                  setSelectedLeafAbility("");
                   setPage(0);
                   setSelectedPracticeCode("");
                 }}
@@ -1418,6 +1490,27 @@ export default function PracticeSearchPanel(props: { owner?: string }) {
                     </optgroup>
                   );
                 })}
+              </select>
+            </label>
+
+            <label style={{ display: "flex", alignItems: "center", gap: 8 }}>
+              小分類で絞り込み
+              <select
+                value={selectedLeafAbility}
+                onChange={(e) => {
+                  setSelectedLeafAbility(e.target.value);
+                  setPage(0);
+                  setSelectedPracticeCode("");
+                }}
+                disabled={loadingAbility || !selectedAbility}
+                style={{ minWidth: 360 }}
+              >
+                <option value="">指定しない（10の姿全体で検索）</option>
+                {leafAbilityOptions.map((leaf) => (
+                  <option key={s(leaf.code)} value={s(leaf.code)}>
+                    {s(leaf.code)}_{s(leaf.name)}
+                  </option>
+                ))}
               </select>
             </label>
 
@@ -1455,13 +1548,18 @@ export default function PracticeSearchPanel(props: { owner?: string }) {
 
           <div style={{ fontSize: 12, opacity: 0.85 }}>
             AbilityCode取得件数（raw）：{abilityRawCount} / プルダウン表示件数
-            （level1/2 & active）：{abilityOptions.length}
+            （level1/2/3 & active）：{abilityOptions.length}
             <br />
-            選択中：{selectedAbilityLabel || "（未選択）"} / 結果件数：
-            {rows.length} / scoreSum合計：{totalScoreSum}
+            10の姿：{selectedMiddleAbilityLabel || "（未選択）"} / 検索対象：
+            {selectedSearchAbilityLabel || "（未選択）"} / 小分類候補：
+            {leafAbilityOptions.length}件
+            <br />
+            結果件数：{rows.length} / scoreSum合計：{totalScoreSum}
             <br />
             表示範囲：{from}〜{to} / {totalRows}（ページ {clampedPage + 1} /{" "}
             {totalPages}）
+            <br />※
+            10の姿まで選ぶと中分類全体で検索し、必要な場合だけ小分類でさらに絞り込めます。
             <br />※ Ability起点では、PracticeCode
             本体が無い孤児レコードも「整理」で掃除できます。
           </div>
@@ -1676,8 +1774,6 @@ export default function PracticeSearchPanel(props: { owner?: string }) {
                     const isEditingPractice = editingPracticeId === practiceId;
                     const isSavingPracticeEdit =
                       savingPracticeEditId === practiceId;
-                    const canAnalyze = Boolean(practiceId);
-                    const canSuggest = Boolean(practiceId);
                     const isSelected = selectedPracticeCode === practiceCode;
 
                     return (
@@ -1842,11 +1938,8 @@ export default function PracticeSearchPanel(props: { owner?: string }) {
 
                             <button
                               onClick={() => handleAnalyzePractice(practiceId)}
-                              disabled={
-                                !canAnalyze ||
-                                analyzingPracticeId === practiceId ||
-                                isArchived
-                              }
+                              disabled
+                              title="Ability起点では参照専用です。AI生成は Practice一覧・メンテ で実行してください。"
                             >
                               {analyzingPracticeId === practiceId
                                 ? "AI生成中..."
@@ -1857,11 +1950,8 @@ export default function PracticeSearchPanel(props: { owner?: string }) {
                               onClick={() =>
                                 handleSuggestLinks(practiceId, practiceCode)
                               }
-                              disabled={
-                                !canSuggest ||
-                                suggestingPracticeId === practiceId ||
-                                isArchived
-                              }
+                              disabled
+                              title="Ability起点では参照専用です。Ability候補生成は Practice一覧・メンテ で実行してください。"
                             >
                               {suggestingPracticeId === practiceId
                                 ? "候補生成中..."
@@ -1885,12 +1975,8 @@ export default function PracticeSearchPanel(props: { owner?: string }) {
                               onClick={() =>
                                 handleRegisterPracticeLinks(practiceCode)
                               }
-                              disabled={
-                                registeringPracticeCode === practiceCode ||
-                                acceptedCount === 0 ||
-                                selectedPracticeCode !== practiceCode ||
-                                isArchived
-                              }
+                              disabled
+                              title="Ability起点では本登録しません。本登録は Practice一覧・メンテ で実行してください。"
                             >
                               {registeringPracticeCode === practiceCode
                                 ? "本登録中..."

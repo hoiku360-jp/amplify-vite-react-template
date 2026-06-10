@@ -69,9 +69,9 @@ export default function SignedInApp(props: {
         <button onClick={() => setTab("childWeekendLetter")}>
           子ども週末だより
         </button>
-        <button onClick={() => setTab("practice")}>Practice</button>
+        <button onClick={() => setTab("practice")}>Practice検索 / 一覧</button>
         <button onClick={() => setTab("practiceRegister")}>Practice登録</button>
-        <button onClick={() => setTab("link")}>Link</button>
+        <button onClick={() => setTab("link")}>Link（開発者）</button>
         <button onClick={() => setTab("audio")}>Audio</button>
 
         <div style={{ marginLeft: "auto" }}>
