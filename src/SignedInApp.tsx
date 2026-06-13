@@ -9,6 +9,7 @@ import PlanV2WorkspacePanel from "./features/plan-v2/PlanV2WorkspacePanel";
 import ScheduleDayPanel from "./features/schedule/ScheduleDayPanel";
 import SimpleScheduleWorkspacePanel from "./features/schedule/SimpleScheduleWorkspacePanel";
 import ParentNoticePanel from "./features/parent-notice/ParentNoticePanel";
+import EnvironmentImpactPanel from "./features/check/EnvironmentImpactPanel";
 import AbilityDashboardPanel from "./features/check/AbilityDashboardPanel";
 import ClassWeeklyReportPanel from "./features/check/ClassWeeklyReportPanel";
 import ChildWeekendLetterPanel from "./features/check/ChildWeekendLetterPanel";
@@ -20,6 +21,7 @@ type TabKey =
   | "scheduleDay"
   | "parentNotice"
   | "attendance"
+  | "environmentImpact"
   | "abilityDashboard"
   | "classWeeklyReport"
   | "childWeekendLetter"
@@ -62,6 +64,9 @@ export default function SignedInApp(props: {
         <button onClick={() => setTab("scheduleDay")}>日案</button>
         <button onClick={() => setTab("parentNotice")}>保護者連絡</button>
         <button onClick={() => setTab("attendance")}>登園・降園</button>
+        <button onClick={() => setTab("environmentImpact")}>
+          環境インパクト
+        </button>
         <button onClick={() => setTab("abilityDashboard")}>
           5領域ダッシュボード
         </button>
@@ -91,6 +96,10 @@ export default function SignedInApp(props: {
 
       {tab === "attendance" && (
         <AttendancePanel owner={owner} tenantId={tenantId} />
+      )}
+
+      {tab === "environmentImpact" && (
+        <EnvironmentImpactPanel owner={owner} tenantId={tenantId} />
       )}
 
       {tab === "abilityDashboard" && (
