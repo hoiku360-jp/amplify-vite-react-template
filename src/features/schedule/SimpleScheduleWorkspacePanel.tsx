@@ -410,6 +410,18 @@ function practiceLabel(row: PracticeRow) {
   return `${row.practice_code} / ${row.name}`;
 }
 
+function weekItemPracticeTitleSnapshot(
+  row?: ScheduleWeekItemRow | null,
+): string {
+  if (!row) return "";
+
+  const snapshot = row as ScheduleWeekItemRow & {
+    practiceTitleSnapshot?: string | null;
+  };
+
+  return s(snapshot.practiceTitleSnapshot) || s(snapshot.title);
+}
+
 function classMonthPlanLabel(row: ClassMonthPlanRow) {
   return `${row.monthKey} / ${row.title || "月計画"} / ${row.ageBand || "-"}`;
 }
@@ -3332,8 +3344,19 @@ export default function SimpleScheduleWorkspacePanel(props: Props) {
                                     const scheduleWeek = week.scheduleWeek;
                                     if (!scheduleWeek) return null;
 
-                                    const currentCode =
-                                      row.weekItem?.practiceCode ?? "";
+                                    const currentCode = s(
+                                      row.weekItem?.practiceCode,
+                                    );
+                                    const currentCodeExistsInOptions =
+                                      currentCode.length > 0 &&
+                                      (recommendedPracticeCodeSet.has(
+                                        currentCode,
+                                      ) ||
+                                        practiceMap.has(currentCode));
+                                    const currentSnapshotLabel =
+                                      weekItemPracticeTitleSnapshot(
+                                        row.weekItem,
+                                      ) || currentCode;
                                     const latestDay = getLatestDay(
                                       scheduleWeek.id,
                                       row.date,
@@ -3359,6 +3382,12 @@ export default function SimpleScheduleWorkspacePanel(props: Props) {
                                             style={{ minWidth: 320 }}
                                           >
                                             <option value="">未設定</option>
+                                            {currentCode &&
+                                            !currentCodeExistsInOptions ? (
+                                              <option value={currentCode}>
+                                                {`保存済み: ${currentCode} / ${currentSnapshotLabel}`}
+                                              </option>
+                                            ) : null}
                                             {practiceRecommendations.map(
                                               (p) => (
                                                 <option
@@ -3381,6 +3410,21 @@ export default function SimpleScheduleWorkspacePanel(props: Props) {
                                               ),
                                             )}
                                           </select>
+                                          {currentCode &&
+                                          !currentCodeExistsInOptions ? (
+                                            <div style={smallMutedStyle}>
+                                              保存済みPracticeCodeはありますが、現在のPractice候補一覧にはありません。
+                                              候補から選び直すと現在のPracticeCodeへ更新されます。
+                                            </div>
+                                          ) : null}
+                                          {!currentCode &&
+                                          (s(row.weekItem?.title) ||
+                                            s(row.weekItem?.description)) ? (
+                                            <div style={smallMutedStyle}>
+                                              タイトル・概要は残っていますが、
+                                              practiceCodeが空です。候補から選び直してください。
+                                            </div>
+                                          ) : null}
                                           {row.weekItem?.description ? (
                                             <div style={smallMutedStyle}>
                                               {row.weekItem.description}

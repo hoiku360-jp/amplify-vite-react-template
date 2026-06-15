@@ -1,6 +1,6 @@
 import { useState } from "react";
 
-import PracticeSearchPanel from "./features/practice/PracticeSearchPanel";
+import PracticeSearchPanelLookup from "./features/practice/PracticeSearchPanelLookup";
 import PracticeRegisterPanel from "./features/practice-register/PracticeRegisterPanel";
 import LinkSearchPanel from "./features/link/LinkSearchPanel";
 import AudioUpload from "./features/audio/AudioUpload";
@@ -74,7 +74,9 @@ export default function SignedInApp(props: {
         <button onClick={() => setTab("childWeekendLetter")}>
           子ども週末だより
         </button>
-        <button onClick={() => setTab("practice")}>Practice検索 / 一覧</button>
+        <button onClick={() => setTab("practice")}>
+          Practice検索 / 一覧（Lookup版）
+        </button>
         <button onClick={() => setTab("practiceRegister")}>Practice登録</button>
         <button onClick={() => setTab("link")}>Link（開発者）</button>
         <button onClick={() => setTab("audio")}>Audio</button>
@@ -114,7 +116,7 @@ export default function SignedInApp(props: {
         <ChildWeekendLetterPanel owner={owner} tenantId={tenantId} />
       )}
 
-      {tab === "practice" && <PracticeSearchPanel owner={owner} />}
+      {tab === "practice" && <PracticeSearchPanelLookup owner={owner} />}
       {tab === "practiceRegister" && <PracticeRegisterPanel owner={owner} />}
       {tab === "link" && <LinkSearchPanel />}
 

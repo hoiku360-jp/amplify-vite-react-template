@@ -7,23 +7,6 @@ import type { Schema } from "../../../amplify/data/resource";
 
 type SortKey = "scoreSum" | "scoreMax" | "linkCount";
 type ViewMode = "ability" | "debug";
-type PracticeCategoryOption =
-  | "outdoor"
-  | "indoor"
-  | "life"
-  | "event"
-  | "environment";
-
-const PRACTICE_CATEGORY_OPTIONS: Array<{
-  value: PracticeCategoryOption;
-  label: string;
-}> = [
-  { value: "outdoor", label: "外遊び" },
-  { value: "indoor", label: "室内遊び" },
-  { value: "life", label: "生活（身支度/食事/排泄など）" },
-  { value: "event", label: "行事" },
-  { value: "environment", label: "環境構成" },
-];
 
 type GraphqlErrorLike = {
   message?: string | null;
@@ -151,19 +134,27 @@ type PracticeLite = {
 
 type PracticeMap = Record<string, PracticeLite>;
 
+type PracticeLookupDebug = {
+  requested: number;
+  fetched: number;
+  matched: number;
+  missingExamples: string[];
+  fetchedExamples: string[];
+};
+
 function s(v: unknown): string {
   return String(v ?? "").trim();
+}
+
+function normalizePracticeCodeForLookup(v: unknown): string {
+  const text = s(v);
+  const matched = text.match(/PR-[0-9A-Za-z-]+/);
+  return matched?.[0] ?? text;
 }
 
 function n(v: unknown, fallback = 0): number {
   const value = Number(v ?? fallback);
   return Number.isFinite(value) ? value : fallback;
-}
-
-function chunk<T>(arr: T[], size: number): T[][] {
-  const out: T[][] = [];
-  for (let i = 0; i < arr.length; i += size) out.push(arr.slice(i, i + size));
-  return out;
 }
 
 function normalizeDisplayText(v: unknown): string {
@@ -185,44 +176,6 @@ function practiceMemoDisplay(
   if (memoText) return memoText;
 
   return previewText(transcriptText, transcriptMax);
-}
-
-function normalizePracticeCategory(value: unknown): string {
-  const raw = s(value);
-  if (!raw) return "";
-
-  const lower = raw.toLowerCase();
-  if (PRACTICE_CATEGORY_OPTIONS.some((opt) => opt.value === lower)) {
-    return lower;
-  }
-
-  switch (raw) {
-    case "外遊び":
-      return "outdoor";
-    case "室内遊び":
-      return "indoor";
-    case "生活":
-    case "生活（身支度/食事/排泄など）":
-      return "life";
-    case "行事":
-      return "event";
-    case "環境":
-    case "環境構成":
-      return "environment";
-    default:
-      return raw;
-  }
-}
-
-function practiceCategoryLabel(value: unknown): string {
-  const normalized = normalizePracticeCategory(value);
-  if (!normalized) return "-";
-
-  const found = PRACTICE_CATEGORY_OPTIONS.find(
-    (opt) => opt.value === normalized,
-  );
-
-  return found ? `${found.label}（${found.value}）` : normalized;
 }
 
 function errorText(errors?: GraphqlErrorLike[] | null): string {
@@ -341,7 +294,7 @@ function buildAbilityMaps(codes: AbilityCodeRow[]) {
   return { buildCodeName, buildParentLabel };
 }
 
-export default function PracticeSearchPanel(props: { owner?: string }) {
+export default function PracticeSearchPanelLookup(props: { owner?: string }) {
   void props;
 
   const client = useMemo(() => generateClient<Schema>(), []);
@@ -359,6 +312,14 @@ export default function PracticeSearchPanel(props: { owner?: string }) {
   const [sortKey, setSortKey] = useState<SortKey>("scoreSum");
   const [rows, setRows] = useState<AbilityPracticeAggRow[]>([]);
   const [practiceByCode, setPracticeByCode] = useState<PracticeMap>({});
+  const [practiceLookupDebug, setPracticeLookupDebug] =
+    useState<PracticeLookupDebug>({
+      requested: 0,
+      fetched: 0,
+      matched: 0,
+      missingExamples: [],
+      fetchedExamples: [],
+    });
 
   const [loadingAbility, setLoadingAbility] = useState(false);
   const [loadingAgg, setLoadingAgg] = useState(false);
@@ -401,7 +362,6 @@ export default function PracticeSearchPanel(props: { owner?: string }) {
   const [editingPracticeId, setEditingPracticeId] = useState("");
   const [editingPracticeName, setEditingPracticeName] = useState("");
   const [editingPracticeMemo, setEditingPracticeMemo] = useState("");
-  const [editingPracticeCategory, setEditingPracticeCategory] = useState("");
   const [savingPracticeEditId, setSavingPracticeEditId] = useState("");
   const [editPracticeMessage, setEditPracticeMessage] = useState("");
 
@@ -587,9 +547,14 @@ export default function PracticeSearchPanel(props: { owner?: string }) {
 
         const sourceRows: AbilityPracticeAggRow[] =
           list.length > 0 ? list : fallbackRows;
-        const onlyPR = sourceRows.filter((r) =>
-          s(r.practiceCode).startsWith("PR-"),
-        );
+        const onlyPR = sourceRows
+          .map((r) => ({
+            ...r,
+            practiceCode:
+              normalizePracticeCodeForLookup(r.practiceCode) ||
+              s(r.practiceCode),
+          }))
+          .filter((r) => s(r.practiceCode).startsWith("PR-"));
 
         const sorted = [...onlyPR].sort((a, b) => {
           const av = n(a[sortKey]);
@@ -628,36 +593,61 @@ export default function PracticeSearchPanel(props: { owner?: string }) {
       setError("");
 
       try {
-        const codes = Array.from(
+        const codes: string[] = Array.from(
           new Set(
             rows
-              .map((r) => s(r.practiceCode))
-              .filter((code) => code.startsWith("PR-")),
+              .map((r) => normalizePracticeCodeForLookup(r.practiceCode))
+              .filter((code): code is string => code.startsWith("PR-")),
           ),
         );
 
         if (codes.length === 0) {
-          if (!ignore) setPracticeByCode({});
+          if (!ignore) {
+            setPracticeByCode({});
+            setPracticeLookupDebug({
+              requested: 0,
+              fetched: 0,
+              matched: 0,
+              missingExamples: [],
+              fetchedExamples: [],
+            });
+          }
           return;
         }
 
+        const targetCodes = new Set(codes);
         const nextMap: PracticeMap = {};
-        const batches = chunk(codes, 20);
+        const data = await listPracticeCodes();
+        const fetchedExamples: string[] = [];
 
-        for (const batch of batches) {
-          const or = batch.map((practiceCode) => ({
-            practice_code: { eq: practiceCode },
-          }));
+        for (const item of data) {
+          const lite = toPracticeLite(item);
+          if (!lite) continue;
 
-          const data = await listPracticeCodes({ or });
-
-          for (const item of data) {
-            const lite = toPracticeLite(item);
-            if (lite) nextMap[lite.practice_code] = lite;
+          const normalizedPracticeCode = normalizePracticeCodeForLookup(
+            lite.practice_code,
+          );
+          if (fetchedExamples.length < 5 && normalizedPracticeCode) {
+            fetchedExamples.push(normalizedPracticeCode);
           }
+          if (!targetCodes.has(normalizedPracticeCode)) continue;
+
+          nextMap[normalizedPracticeCode] = {
+            ...lite,
+            practice_code: normalizedPracticeCode,
+          };
         }
 
-        if (!ignore) setPracticeByCode(nextMap);
+        if (!ignore) {
+          setPracticeByCode(nextMap);
+          setPracticeLookupDebug({
+            requested: codes.length,
+            fetched: data.length,
+            matched: Object.keys(nextMap).length,
+            missingExamples: codes.filter((code) => !nextMap[code]).slice(0, 5),
+            fetchedExamples,
+          });
+        }
       } catch (e) {
         if (!ignore) {
           setError(e instanceof Error ? e.message : JSON.stringify(e, null, 2));
@@ -940,17 +930,12 @@ export default function PracticeSearchPanel(props: { owner?: string }) {
     setEditingPracticeId(practiceId);
     setEditingPracticeName(s(practice?.name));
     setEditingPracticeMemo(s(practice?.memo));
-    setEditingPracticeCategory(
-      normalizePracticeCategory(practice?.practiceCategory) ||
-        normalizePracticeCategory(practice?.category_name),
-    );
   }
 
   function cancelEditPracticeResult() {
     setEditingPracticeId("");
     setEditingPracticeName("");
     setEditingPracticeMemo("");
-    setEditingPracticeCategory("");
     setSavingPracticeEditId("");
     setEditPracticeMessage("");
   }
@@ -962,7 +947,6 @@ export default function PracticeSearchPanel(props: { owner?: string }) {
     const practiceCode = s(practice?.practice_code);
     const nextName = s(editingPracticeName);
     const nextMemo = s(editingPracticeMemo);
-    const nextCategory = normalizePracticeCategory(editingPracticeCategory);
 
     if (!practiceId) {
       setError("PracticeCode の id が空のため保存できません。");
@@ -979,11 +963,6 @@ export default function PracticeSearchPanel(props: { owner?: string }) {
       return;
     }
 
-    if (!nextCategory) {
-      setError("categoryを選択してください。");
-      return;
-    }
-
     setSavingPracticeEditId(practiceId);
     setError("");
     setEditPracticeMessage("");
@@ -993,8 +972,6 @@ export default function PracticeSearchPanel(props: { owner?: string }) {
         id: practiceId,
         name: nextName,
         memo: nextMemo,
-        category_name: "",
-        practiceCategory: nextCategory,
         updatedBy: "practice-search-panel",
       };
 
@@ -1010,9 +987,6 @@ export default function PracticeSearchPanel(props: { owner?: string }) {
 
       const savedName = s(result.data?.name) || nextName;
       const savedMemo = s(result.data?.memo) || nextMemo;
-      const savedCategory =
-        normalizePracticeCategory(result.data?.practiceCategory) ||
-        nextCategory;
 
       if (practiceCode) {
         setPracticeByCode((prev) => {
@@ -1025,8 +999,6 @@ export default function PracticeSearchPanel(props: { owner?: string }) {
               ...current,
               name: savedName,
               memo: savedMemo,
-              category_name: "",
-              practiceCategory: savedCategory,
               updatedBy: "practice-search-panel",
             },
           };
@@ -1045,8 +1017,6 @@ export default function PracticeSearchPanel(props: { owner?: string }) {
             ...row,
             name: savedName,
             memo: savedMemo,
-            category_name: "",
-            practiceCategory: savedCategory,
             updatedBy: "practice-search-panel",
           };
         }),
@@ -1055,9 +1025,8 @@ export default function PracticeSearchPanel(props: { owner?: string }) {
       setEditingPracticeId("");
       setEditingPracticeName("");
       setEditingPracticeMemo("");
-      setEditingPracticeCategory("");
       setEditPracticeMessage(
-        "Practice名・memo・categoryを保存しました。必要に応じて Ability候補を生成してください。",
+        "Practice名とmemoを保存しました。次に Ability候補を生成してください。",
       );
       setPracticeReloadKey((k) => k + 1);
     } catch (e) {
@@ -1491,7 +1460,10 @@ export default function PracticeSearchPanel(props: { owner?: string }) {
 
   return (
     <div style={{ display: "grid", gap: 12 }}>
-      <h2 style={{ margin: 0 }}>Practice検索 / Practice一覧</h2>
+      <h2 style={{ margin: 0 }}>Practice検索 / Practice一覧（Lookup版）</h2>
+      <div style={{ fontSize: 12, color: "#64748b" }}>
+        Ability起点 lookup修正版
+      </div>
 
       <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
         <button
@@ -1632,6 +1604,16 @@ export default function PracticeSearchPanel(props: { owner?: string }) {
             {leafAbilityOptions.length}件
             <br />
             結果件数：{rows.length} / scoreSum合計：{totalScoreSum}
+            <br />
+            PracticeCode引当：要求 {practiceLookupDebug.requested}件 / 取得{" "}
+            {practiceLookupDebug.fetched}件 / 一致 {practiceLookupDebug.matched}
+            件
+            {practiceLookupDebug.missingExamples.length > 0
+              ? ` / 未一致例: ${practiceLookupDebug.missingExamples.join(", ")}`
+              : ""}
+            {practiceLookupDebug.fetchedExamples.length > 0
+              ? ` / 取得例: ${practiceLookupDebug.fetchedExamples.join(", ")}`
+              : ""}
             <br />
             表示範囲：{from}〜{to} / {totalRows}（ページ {clampedPage + 1} /{" "}
             {totalPages}）
@@ -1842,7 +1824,9 @@ export default function PracticeSearchPanel(props: { owner?: string }) {
                 </thead>
                 <tbody>
                   {pageRowsAbility.map((row) => {
-                    const practiceCode = s(row.practiceCode);
+                    const practiceCode = normalizePracticeCodeForLookup(
+                      row.practiceCode,
+                    );
                     const practice = practiceByCode[practiceCode];
                     const practiceId = s(practice?.id);
                     const isArchived =
@@ -1892,31 +1876,9 @@ export default function PracticeSearchPanel(props: { owner?: string }) {
                             verticalAlign: "top",
                           }}
                         >
-                          {isEditingPractice ? (
-                            <select
-                              value={editingPracticeCategory}
-                              disabled={isSavingPracticeEdit}
-                              onChange={(e) =>
-                                setEditingPracticeCategory(e.target.value)
-                              }
-                              style={{
-                                width: "100%",
-                                boxSizing: "border-box",
-                                padding: 6,
-                              }}
-                            >
-                              {PRACTICE_CATEGORY_OPTIONS.map((opt) => (
-                                <option key={opt.value} value={opt.value}>
-                                  {opt.label}
-                                </option>
-                              ))}
-                            </select>
-                          ) : (
-                            practiceCategoryLabel(
-                              s(practice?.practiceCategory) ||
-                                s(practice?.category_name),
-                            )
-                          )}
+                          {s(practice?.category_name) ||
+                            s(practice?.practiceCategory) ||
+                            "-"}
                         </td>
                         <td
                           style={{
@@ -2021,7 +1983,7 @@ export default function PracticeSearchPanel(props: { owner?: string }) {
                                 }
                                 disabled={!practiceId || isArchived}
                               >
-                                Practice名・memo・categoryを編集
+                                Practice名・memoを編集
                               </button>
                             )}
 
@@ -2233,31 +2195,9 @@ export default function PracticeSearchPanel(props: { owner?: string }) {
                           verticalAlign: "top",
                         }}
                       >
-                        {isEditingPractice ? (
-                          <select
-                            value={editingPracticeCategory}
-                            disabled={isSavingPracticeEdit}
-                            onChange={(e) =>
-                              setEditingPracticeCategory(e.target.value)
-                            }
-                            style={{
-                              width: "100%",
-                              boxSizing: "border-box",
-                              padding: 6,
-                            }}
-                          >
-                            {PRACTICE_CATEGORY_OPTIONS.map((opt) => (
-                              <option key={opt.value} value={opt.value}>
-                                {opt.label}
-                              </option>
-                            ))}
-                          </select>
-                        ) : (
-                          practiceCategoryLabel(
-                            s(practice.practiceCategory) ||
-                              s(practice.category_name),
-                          )
-                        )}
+                        {s(practice.category_name) ||
+                          s(practice.practiceCategory) ||
+                          "-"}
                       </td>
                       <td
                         style={{
@@ -2285,12 +2225,14 @@ export default function PracticeSearchPanel(props: { owner?: string }) {
                           padding: 8,
                           borderBottom: "1px solid #f0f0f0",
                           fontSize: 12,
-                          minWidth: 260,
+                          lineHeight: 1.65,
+                          minWidth: 320,
                           whiteSpace: "pre-wrap",
                           verticalAlign: "top",
+                          userSelect: "text",
                         }}
                       >
-                        {previewText(practice.transcriptText, 160) || "-"}
+                        {s(practice.transcriptText) || "-"}
                       </td>
                       <td
                         style={{
@@ -2352,7 +2294,7 @@ export default function PracticeSearchPanel(props: { owner?: string }) {
                               onClick={() => beginEditPracticeResult(practice)}
                               disabled={!practiceId || isArchived}
                             >
-                              Practice名・memo・categoryを編集
+                              Practice名・memoを編集
                             </button>
                           )}
 
