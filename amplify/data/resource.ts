@@ -1395,6 +1395,70 @@ const schema = a
         allow.authenticated().to(["read", "create", "update", "delete"]),
       ]),
 
+    PhotoAttachment: a
+      .model({
+        tenantId: a.string().required(),
+        owner: a.string().required(),
+
+        classroomId: a.id().required(),
+        ageTargetId: a.id(),
+
+        scheduleDayId: a.id().required(),
+        scheduleDayItemId: a.id(),
+        targetDate: a.date().required(),
+
+        // OBSERVATION_RECORD: AI抽出された子どもの構造化記録に紐づける
+        // SCHEDULE_RECORD: 保存済みメモなど、日案内の記録に紐づける
+        linkTargetType: a.string().required(),
+        observationRecordId: a.id(),
+        sourceScheduleRecordId: a.id(),
+
+        // CHILD: 子ども1人の姿 / CLASSROOM: 複数人・クラス全体の場面
+        scopeType: a.ref("ObservationScopeType").required(),
+        childKey: a.string(),
+        childName: a.string(),
+        childNamesJson: a.string(),
+
+        storagePath: a.string().required(),
+        thumbnailPath: a.string(),
+        contentType: a.string(),
+        fileName: a.string(),
+
+        caption: a.string(),
+        note: a.string(),
+
+        takenAt: a.datetime(),
+        uploadedAt: a.datetime().required(),
+        uploadedBySub: a.string(),
+
+        // ACTIVE / ARCHIVED / DELETED
+        status: a.string().required(),
+      })
+      .secondaryIndexes((index) => [
+        index("scheduleDayId")
+          .sortKeys(["uploadedAt"])
+          .queryField("listPhotoAttachmentsByScheduleDay"),
+        index("scheduleDayItemId")
+          .sortKeys(["uploadedAt"])
+          .queryField("listPhotoAttachmentsByScheduleDayItem"),
+        index("sourceScheduleRecordId")
+          .sortKeys(["uploadedAt"])
+          .queryField("listPhotoAttachmentsBySourceScheduleRecord"),
+        index("observationRecordId")
+          .sortKeys(["uploadedAt"])
+          .queryField("listPhotoAttachmentsByObservationRecord"),
+        index("classroomId")
+          .sortKeys(["targetDate", "uploadedAt"])
+          .queryField("listPhotoAttachmentsByClassroomDate"),
+        index("childKey")
+          .sortKeys(["targetDate", "uploadedAt"])
+          .queryField("listPhotoAttachmentsByChildDate"),
+      ])
+      .authorization((allow) => [
+        allow.ownerDefinedIn("owner"),
+        allow.authenticated().to(["read", "create", "update", "delete"]),
+      ]),
+
     ReportArtifact: a
       .model({
         tenantId: a.string().required(),

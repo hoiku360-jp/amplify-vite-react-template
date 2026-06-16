@@ -1,6 +1,6 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { generateClient } from "aws-amplify/data";
-import { uploadData } from "aws-amplify/storage";
+import { getUrl, uploadData } from "aws-amplify/storage";
 import outputs from "../../../amplify_outputs.json";
 import type { Schema } from "../../../amplify/data/resource";
 
@@ -76,6 +76,16 @@ type TranscriptDraft = {
   audioStatusText: string;
 };
 
+type PhotoLinkTargetType = "OBSERVATION_RECORD" | "SCHEDULE_RECORD";
+
+type PhotoDraft = {
+  photoFile: File | null;
+  photoFileName: string;
+  caption: string;
+  childNamesText: string;
+  targetRecordId: string;
+};
+
 type PlannedTranscriptPayload = {
   kind: "plannedTranscript";
   practiceCode: string | null;
@@ -136,6 +146,7 @@ type ScheduleDayItemRow = Schema["ScheduleDayItem"]["type"];
 type ScheduleRecordRow = Schema["ScheduleRecord"]["type"];
 type AudioJobRow = Schema["AudioJob"]["type"];
 type ClassCalendarEventRow = Schema["ClassCalendarEvent"]["type"];
+type PhotoAttachmentRow = Schema["PhotoAttachment"]["type"];
 
 type ClassroomRow = Schema["Classroom"]["type"];
 type AgeTargetRow = Schema["SchoolAnnualAgeTarget"]["type"];
@@ -246,6 +257,8 @@ type ScheduleDayPanelClient = {
     ScheduleDayItem: ListableModel<ScheduleDayItemRow>;
     ScheduleRecord: ListableModel<ScheduleRecordRow> &
       CreatableModel<ScheduleRecordRow>;
+    PhotoAttachment: ListableModel<PhotoAttachmentRow> &
+      CreatableModel<PhotoAttachmentRow>;
     AudioJob: ListableModel<AudioJobRow> &
       CreatableModel<AudioJobRow> &
       UpdatableModel<AudioJobRow> &
@@ -723,6 +736,16 @@ function createEmptyTranscriptDraft(childNamesText = ""): TranscriptDraft {
   };
 }
 
+function createEmptyPhotoDraft(childNamesText = ""): PhotoDraft {
+  return {
+    photoFile: null,
+    photoFileName: "",
+    caption: "",
+    childNamesText,
+    targetRecordId: "",
+  };
+}
+
 function buildInitialTranscriptDrafts(
   items: ScheduleDayItemRow[],
   childNamesText: string,
@@ -733,6 +756,19 @@ function buildInitialTranscriptDrafts(
     if (item.sourceType === "PLANNED") {
       drafts[item.id] = createEmptyTranscriptDraft(childNamesText);
     }
+  }
+
+  return drafts;
+}
+
+function buildInitialPhotoDrafts(
+  items: ScheduleDayItemRow[],
+  childNamesText: string,
+): Record<string, PhotoDraft> {
+  const drafts: Record<string, PhotoDraft> = {};
+
+  for (const item of items) {
+    drafts[item.id] = createEmptyPhotoDraft(childNamesText);
   }
 
   return drafts;
@@ -877,6 +913,7 @@ function sleep(ms: number) {
 
 const TRANSCRIPT_POLL_INTERVAL_MS = 5000;
 const TRANSCRIPT_POLL_MAX_ATTEMPTS = 180; // 15分
+const MAX_PHOTOS_PER_DAY = 5;
 
 function normalizeJobStatus(value?: string | null) {
   return String(value ?? "")
@@ -1018,6 +1055,69 @@ function ScheduleDayCalendarPanel(props: {
   );
 }
 
+function PhotoAttachmentLink(props: { photo: PhotoAttachmentRow }) {
+  const { photo } = props;
+  const [url, setUrl] = useState("");
+
+  useEffect(() => {
+    let cancelled = false;
+
+    async function loadUrl() {
+      const path = s(photo.thumbnailPath) || s(photo.storagePath);
+      if (!path) return;
+
+      try {
+        const res = await getUrl({
+          path,
+          options: { expiresIn: 60 * 60 },
+        });
+
+        if (!cancelled) {
+          setUrl(String(res.url));
+        }
+      } catch (e) {
+        console.warn("写真URLの取得に失敗しました。", e);
+      }
+    }
+
+    loadUrl();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [photo.storagePath, photo.thumbnailPath]);
+
+  const label = s(photo.caption) || s(photo.fileName) || "写真";
+
+  if (!url) {
+    return (
+      <span style={{ fontSize: 12, color: "#666" }}>写真URLを取得中...</span>
+    );
+  }
+
+  return (
+    <a
+      href={url}
+      target="_blank"
+      rel="noreferrer"
+      style={{
+        display: "inline-flex",
+        alignItems: "center",
+        gap: 6,
+        padding: "4px 8px",
+        border: "1px solid #d0d7de",
+        borderRadius: 999,
+        background: "#fff",
+        fontSize: 12,
+        textDecoration: "none",
+      }}
+      title={label}
+    >
+      📷 {label}
+    </a>
+  );
+}
+
 export default function ScheduleDayPanel(props: { owner: string }) {
   const { owner } = props;
   const client = useMemo(
@@ -1094,6 +1194,13 @@ export default function ScheduleDayPanel(props: { owner: string }) {
   const [transcriptDrafts, setTranscriptDrafts] = useState<
     Record<string, TranscriptDraft>
   >({});
+  const [photoDrafts, setPhotoDrafts] = useState<Record<string, PhotoDraft>>(
+    {},
+  );
+  const [photos, setPhotos] = useState<PhotoAttachmentRow[]>([]);
+  const [savingPhotoItemId, setSavingPhotoItemId] = useState<string | null>(
+    null,
+  );
 
   const activeClassroomName = classroomNameForScheduleDay(
     day,
@@ -1133,6 +1240,16 @@ export default function ScheduleDayPanel(props: { owner: string }) {
       ...prev,
       [itemId]: {
         ...(prev[itemId] ?? createEmptyTranscriptDraft(activeDemoChildrenText)),
+        ...patch,
+      },
+    }));
+  }
+
+  function updatePhotoDraft(itemId: string, patch: Partial<PhotoDraft>) {
+    setPhotoDrafts((prev) => ({
+      ...prev,
+      [itemId]: {
+        ...(prev[itemId] ?? createEmptyPhotoDraft(activeDemoChildrenText)),
         ...patch,
       },
     }));
@@ -1209,6 +1326,21 @@ export default function ScheduleDayPanel(props: { owner: string }) {
 
   function getRecordsForItem(itemId: string): ScheduleRecordRow[] {
     return records.filter((record) => record.scheduleDayItemId === itemId);
+  }
+
+  function getPhotosForItem(itemId: string): PhotoAttachmentRow[] {
+    return photos
+      .filter((photo) => photo.scheduleDayItemId === itemId)
+      .filter(
+        (photo) => s(photo.status || "ACTIVE").toUpperCase() !== "ARCHIVED",
+      )
+      .sort((a, b) => s(b.uploadedAt).localeCompare(s(a.uploadedAt)));
+  }
+
+  function activePhotoCountForDay(): number {
+    return photos.filter(
+      (photo) => s(photo.status || "ACTIVE").toUpperCase() !== "ARCHIVED",
+    ).length;
   }
 
   function getTranscriptRecordsForItem(itemId: string): ScheduleRecordRow[] {
@@ -1305,6 +1437,21 @@ export default function ScheduleDayPanel(props: { owner: string }) {
         e instanceof Error ? e.message : String(e)
       }`;
     }
+  }
+
+  async function loadPhotoAttachmentsForDay(
+    scheduleDayId: string,
+  ): Promise<PhotoAttachmentRow[]> {
+    const rows = await listAll<PhotoAttachmentRow>(
+      client.models.PhotoAttachment,
+      {
+        filter: {
+          scheduleDayId: { eq: scheduleDayId },
+        } as ListOptions,
+      },
+    );
+
+    return rows.sort((a, b) => s(a.uploadedAt).localeCompare(s(b.uploadedAt)));
   }
 
   async function fetchCalendarEventsForDay(
@@ -1426,6 +1573,8 @@ export default function ScheduleDayPanel(props: { owner: string }) {
     setMemoDrafts({});
     setAttendanceDrafts({});
     setTranscriptDrafts({});
+    setPhotoDrafts({});
+    setPhotos([]);
     setParentNoticeDraft("");
     setParentNoticeManualNote("");
 
@@ -1506,6 +1655,12 @@ export default function ScheduleDayPanel(props: { owner: string }) {
       setTranscriptDrafts(
         buildInitialTranscriptDrafts(sortedItems, selectedDemoChildrenText),
       );
+      setPhotoDrafts(
+        buildInitialPhotoDrafts(sortedItems, selectedDemoChildrenText),
+      );
+
+      const photoRows = await loadPhotoAttachmentsForDay(normalizedDay.id);
+      setPhotos(photoRows);
 
       const calendarRows = await fetchCalendarEventsForDay(normalizedDay);
       setCalendarEvents(calendarRows);
@@ -1616,6 +1771,8 @@ export default function ScheduleDayPanel(props: { owner: string }) {
     setMemoDrafts({});
     setAttendanceDrafts({});
     setTranscriptDrafts({});
+    setPhotoDrafts({});
+    setPhotos([]);
     setParentNoticeDraft("");
     setParentNoticeManualNote("");
 
@@ -1753,6 +1910,12 @@ export default function ScheduleDayPanel(props: { owner: string }) {
       setTranscriptDrafts(
         buildInitialTranscriptDrafts(sortedItems, selectedDemoChildrenText),
       );
+      setPhotoDrafts(
+        buildInitialPhotoDrafts(sortedItems, selectedDemoChildrenText),
+      );
+
+      const photoRows = await loadPhotoAttachmentsForDay(normalizedDay.id);
+      setPhotos(photoRows);
 
       const calendarRows = await fetchCalendarEventsForDay(normalizedDay);
       setCalendarEvents(calendarRows);
@@ -2203,6 +2366,170 @@ export default function ScheduleDayPanel(props: { owner: string }) {
       );
     } finally {
       setSavingAttendanceItemId(null);
+    }
+  }
+
+  function photoTargetLabel(record: ScheduleRecordRow): string {
+    const structuredPayload = safeParseStructuredObservationPayload(
+      record.payloadJson,
+    );
+    if (structuredPayload) {
+      return [
+        "AI観察記録",
+        structuredPayload.childName,
+        structuredPayload.abilityName,
+        formatDateTime(record.recordedAt),
+      ]
+        .filter(Boolean)
+        .join(" / ");
+    }
+
+    return [
+      formatRecordType(record.recordType),
+      formatDateTime(record.recordedAt),
+      s(record.body).slice(0, 30) || "本文なし",
+    ]
+      .filter(Boolean)
+      .join(" / ");
+  }
+
+  function resolvePhotoTarget(record: ScheduleRecordRow): {
+    linkTargetType: PhotoLinkTargetType;
+    scopeType: "CHILD" | "CLASSROOM";
+    childName: string;
+    childNames: string[];
+  } {
+    const structuredPayload = safeParseStructuredObservationPayload(
+      record.payloadJson,
+    );
+
+    if (structuredPayload) {
+      const childName = s(structuredPayload.childName);
+      return {
+        linkTargetType: "OBSERVATION_RECORD",
+        scopeType: "CHILD",
+        childName,
+        childNames: childName ? [childName] : [],
+      };
+    }
+
+    return {
+      linkTargetType: "SCHEDULE_RECORD",
+      scopeType: "CLASSROOM",
+      childName: "",
+      childNames: [],
+    };
+  }
+
+  async function savePhoto(item: ScheduleDayItemRow) {
+    if (!day) return;
+    if (day.status === "CLOSED") {
+      setMessage("締め後は写真を追加できません。");
+      return;
+    }
+
+    if (activePhotoCountForDay() >= MAX_PHOTOS_PER_DAY) {
+      setMessage(`写真は1日${MAX_PHOTOS_PER_DAY}枚までです。`);
+      return;
+    }
+
+    const draft =
+      photoDrafts[item.id] ?? createEmptyPhotoDraft(activeDemoChildrenText);
+    const file = draft.photoFile;
+
+    if (!file) {
+      setMessage("先に写真ファイルを選択してください。");
+      return;
+    }
+
+    const targetRecord = records.find(
+      (record) => record.id === draft.targetRecordId,
+    );
+    if (!targetRecord) {
+      setMessage(
+        "写真を紐づける観察記録または保存済みメモを選択してください。",
+      );
+      return;
+    }
+
+    setSavingPhotoItemId(item.id);
+    setMessage("");
+
+    try {
+      const now = new Date();
+      const yyyy = now.getFullYear();
+      const mm = String(now.getMonth() + 1).padStart(2, "0");
+      const dd = String(now.getDate()).padStart(2, "0");
+      const uploadId = crypto.randomUUID();
+
+      const uploadResult = await uploadData({
+        path: ({ identityId }) =>
+          `tenants/${identityId}/${day.tenantId}/schedule-day-photos/${day.id}/${item.id}/${yyyy}/${mm}/${dd}/${uploadId}-${file.name}`,
+        data: file,
+        options: {
+          contentType: file.type || "image/jpeg",
+        },
+      }).result;
+
+      const resolvedTarget = resolvePhotoTarget(targetRecord);
+      const childNames =
+        resolvedTarget.scopeType === "CHILD"
+          ? resolvedTarget.childNames
+          : parseChildNamesText(draft.childNamesText);
+
+      const createRes = await client.models.PhotoAttachment.create({
+        tenantId: day.tenantId,
+        owner,
+        classroomId: day.classroomId,
+        ageTargetId: day.ageTargetId,
+        scheduleDayId: day.id,
+        scheduleDayItemId: item.id,
+        targetDate: day.targetDate,
+        linkTargetType: resolvedTarget.linkTargetType,
+        observationRecordId: null,
+        sourceScheduleRecordId: targetRecord.id,
+        scopeType: resolvedTarget.scopeType,
+        childKey: resolvedTarget.childName || null,
+        childName: resolvedTarget.childName || null,
+        childNamesJson:
+          childNames.length > 0 ? JSON.stringify(childNames) : null,
+        storagePath: uploadResult.path,
+        thumbnailPath: null,
+        contentType: file.type || "image/jpeg",
+        fileName: file.name,
+        caption: draft.caption.trim() || null,
+        note: null,
+        takenAt: now.toISOString(),
+        uploadedAt: now.toISOString(),
+        uploadedBySub: owner,
+        status: "ACTIVE",
+      } as MutationInput);
+
+      if (!createRes.data) {
+        throw new Error(
+          formatModelErrors(
+            createRes.errors,
+            "写真メタデータの保存に失敗しました。",
+          ),
+        );
+      }
+
+      setPhotos((prev) => [...prev, createRes.data as PhotoAttachmentRow]);
+      setPhotoDrafts((prev) => ({
+        ...prev,
+        [item.id]: createEmptyPhotoDraft(activeDemoChildrenText),
+      }));
+
+      setMessage(
+        `写真を保存しました。日内写真=${activePhotoCountForDay() + 1}/${MAX_PHOTOS_PER_DAY}`,
+      );
+    } catch (e) {
+      console.error(e);
+      setMessage(
+        `写真保存エラー: ${e instanceof Error ? e.message : String(e)}`,
+      );
+    } finally {
+      setSavingPhotoItemId(null);
     }
   }
 
@@ -3488,6 +3815,14 @@ export default function ScheduleDayPanel(props: { owner: string }) {
               const itemStructuredObservationRecords =
                 getStructuredObservationRecordsForItem(item.id);
               const itemMemoRecords = getNonTranscriptRecordsForItem(item.id);
+              const itemPhotoRecords = getPhotosForItem(item.id);
+              const photoDraft =
+                photoDrafts[item.id] ??
+                createEmptyPhotoDraft(activeDemoChildrenText);
+              const photoTargetRecords = [
+                ...itemStructuredObservationRecords,
+                ...itemMemoRecords,
+              ];
               const transcriptDraft =
                 transcriptDrafts[item.id] ??
                 createEmptyTranscriptDraft(activeDemoChildrenText);
@@ -4131,6 +4466,198 @@ export default function ScheduleDayPanel(props: { owner: string }) {
                       ) : null}
                     </div>
                   ) : null}
+
+                  <div
+                    style={{
+                      marginTop: 12,
+                      padding: 12,
+                      borderRadius: 8,
+                      background: "#fff7ed",
+                      border: "1px solid #fed7aa",
+                      display: "grid",
+                      gap: 10,
+                    }}
+                  >
+                    <div
+                      style={{
+                        display: "flex",
+                        gap: 8,
+                        alignItems: "center",
+                        flexWrap: "wrap",
+                      }}
+                    >
+                      <div style={{ fontWeight: 700 }}>写真</div>
+                      <div style={{ fontSize: 12, color: "#666" }}>
+                        1日{MAX_PHOTOS_PER_DAY}枚まで / 現在{" "}
+                        {activePhotoCountForDay()}枚
+                      </div>
+                    </div>
+
+                    <div
+                      style={{ fontSize: 13, color: "#555", lineHeight: 1.7 }}
+                    >
+                      子ども1人の姿は「AI抽出された観察記録」に、複数人の場面は「保存済みメモ」に紐づけます。
+                      紐づいた写真は、クラス週報・子ども週末だよりの「最近の観察エビデンス」に表示されます。
+                    </div>
+
+                    <label>
+                      <div style={{ fontWeight: 700, marginBottom: 4 }}>
+                        写真ファイル
+                      </div>
+                      <input
+                        type="file"
+                        accept="image/*"
+                        disabled={
+                          day?.status === "CLOSED" ||
+                          savingPhotoItemId === item.id ||
+                          activePhotoCountForDay() >= MAX_PHOTOS_PER_DAY
+                        }
+                        onChange={(e) => {
+                          const file = e.target.files?.[0] ?? null;
+                          updatePhotoDraft(item.id, {
+                            photoFile: file,
+                            photoFileName: file?.name ?? "",
+                          });
+                        }}
+                      />
+                      {photoDraft.photoFileName ? (
+                        <div
+                          style={{ marginTop: 4, fontSize: 12, color: "#666" }}
+                        >
+                          選択中: {photoDraft.photoFileName}
+                        </div>
+                      ) : null}
+                    </label>
+
+                    <label>
+                      <div style={{ fontWeight: 700, marginBottom: 4 }}>
+                        紐づけ先
+                      </div>
+                      <select
+                        value={photoDraft.targetRecordId}
+                        disabled={
+                          day?.status === "CLOSED" ||
+                          savingPhotoItemId === item.id ||
+                          photoTargetRecords.length === 0
+                        }
+                        onChange={(e) =>
+                          updatePhotoDraft(item.id, {
+                            targetRecordId: e.target.value,
+                          })
+                        }
+                        style={{ width: "100%", maxWidth: 720 }}
+                      >
+                        <option value="">選択してください</option>
+                        {photoTargetRecords.map((record) => (
+                          <option key={record.id} value={record.id}>
+                            {photoTargetLabel(record)}
+                          </option>
+                        ))}
+                      </select>
+                    </label>
+
+                    <label>
+                      <div style={{ fontWeight: 700, marginBottom: 4 }}>
+                        説明文
+                      </div>
+                      <textarea
+                        value={photoDraft.caption}
+                        onChange={(e) =>
+                          updatePhotoDraft(item.id, { caption: e.target.value })
+                        }
+                        rows={2}
+                        disabled={
+                          day?.status === "CLOSED" ||
+                          savingPhotoItemId === item.id
+                        }
+                        placeholder="例: 泥だんごが崩れずにできて、友だちに見せながら笑っていた。"
+                        style={{
+                          width: "100%",
+                          boxSizing: "border-box",
+                          resize: "vertical",
+                        }}
+                      />
+                    </label>
+
+                    <label>
+                      <div style={{ fontWeight: 700, marginBottom: 4 }}>
+                        複数人写真の子どもタグ
+                      </div>
+                      <input
+                        value={photoDraft.childNamesText}
+                        onChange={(e) =>
+                          updatePhotoDraft(item.id, {
+                            childNamesText: e.target.value,
+                          })
+                        }
+                        disabled={
+                          day?.status === "CLOSED" ||
+                          savingPhotoItemId === item.id
+                        }
+                        placeholder="例: さくら, たろう"
+                        style={{ width: "100%", boxSizing: "border-box" }}
+                      />
+                    </label>
+
+                    <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+                      <button
+                        onClick={() => savePhoto(item)}
+                        disabled={
+                          day?.status === "CLOSED" ||
+                          savingPhotoItemId === item.id ||
+                          !photoDraft.photoFile ||
+                          !photoDraft.targetRecordId ||
+                          activePhotoCountForDay() >= MAX_PHOTOS_PER_DAY
+                        }
+                      >
+                        {savingPhotoItemId === item.id
+                          ? "写真保存中..."
+                          : "写真を保存"}
+                      </button>
+                    </div>
+
+                    {photoTargetRecords.length === 0 ? (
+                      <div style={{ fontSize: 12, color: "#666" }}>
+                        写真を紐づけるには、先にAI抽出された観察記録、または保存済みメモを作成してください。
+                      </div>
+                    ) : null}
+
+                    {itemPhotoRecords.length > 0 ? (
+                      <div style={{ display: "grid", gap: 8 }}>
+                        <div style={{ fontWeight: 700 }}>保存済み写真</div>
+                        {itemPhotoRecords.map((photo) => (
+                          <div
+                            key={photo.id}
+                            style={{
+                              padding: 8,
+                              borderRadius: 6,
+                              background: "#ffffff",
+                              border: "1px solid #fed7aa",
+                              display: "grid",
+                              gap: 6,
+                            }}
+                          >
+                            <div style={{ fontSize: 12, color: "#555" }}>
+                              {formatDateTime(photo.uploadedAt)} /{" "}
+                              {photo.scopeType} / {photo.linkTargetType}
+                            </div>
+                            <div>
+                              {photo.caption || photo.fileName || "(説明なし)"}
+                            </div>
+                            <div
+                              style={{
+                                display: "flex",
+                                gap: 8,
+                                flexWrap: "wrap",
+                              }}
+                            >
+                              <PhotoAttachmentLink photo={photo} />
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    ) : null}
+                  </div>
 
                   <div
                     style={{

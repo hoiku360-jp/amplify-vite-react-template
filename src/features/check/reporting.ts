@@ -35,6 +35,16 @@ export type ChildAggregateRow = {
   count: number;
 };
 
+export type PhotoAttachmentPreview = {
+  id: string;
+  storagePath: string;
+  thumbnailPath: string;
+  caption: string;
+  fileName: string;
+  contentType: string;
+  uploadedAt: string;
+};
+
 export type EvidenceRow = {
   id: string;
   recordedAt: string;
@@ -43,6 +53,7 @@ export type EvidenceRow = {
   body: string;
   sourceKind: string;
   practiceCode: string;
+  photoAttachments: PhotoAttachmentPreview[];
 };
 
 export type PracticeImpactRow = {
@@ -63,6 +74,27 @@ type ObservationAbilityLinkRow = ObservationAbilityLinkBaseRow & {
   childName?: string | null;
   observationRecordId?: string | null;
   observationId?: string | null;
+};
+
+type PhotoAttachmentRow = Schema["PhotoAttachment"]["type"] & {
+  classroomId?: string | null;
+  scheduleDayId?: string | null;
+  scheduleDayItemId?: string | null;
+  targetDate?: string | null;
+  linkTargetType?: string | null;
+  observationRecordId?: string | null;
+  sourceScheduleRecordId?: string | null;
+  scopeType?: string | null;
+  childKey?: string | null;
+  childName?: string | null;
+  childNamesJson?: string | null;
+  storagePath?: string | null;
+  thumbnailPath?: string | null;
+  contentType?: string | null;
+  fileName?: string | null;
+  caption?: string | null;
+  uploadedAt?: string | null;
+  status?: string | null;
 };
 
 type AbilityCodeRow = Schema["AbilityCode"]["type"];
@@ -218,6 +250,7 @@ export type ReportingClient = {
     Classroom: ModelListApi<ClassroomRow>;
     ObservationRecord: ModelListApi<ObservationRecordRow>;
     ObservationAbilityLink: ModelListApi<ObservationAbilityLinkRow>;
+    PhotoAttachment: ModelListApi<PhotoAttachmentRow>;
     AbilityCode: ModelListApi<AbilityCodeRow>;
     AbilityPracticeLink: ModelListApi<AbilityPracticeLinkRow>;
     AbilityPracticeAgg: ModelListApi<AbilityPracticeAggRow>;
@@ -280,6 +313,7 @@ export type ObservationBundle = {
   abilityGroups: AbilityDomainGroup[];
   childRows: ChildAggregateRow[];
   evidenceRows: EvidenceRow[];
+  photoAttachments: PhotoAttachmentRow[];
   practiceRows: PracticeImpactRow[];
   abilityDisplayMap: Record<string, AbilityDisplayMeta>;
   abilityCodeRows: AbilityCodeRow[];
@@ -575,6 +609,62 @@ function isNotArchivedStatus(value?: string | null) {
   const status = normalizeText(value || "active").toLowerCase();
   return status !== "archived" && status !== "deleted";
 }
+function safeParseStringArrayJson(value?: string | null): string[] {
+  if (!value) return [];
+
+  try {
+    const parsed: unknown = JSON.parse(value);
+    if (!Array.isArray(parsed)) return [];
+
+    return parsed
+      .map((item) =>
+        normalizeText(
+          typeof item === "string" || typeof item === "number" ? item : "",
+        ),
+      )
+      .filter(Boolean);
+  } catch {
+    return [];
+  }
+}
+
+function photoChildNames(row: PhotoAttachmentRow): string[] {
+  const names = [
+    normalizeText(row.childName),
+    ...safeParseStringArrayJson(row.childNamesJson),
+  ]
+    .map((name) => normalizeText(name))
+    .filter(Boolean);
+
+  return Array.from(new Set(names));
+}
+
+function photoMatchesChild(
+  row: PhotoAttachmentRow,
+  childName: string,
+): boolean {
+  const normalizedChildName = normalizeText(childName);
+  if (!normalizedChildName) return false;
+  return photoChildNames(row).some((name) => name === normalizedChildName);
+}
+
+function buildPhotoPreview(row: PhotoAttachmentRow): PhotoAttachmentPreview {
+  return {
+    id: String(row.id ?? ""),
+    storagePath: normalizeText(row.storagePath),
+    thumbnailPath: normalizeText(row.thumbnailPath),
+    caption: normalizeText(row.caption),
+    fileName: normalizeText(row.fileName),
+    contentType: normalizeText(row.contentType),
+    uploadedAt: normalizeText(row.uploadedAt),
+  };
+}
+
+function filterActivePhotoAttachments(
+  rows: PhotoAttachmentRow[],
+): PhotoAttachmentRow[] {
+  return rows.filter((row) => isNotArchivedStatus(row.status));
+}
 
 export function normalizeAbilityCode(value?: string | number | null) {
   const raw = String(value ?? "").trim();
@@ -840,10 +930,12 @@ function buildEvidenceTitle(
 export function buildPracticeImpactRows(args: {
   observations: ObservationRecordRow[];
   abilityLinks: ObservationAbilityLinkRow[];
+  photoAttachments?: PhotoAttachmentRow[];
 }) {
-  const { observations, abilityLinks } = args;
+  const { observations, abilityLinks, photoAttachments = [] } = args;
   const structuredObservationAbilityNameMap =
     buildStructuredObservationAbilityNameMap(abilityLinks);
+  const photoMap = buildPhotoAttachmentMap(observations, photoAttachments);
 
   const map = new Map<string, PracticeImpactRow>();
   const childNameSets = new Map<string, Set<string>>();
@@ -883,6 +975,7 @@ export function buildPracticeImpactRows(args: {
       body: normalizeText(obs.body),
       sourceKind: normalizeText(obs.sourceKind) || "-",
       practiceCode,
+      photoAttachments: photoMap.get(String(obs.id ?? "")) ?? [],
     });
 
     map.set(practiceCode, row);
@@ -933,14 +1026,118 @@ export function buildPracticeImpactRows(args: {
   });
 }
 
+function buildPhotoAttachmentMap(
+  observations: ObservationRecordRow[],
+  photoAttachments: PhotoAttachmentRow[],
+): Map<string, PhotoAttachmentPreview[]> {
+  const sourceScheduleRecordIdToObservationId = new Map<string, string>();
+
+  for (const row of observations) {
+    const observationId = normalizeText(row.id);
+    const sourceScheduleRecordId = normalizeText(row.sourceScheduleRecordId);
+    if (observationId && sourceScheduleRecordId) {
+      sourceScheduleRecordIdToObservationId.set(
+        sourceScheduleRecordId,
+        observationId,
+      );
+    }
+  }
+
+  const map = new Map<string, PhotoAttachmentPreview[]>();
+
+  for (const photo of filterActivePhotoAttachments(photoAttachments)) {
+    const preview = buildPhotoPreview(photo);
+    if (!preview.storagePath) continue;
+
+    const directObservationId = normalizeText(photo.observationRecordId);
+    const sourceScheduleRecordId = normalizeText(photo.sourceScheduleRecordId);
+    const observationId =
+      directObservationId ||
+      sourceScheduleRecordIdToObservationId.get(sourceScheduleRecordId) ||
+      "";
+
+    if (!observationId) continue;
+
+    const current = map.get(observationId) ?? [];
+    current.push(preview);
+    map.set(observationId, current);
+  }
+
+  for (const rows of map.values()) {
+    rows.sort((a, b) => b.uploadedAt.localeCompare(a.uploadedAt));
+  }
+
+  return map;
+}
+
+function buildPhotoOnlyEvidenceRows(args: {
+  observations: ObservationRecordRow[];
+  photoAttachments: PhotoAttachmentRow[];
+  childName?: string;
+}): EvidenceRow[] {
+  const { observations, photoAttachments, childName } = args;
+  const sourceScheduleRecordIds = new Set(
+    observations
+      .map((row) => normalizeText(row.sourceScheduleRecordId))
+      .filter(Boolean),
+  );
+  const observationIds = new Set(
+    observations.map((row) => normalizeText(row.id)).filter(Boolean),
+  );
+
+  return filterActivePhotoAttachments(photoAttachments)
+    .filter((photo) => {
+      if (childName && !photoMatchesChild(photo, childName)) return false;
+
+      const observationRecordId = normalizeText(photo.observationRecordId);
+      if (observationRecordId && observationIds.has(observationRecordId)) {
+        return false;
+      }
+
+      const sourceScheduleRecordId = normalizeText(
+        photo.sourceScheduleRecordId,
+      );
+      if (
+        sourceScheduleRecordId &&
+        sourceScheduleRecordIds.has(sourceScheduleRecordId)
+      ) {
+        return false;
+      }
+
+      return true;
+    })
+    .map((photo) => {
+      const preview = buildPhotoPreview(photo);
+      const names = photoChildNames(photo);
+      return {
+        id: `photo:${String(photo.id ?? "")}`,
+        recordedAt: normalizeText(photo.uploadedAt),
+        childName:
+          normalizeText(photo.childName) ||
+          (names.length > 0 ? names.join("、") : "(クラス全体)"),
+        title:
+          normalizeText(photo.caption) ||
+          normalizeText(photo.fileName) ||
+          "写真記録",
+        body: normalizeText(photo.caption),
+        sourceKind: "PHOTO",
+        practiceCode: "-",
+        photoAttachments: preview.storagePath ? [preview] : [],
+      } satisfies EvidenceRow;
+    });
+}
+
 function buildEvidenceRows(
   observations: ObservationRecordRow[],
   abilityLinks: ObservationAbilityLinkRow[],
+  photoAttachments: PhotoAttachmentRow[] = [],
+  childName?: string,
 ): EvidenceRow[] {
   const structuredObservationAbilityNameMap =
     buildStructuredObservationAbilityNameMap(abilityLinks);
+  const photoMap = buildPhotoAttachmentMap(observations, photoAttachments);
 
-  return [...observations]
+  const observationEvidenceRows = [...observations]
     .sort((a, b) =>
       String(b.recordedAt ?? "").localeCompare(String(a.recordedAt ?? "")),
     )
@@ -952,7 +1149,18 @@ function buildEvidenceRows(
       body: normalizeText(row.body),
       sourceKind: normalizeText(row.sourceKind) || "-",
       practiceCode: normalizeText(row.practiceCode) || "-",
+      photoAttachments: photoMap.get(String(row.id ?? "")) ?? [],
     }));
+
+  const photoOnlyEvidenceRows = buildPhotoOnlyEvidenceRows({
+    observations,
+    photoAttachments,
+    childName,
+  });
+
+  return [...observationEvidenceRows, ...photoOnlyEvidenceRows].sort((a, b) =>
+    b.recordedAt.localeCompare(a.recordedAt),
+  );
 }
 
 function buildAbilityCodeMap(rows: AbilityCodeRow[]) {
@@ -1232,33 +1440,45 @@ export async function loadObservationBundle(
   fromDate: string,
   toDate: string,
 ): Promise<ObservationBundle> {
-  const [abilityCodeRows, observationRows, rawAbilityLinks] = await Promise.all(
-    [
-      loadAbilityCodeRows(client),
-      listAll(client.models.ObservationRecord, {
-        filter: {
-          and: [
-            buildEqFilter("classroomId", classroomId),
-            ...buildDateRangeFilters(fromDate, toDate),
-          ],
-        },
-      }),
-      listAll(client.models.ObservationAbilityLink, {
-        filter: {
-          and: [
-            buildEqFilter("classroomId", classroomId),
-            ...buildDateRangeFilters(fromDate, toDate),
-          ],
-        },
-      }),
-    ],
-  );
+  const [
+    abilityCodeRows,
+    observationRows,
+    rawAbilityLinks,
+    rawPhotoAttachments,
+  ] = await Promise.all([
+    loadAbilityCodeRows(client),
+    listAll(client.models.ObservationRecord, {
+      filter: {
+        and: [
+          buildEqFilter("classroomId", classroomId),
+          ...buildDateRangeFilters(fromDate, toDate),
+        ],
+      },
+    }),
+    listAll(client.models.ObservationAbilityLink, {
+      filter: {
+        and: [
+          buildEqFilter("classroomId", classroomId),
+          ...buildDateRangeFilters(fromDate, toDate),
+        ],
+      },
+    }),
+    listAll<PhotoAttachmentRow>(client.models.PhotoAttachment, {
+      filter: {
+        and: [
+          buildEqFilter("classroomId", classroomId),
+          ...buildDateRangeFilters(fromDate, toDate),
+        ],
+      },
+    }).catch(() => [] as PhotoAttachmentRow[]),
+  ]);
 
   const observations = excludeTranscriptObservations(observationRows);
   const abilityLinks = filterAbilityLinksByObservationIds(
     filterActiveAbilityLinks(rawAbilityLinks),
     observations,
   );
+  const photoAttachments = filterActivePhotoAttachments(rawPhotoAttachments);
 
   const abilityAgg = buildAbilityAggregates({
     abilityLinks,
@@ -1272,8 +1492,17 @@ export async function loadObservationBundle(
     abilityRows: abilityAgg.abilityRows,
     abilityGroups: abilityAgg.abilityGroups,
     childRows: buildChildRows(observations),
-    evidenceRows: buildEvidenceRows(observations, abilityLinks),
-    practiceRows: buildPracticeImpactRows({ observations, abilityLinks }),
+    evidenceRows: buildEvidenceRows(
+      observations,
+      abilityLinks,
+      photoAttachments,
+    ),
+    photoAttachments,
+    practiceRows: buildPracticeImpactRows({
+      observations,
+      abilityLinks,
+      photoAttachments,
+    }),
     abilityDisplayMap: abilityAgg.abilityDisplayMap,
     abilityCodeRows,
   };
@@ -1303,6 +1532,22 @@ export function filterBundleByChild(
     );
   });
 
+  const photoAttachments = bundle.photoAttachments.filter((photo) => {
+    const sourceScheduleRecordId = normalizeText(photo.sourceScheduleRecordId);
+    const observationRecordId = normalizeText(photo.observationRecordId);
+
+    return (
+      photoMatchesChild(photo, normalizedChildName) ||
+      (!!observationRecordId && observationIds.has(observationRecordId)) ||
+      (!!sourceScheduleRecordId &&
+        observations.some(
+          (row) =>
+            normalizeText(row.sourceScheduleRecordId) ===
+            sourceScheduleRecordId,
+        ))
+    );
+  });
+
   const abilityAgg = buildAbilityAggregates({
     abilityLinks,
     abilityCodeRows: bundle.abilityCodeRows,
@@ -1315,8 +1560,17 @@ export function filterBundleByChild(
     abilityRows: abilityAgg.abilityRows,
     abilityGroups: abilityAgg.abilityGroups,
     childRows: buildChildRows(observations),
-    evidenceRows: buildEvidenceRows(observations, abilityLinks),
-    practiceRows: buildPracticeImpactRows({ observations, abilityLinks }),
+    evidenceRows: buildEvidenceRows(
+      observations,
+      abilityLinks,
+      photoAttachments,
+    ),
+    photoAttachments,
+    practiceRows: buildPracticeImpactRows({
+      observations,
+      abilityLinks,
+      photoAttachments,
+    }),
     abilityDisplayMap: abilityAgg.abilityDisplayMap,
     abilityCodeRows: bundle.abilityCodeRows,
   };
@@ -2599,6 +2853,10 @@ function buildEvidenceMarkdownLines(rows: EvidenceRow[], limit: number) {
       (row) =>
         `- ${formatDateTime(row.recordedAt)} / ${row.childName} / ${row.title} / ${
           truncateText(row.body, 120) || "(本文なし)"
+        }${
+          row.photoAttachments.length > 0
+            ? ` / 写真${row.photoAttachments.length}枚`
+            : ""
         }`,
     );
 }

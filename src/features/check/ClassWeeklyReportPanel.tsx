@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { generateClient } from "aws-amplify/data";
+import { getUrl } from "aws-amplify/storage";
 import type { Schema } from "../../../amplify/data/resource";
 import PracticeImpactSection from "./PracticeImpactSection";
 import {
@@ -574,40 +575,80 @@ export default function ClassWeeklyReportPanel(props: Props) {
               <div style={{ color: "#666" }}>データがありません。</div>
             ) : (
               <div style={{ display: "grid", gap: 10 }}>
-                {bundle.observation.evidenceRows.slice(0, 12).map((row) => (
-                  <div
-                    key={row.id}
-                    style={{
-                      padding: 12,
-                      borderRadius: 8,
-                      background: "#f8fafc",
-                      border: "1px solid #e5e7eb",
-                    }}
-                  >
+                {bundle.observation.evidenceRows.slice(0, 12).map((row) => {
+                  const photoCount = row.photoAttachments?.length ?? 0;
+                  const hasPhotos = photoCount > 0;
+
+                  return (
                     <div
+                      key={row.id}
                       style={{
-                        display: "flex",
-                        gap: 8,
-                        flexWrap: "wrap",
-                        color: "#555",
-                        fontSize: 12,
+                        padding: 12,
+                        borderRadius: 8,
+                        background: hasPhotos ? "#fffdf7" : "#f8fafc",
+                        border: hasPhotos
+                          ? "1px solid #f59e0b"
+                          : "1px solid #e5e7eb",
+                        boxShadow: hasPhotos
+                          ? "0 1px 3px rgba(0,0,0,0.08)"
+                          : undefined,
                       }}
                     >
-                      <span>{formatDateTime(row.recordedAt)}</span>
-                      <span>/ {row.childName}</span>
-                      <span>/ {row.sourceKind}</span>
-                      <span>/ {row.practiceCode}</span>
-                    </div>
+                      <div
+                        style={{
+                          display: "flex",
+                          gap: 8,
+                          flexWrap: "wrap",
+                          color: "#555",
+                          fontSize: 12,
+                        }}
+                      >
+                        <span>{formatDateTime(row.recordedAt)}</span>
+                        <span>/ {row.childName}</span>
+                        <span>/ {row.sourceKind}</span>
+                        <span>/ {row.practiceCode}</span>
+                      </div>
 
-                    <div style={{ marginTop: 6, fontWeight: 700 }}>
-                      {row.title}
-                    </div>
+                      <div
+                        style={{
+                          marginTop: 6,
+                          fontWeight: 700,
+                          display: "flex",
+                          gap: 8,
+                          alignItems: "center",
+                          flexWrap: "wrap",
+                        }}
+                      >
+                        <span>{row.title}</span>
 
-                    <div style={{ marginTop: 6, color: "#444" }}>
-                      {truncateText(row.body, 180) || "(本文なし)"}
+                        {hasPhotos ? (
+                          <span
+                            style={{
+                              display: "inline-flex",
+                              alignItems: "center",
+                              gap: 4,
+                              padding: "2px 8px",
+                              borderRadius: 999,
+                              background: "#fef3c7",
+                              border: "1px solid #f59e0b",
+                              color: "#92400e",
+                              fontSize: 12,
+                              fontWeight: 700,
+                            }}
+                          >
+                            📷 写真{photoCount}枚
+                          </span>
+                        ) : null}
+                      </div>
+
+                      <div style={{ marginTop: 6, color: "#444" }}>
+                        {truncateText(row.body, 180) || "(本文なし)"}
+                      </div>
+
+                      <EvidencePhotoStrip rows={row.photoAttachments} />
                     </div>
-                  </div>
-                ))}
+                  );
+                })}
               </div>
             )}
           </div>
@@ -1016,3 +1057,130 @@ const tdStyle: React.CSSProperties = {
   padding: 8,
   verticalAlign: "top",
 };
+
+type EvidencePhotoDisplayRow = {
+  id: string;
+  storagePath: string;
+  thumbnailPath?: string;
+  caption?: string;
+  fileName?: string;
+};
+
+function EvidencePhotoStrip(props: { rows?: EvidencePhotoDisplayRow[] }) {
+  const { rows = [] } = props;
+
+  if (rows.length === 0) return null;
+
+  return (
+    <div
+      style={{
+        marginTop: 10,
+        padding: 10,
+        borderRadius: 8,
+        background: "#fff7ed",
+        border: "1px solid #fed7aa",
+      }}
+    >
+      <div
+        style={{
+          fontSize: 12,
+          fontWeight: 700,
+          color: "#9a3412",
+          marginBottom: 8,
+        }}
+      >
+        📷 写真エビデンス
+      </div>
+
+      <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
+        {rows.map((row) => (
+          <EvidencePhotoLink key={row.id} row={row} />
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function EvidencePhotoLink(props: { row: EvidencePhotoDisplayRow }) {
+  const { row } = props;
+  const [url, setUrl] = useState("");
+
+  useEffect(() => {
+    let cancelled = false;
+
+    async function loadUrl() {
+      const path = row.thumbnailPath || row.storagePath;
+      if (!path) return;
+
+      try {
+        const res = await getUrl({
+          path,
+          options: { expiresIn: 60 * 60 },
+        });
+
+        if (!cancelled) {
+          setUrl(String(res.url));
+        }
+      } catch (e) {
+        console.warn("写真URLの取得に失敗しました。", e);
+      }
+    }
+
+    loadUrl();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [row.storagePath, row.thumbnailPath]);
+
+  const label = row.caption || row.fileName || "写真を見る";
+
+  if (!url) {
+    return (
+      <span style={{ fontSize: 12, color: "#666" }}>写真URLを取得中...</span>
+    );
+  }
+
+  return (
+    <a
+      href={url}
+      target="_blank"
+      rel="noreferrer"
+      title={label}
+      style={{
+        display: "grid",
+        gap: 6,
+        width: 96,
+        color: "#333",
+        textDecoration: "none",
+      }}
+    >
+      <img
+        src={url}
+        alt={label}
+        loading="lazy"
+        style={{
+          width: 96,
+          height: 72,
+          objectFit: "cover",
+          borderRadius: 8,
+          border: "1px solid #d0d7de",
+          background: "#fff",
+          display: "block",
+        }}
+      />
+
+      <span
+        style={{
+          fontSize: 12,
+          lineHeight: 1.4,
+          color: "#0969da",
+          textDecoration: "underline",
+          wordBreak: "break-word",
+        }}
+      >
+        写真を見る
+      </span>
+    </a>
+  );
+}
