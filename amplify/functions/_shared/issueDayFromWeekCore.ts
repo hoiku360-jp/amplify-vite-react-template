@@ -93,6 +93,95 @@ function isNonEmptyString<T extends string>(
   return typeof value === "string" && value.trim().length > 0;
 }
 
+function uniqueNonEmptyStrings(
+  values: Array<string | null | undefined>,
+): string[] {
+  return [
+    ...new Set(values.map((value) => value?.trim() ?? "").filter(Boolean)),
+  ];
+}
+
+function stableHash(value: string): number {
+  let hash = 0;
+
+  for (let i = 0; i < value.length; i += 1) {
+    hash = (hash * 31 + value.charCodeAt(i)) % 2147483647;
+  }
+
+  return hash;
+}
+
+function pickStableRandom(
+  candidates: string[],
+  seedParts: Array<string | number | null | undefined>,
+): string | null {
+  if (candidates.length === 0) return null;
+  if (candidates.length === 1) return candidates[0];
+
+  const seed = seedParts.map((part) => String(part ?? "")).join("::");
+  const index = stableHash(seed) % candidates.length;
+  return candidates[index] ?? null;
+}
+
+function sortHintRows(rows: AbilityObservationHintRow[]) {
+  return [...rows].sort((a, b) => {
+    const aKey = [a.episode1 ?? "", a.episode2 ?? "", a.episode3 ?? ""].join(
+      "||",
+    );
+    const bKey = [b.episode1 ?? "", b.episode2 ?? "", b.episode3 ?? ""].join(
+      "||",
+    );
+    return aKey.localeCompare(bKey, "ja");
+  });
+}
+
+function buildRandomizedEpisodes(params: {
+  hintRows: AbilityObservationHintRow[];
+  practiceCode: string;
+  abilityCode: string;
+  targetDate: string;
+  sourceWeekItemId?: string | null;
+  sortOrder?: number | null;
+}) {
+  const sortedRows = sortHintRows(params.hintRows);
+  const episode1Candidates = uniqueNonEmptyStrings(
+    sortedRows.map((row) => row.episode1),
+  );
+  const episode2Candidates = uniqueNonEmptyStrings(
+    sortedRows.map((row) => row.episode2),
+  );
+  const episode3Candidates = uniqueNonEmptyStrings(
+    sortedRows.map((row) => row.episode3),
+  );
+
+  return [
+    pickStableRandom(episode1Candidates, [
+      params.targetDate,
+      params.sourceWeekItemId,
+      params.sortOrder,
+      params.practiceCode,
+      params.abilityCode,
+      "episode1",
+    ]),
+    pickStableRandom(episode2Candidates, [
+      params.targetDate,
+      params.sourceWeekItemId,
+      params.sortOrder,
+      params.practiceCode,
+      params.abilityCode,
+      "episode2",
+    ]),
+    pickStableRandom(episode3Candidates, [
+      params.targetDate,
+      params.sourceWeekItemId,
+      params.sortOrder,
+      params.practiceCode,
+      params.abilityCode,
+      "episode3",
+    ]),
+  ].filter(isNonEmptyString);
+}
+
 async function listAll<TRow>(
   listFn: (args?: ListOptions) => Promise<ListResponse<TRow>>,
   args: ListOptions,
@@ -133,8 +222,14 @@ async function loadPracticeTitleSnapshot(
 
 async function buildObservationSummaryJson(
   client: IssueDayClient,
-  practiceCode?: string | null,
+  params: {
+    practiceCode?: string | null;
+    targetDate: string;
+    sourceWeekItemId?: string | null;
+    sortOrder?: number | null;
+  },
 ): Promise<string | null> {
+  const practiceCode = params.practiceCode;
   if (!practiceCode) return null;
 
   const linkRows = await listAll(client.models.AbilityPracticeLink.list, {
@@ -157,14 +252,17 @@ async function buildObservationSummaryJson(
         },
       });
 
-      const hintRes = await client.models.AbilityObservationHint.list({
-        filter: {
-          abilityCode: { eq: abilityCode },
+      const hintRows = await listAll(
+        client.models.AbilityObservationHint.list,
+        {
+          filter: {
+            abilityCode: { eq: abilityCode },
+          },
         },
-      });
+      );
 
-      const code = codeRes.data?.[0];
-      const hint = hintRes.data?.[0];
+      const activeHintRows = hintRows.filter((hint) => hint.isActive !== false);
+      const hint = sortHintRows(activeHintRows)[0];
 
       const score = linkRows
         .filter((x) => x.abilityCode === abilityCode)
@@ -172,12 +270,18 @@ async function buildObservationSummaryJson(
 
       return {
         abilityCode,
-        abilityName: code?.name ?? hint?.abilityName ?? abilityCode,
+        abilityName:
+          codeRes.data?.[0]?.name ?? hint?.abilityName ?? abilityCode,
         startingAge: hint?.startingAge ?? 0,
         score,
-        episodes: [hint?.episode1, hint?.episode2, hint?.episode3].filter(
-          isNonEmptyString,
-        ),
+        episodes: buildRandomizedEpisodes({
+          hintRows: activeHintRows,
+          practiceCode,
+          abilityCode,
+          targetDate: params.targetDate,
+          sourceWeekItemId: params.sourceWeekItemId,
+          sortOrder: params.sortOrder,
+        }),
       };
     }),
   );
@@ -349,10 +453,12 @@ export async function issueDayFromWeekCore(
       item.practiceTitleSnapshot ??
       (await loadPracticeTitleSnapshot(client, item.practiceCode));
 
-    const observationSummaryJson = await buildObservationSummaryJson(
-      client,
-      item.practiceCode,
-    );
+    const observationSummaryJson = await buildObservationSummaryJson(client, {
+      practiceCode: item.practiceCode,
+      targetDate: args.targetDate,
+      sourceWeekItemId: item.id,
+      sortOrder: item.sortOrder,
+    });
 
     const dayItemCreateRes = await client.models.ScheduleDayItem.create({
       tenantId: week.tenantId,

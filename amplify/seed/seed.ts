@@ -79,6 +79,12 @@ const DEFAULT_SEED_USERNAME = "noreply-test01@hoiku360.jp";
 const SHOULD_WIPE =
   String(process.env.SEED_WIPE_CORE_MASTER ?? "").toLowerCase() === "true";
 
+// AbilityObservationHint だけをCSVの内容に入れ直したいときに使う。
+// 同一 abilityCode の複数ヒント行を整理して入れ直す場合に指定する。
+const SHOULD_REPLACE_OBSERVATION_HINTS =
+  String(process.env.SEED_REPLACE_OBSERVATION_HINTS ?? "").toLowerCase() ===
+  "true";
+
 type AbilityRow = {
   code: string;
   code_display: string;
@@ -100,6 +106,17 @@ type AbilityObservationHintRow = {
   episode1?: string;
   episode2?: string;
   episode3?: string;
+  isActive?: string | boolean;
+};
+
+type AbilityObservationHintPayload = {
+  abilityCode: string;
+  abilityName: string;
+  startingAge: number;
+  episode1: string | null;
+  episode2: string | null;
+  episode3: string | null;
+  isActive: boolean;
 };
 
 type PlanPhraseRow = {
@@ -533,6 +550,58 @@ async function findFirstByField<TItem extends SeedItem>(
   }
 }
 
+function parseActiveFlag(value: unknown): boolean {
+  const raw = String(value ?? "")
+    .trim()
+    .toLowerCase();
+  if (!raw) return true;
+
+  return !(
+    raw === "false" ||
+    raw === "0" ||
+    raw === "inactive" ||
+    raw === "archived"
+  );
+}
+
+function sameNullableString(left: unknown, right: unknown): boolean {
+  return asStr(left) === asStr(right);
+}
+
+async function findAbilityObservationHintByNaturalKey(
+  model: SeedModel,
+  payload: AbilityObservationHintPayload,
+): Promise<SeedItem | null> {
+  let nextToken: string | null | undefined = undefined;
+
+  for (;;) {
+    const res = await model.list({
+      authMode: "userPool",
+      filter: { abilityCode: { eq: payload.abilityCode } },
+      limit: 1000,
+      nextToken,
+    });
+
+    if (res.errors?.length) throw res.errors;
+
+    const found = (res.data ?? []).find((item) => {
+      const startingAge = toInt(item.startingAge) ?? 0;
+      return (
+        asStr(item.abilityCode) === payload.abilityCode &&
+        startingAge === payload.startingAge &&
+        sameNullableString(item.episode1, payload.episode1) &&
+        sameNullableString(item.episode2, payload.episode2) &&
+        sameNullableString(item.episode3, payload.episode3)
+      );
+    });
+
+    if (found) return found;
+
+    nextToken = res.nextToken;
+    if (!nextToken) return null;
+  }
+}
+
 async function upsertAbilityCode(
   model: SeedModel,
   row: AbilityRow,
@@ -582,17 +651,17 @@ async function upsertAbilityObservationHint(
   const abilityCode = asStr(row.abilityCode);
   if (!abilityCode) return false;
 
-  const payload = {
+  const payload: AbilityObservationHintPayload = {
     abilityCode,
     abilityName: asStr(row.abilityName),
     startingAge: toInt(row.startingAge) ?? 0,
     episode1: asNullable(row.episode1),
     episode2: asNullable(row.episode2),
     episode3: asNullable(row.episode3),
-    isActive: true,
+    isActive: parseActiveFlag(row.isActive),
   };
 
-  const existing = await findFirstByField(model, "abilityCode", abilityCode);
+  const existing = await findAbilityObservationHintByNaturalKey(model, payload);
   const existingId = asStr(existing?.id);
 
   if (existingId) {
@@ -825,6 +894,10 @@ async function seedRows<T extends object>(args: {
     console.log("SEED outputs:", fileURLToPath(outputsUrl));
     console.log("SEED user:", `${username.slice(0, 4)}***`);
     console.log("SEED wipe:", SHOULD_WIPE);
+    console.log(
+      "SEED replaceObservationHints:",
+      SHOULD_REPLACE_OBSERVATION_HINTS,
+    );
 
     await signInWithTotp(username, password);
     signedIn = true;
@@ -863,6 +936,13 @@ async function seedRows<T extends object>(args: {
       await wipeModelById(models.AbilityCode, "AbilityCode");
     } else {
       console.log("core master wipe skipped");
+
+      if (SHOULD_REPLACE_OBSERVATION_HINTS) {
+        await wipeModelById(
+          models.AbilityObservationHint,
+          "AbilityObservationHint",
+        );
+      }
     }
 
     // 1) AbilityCode投入
