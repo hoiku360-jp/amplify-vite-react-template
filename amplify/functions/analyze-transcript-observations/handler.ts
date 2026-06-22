@@ -225,6 +225,7 @@ async function invokeClaude(
     "observations の各要素には childName, observedText, abilityCode, abilityName, matchedEpisode, confidence を含めてください。",
     "childName は transcript または childNames に含まれる名前だけ使ってください。",
     "abilityCode / abilityName は observationCandidates の中から最も近いものを1つ選んでください。",
+    "childNames に含まれる子どもについて transcript に個別の様子が書かれている場合は、Ability への紐づけ confidence が 0 であっても observations に必ず含めてください。",
     "transcript に書かれていないことを補わないでください。",
     "confidence は 0 から 1 の数値にしてください。",
   ].join("\n");
