@@ -26,6 +26,7 @@ type GetParentNoticeReplyContextResult = {
 
 type GetParentChildWeeklyLetterArgs = {
   replyToken: string;
+  demoCode?: string;
 };
 
 type GetParentChildWeeklyLetterResult = {
@@ -41,6 +42,7 @@ type GetParentChildWeeklyLetterResult = {
 
 type SubmitParentNoticeReplyArgs = {
   replyToken: string;
+  demoCode?: string;
 
   childKey?: string;
   childName?: string;
@@ -170,6 +172,7 @@ export default function ParentReplyForm() {
   const [childName, setChildName] = useState("");
   const [scopeType, setScopeType] = useState("");
   const [targetDate, setTargetDate] = useState("");
+  const [demoCode, setDemoCode] = useState("");
 
   const [okSigned, setOkSigned] = useState(false);
 
@@ -193,6 +196,15 @@ export default function ParentReplyForm() {
 
   const isChildScoped = s(scopeType).toUpperCase() === "CHILD";
   const hasWeeklyLetter = s(weeklyLetter?.status).toUpperCase() === "READY";
+
+  function validateDemoCodeForUi(setter: (message: string) => void) {
+    if (!s(demoCode)) {
+      setter("園から案内された4桁の確認コードを入力してください。");
+      return false;
+    }
+
+    return true;
+  }
 
   async function loadReplyContext() {
     const runner = client.mutations?.getParentNoticeReplyContext;
@@ -262,6 +274,10 @@ export default function ParentReplyForm() {
       return;
     }
 
+    if (!validateDemoCodeForUi(setWeeklyLetterMessage)) {
+      return;
+    }
+
     setLoadingWeeklyLetter(true);
     setWeeklyLetterMessage("");
 
@@ -269,7 +285,7 @@ export default function ParentReplyForm() {
       const data = await runOperation<
         GetParentChildWeeklyLetterArgs,
         GetParentChildWeeklyLetterResult
-      >(runner, { replyToken });
+      >(runner, { replyToken, demoCode: s(demoCode) });
 
       setWeeklyLetter(data);
       setWeeklyLetterMessage(
@@ -310,6 +326,10 @@ export default function ParentReplyForm() {
       return;
     }
 
+    if (!validateDemoCodeForUi(setMessage)) {
+      return;
+    }
+
     if (!s(childName)) {
       setMessage("お子さまの名前を入力してください。");
       return;
@@ -326,6 +346,7 @@ export default function ParentReplyForm() {
     try {
       const args: SubmitParentNoticeReplyArgs = {
         replyToken,
+        demoCode: s(demoCode),
 
         childKey: s(childKey),
         childName: s(childName),
@@ -438,6 +459,42 @@ export default function ParentReplyForm() {
           style={{
             padding: 14,
             border: "1px solid #e5e7eb",
+            background: "#f8fafc",
+            borderRadius: 10,
+            display: "grid",
+            gap: 8,
+          }}
+        >
+          <label>
+            <div style={{ fontWeight: 800, marginBottom: 4 }}>確認コード</div>
+            <input
+              value={demoCode}
+              onChange={(e) => setDemoCode(e.target.value)}
+              placeholder="園から案内された4桁のコード"
+              inputMode="numeric"
+              autoComplete="one-time-code"
+              maxLength={12}
+              disabled={submitting}
+              style={{
+                width: "100%",
+                boxSizing: "border-box",
+                padding: 10,
+                border: "1px solid #cbd5e1",
+                borderRadius: 8,
+                fontSize: 16,
+              }}
+            />
+          </label>
+          <div style={{ color: "#666", fontSize: 12, lineHeight: 1.6 }}>
+            デモ用確認コードは 1234
+            です。本番運用では園から案内された確認コードを入力します。
+          </div>
+        </div>
+
+        <div
+          style={{
+            padding: 14,
+            border: "1px solid #e5e7eb",
             background: "#fffdf5",
             borderRadius: 10,
             display: "grid",
@@ -458,7 +515,8 @@ export default function ParentReplyForm() {
               loadingWeeklyLetter ||
               !replyToken ||
               loadingContext ||
-              !contextLoaded
+              !contextLoaded ||
+              !s(demoCode)
             }
             style={{
               justifySelf: "start",
@@ -680,7 +738,9 @@ export default function ParentReplyForm() {
 
             <button
               onClick={submitReply}
-              disabled={submitting || !replyToken || loadingContext}
+              disabled={
+                submitting || !replyToken || loadingContext || !s(demoCode)
+              }
               style={{
                 padding: "12px 16px",
                 borderRadius: 8,

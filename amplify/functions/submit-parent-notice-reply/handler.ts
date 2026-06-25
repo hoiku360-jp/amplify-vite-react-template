@@ -7,8 +7,13 @@ import { createHash } from "node:crypto";
 
 type DataClientEnv = Parameters<typeof getAmplifyDataClientConfig>[0];
 
+const DEMO_PARENT_NOTICE_CODE = process.env.PARENT_NOTICE_DEMO_CODE || "1234";
+const DEMO_CODE_ERROR_MESSAGE =
+  "確認コードが違います。園から案内されたコードを確認してください。";
+
 type SubmitParentNoticeReplyArgs = {
   replyToken?: string | null;
+  demoCode?: string | null;
 
   childKey?: string | null;
   childName?: string | null;
@@ -42,6 +47,12 @@ type ParentNoticeReplyTokenRow = Schema["ParentNoticeReplyToken"]["type"] & {
 
 function s(value: unknown): string {
   return String(value ?? "").trim();
+}
+
+function assertValidDemoCode(value?: string | null) {
+  if (s(value) !== DEMO_PARENT_NOTICE_CODE) {
+    throw new Error(DEMO_CODE_ERROR_MESSAGE);
+  }
 }
 
 function truncate(value: string, maxLength: number): string {
@@ -167,6 +178,8 @@ export const handler: Schema["submitParentNoticeReply"]["functionHandler"] =
         "この返信URLの有効期限が切れています。園へご確認ください。",
       );
     }
+
+    assertValidDemoCode(args.demoCode);
 
     const tenantId = s(tokenRow.tenantId);
     const owner = s(tokenRow.owner);

@@ -11776,6 +11776,12 @@
               "type": "String",
               "isRequired": true
             },
+            "demoCode": {
+              "name": "demoCode",
+              "isArray": false,
+              "type": "String",
+              "isRequired": false
+            },
             "childKey": {
               "name": "childKey",
               "isArray": false,
@@ -11855,6 +11861,12 @@
               "isArray": false,
               "type": "String",
               "isRequired": true
+            },
+            "demoCode": {
+              "name": "demoCode",
+              "isArray": false,
+              "type": "String",
+              "isRequired": false
             }
           }
         },

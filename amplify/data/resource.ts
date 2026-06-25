@@ -332,6 +332,7 @@ const schema = a
       .mutation()
       .arguments({
         replyToken: a.string().required(),
+        demoCode: a.string(),
 
         childKey: a.string(),
         childName: a.string(),
@@ -385,6 +386,7 @@ const schema = a
       .mutation()
       .arguments({
         replyToken: a.string().required(),
+        demoCode: a.string(),
       })
       .returns(a.ref("ParentChildWeeklyLetterResponse"))
       .authorization((allow) => [allow.publicApiKey(), allow.authenticated()])

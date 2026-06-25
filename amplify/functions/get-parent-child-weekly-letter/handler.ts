@@ -7,8 +7,13 @@ import { createHash } from "node:crypto";
 
 type DataClientEnv = Parameters<typeof getAmplifyDataClientConfig>[0];
 
+const DEMO_PARENT_NOTICE_CODE = process.env.PARENT_NOTICE_DEMO_CODE || "1234";
+const DEMO_CODE_ERROR_MESSAGE =
+  "確認コードが違います。園から案内されたコードを確認してください。";
+
 type GetParentChildWeeklyLetterArgs = {
   replyToken?: string | null;
+  demoCode?: string | null;
 };
 
 type ParentNoticeReplyTokenRow = Schema["ParentNoticeReplyToken"]["type"] & {
@@ -44,6 +49,10 @@ type ReportArtifactRow = Schema["ReportArtifact"]["type"] & {
 
 function s(value: unknown): string {
   return String(value ?? "").trim();
+}
+
+function isValidDemoCode(value?: string | null): boolean {
+  return s(value) === DEMO_PARENT_NOTICE_CODE;
 }
 
 function sha256Hex(value: string): string {
@@ -190,6 +199,19 @@ export const handler: Schema["getParentChildWeeklyLetter"]["functionHandler"] =
     const childKey = s(tokenRow.childKey);
     const childName = s(tokenRow.childName);
     const scopeType = s(tokenRow.scopeType).toUpperCase();
+
+    if (!isValidDemoCode(args.demoCode)) {
+      return {
+        childKey: childKey || null,
+        childName: childName || null,
+        title: null,
+        periodStart: null,
+        periodEnd: null,
+        markdownText: null,
+        status: "INVALID_DEMO_CODE",
+        message: DEMO_CODE_ERROR_MESSAGE,
+      };
+    }
 
     if (scopeType !== "CHILD") {
       return {
