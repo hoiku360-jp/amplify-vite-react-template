@@ -11131,6 +11131,67 @@
             }
           }
         },
+        "ParentChildWeeklyLetterResponse": {
+          "name": "ParentChildWeeklyLetterResponse",
+          "fields": {
+            "childKey": {
+              "name": "childKey",
+              "isArray": false,
+              "type": "String",
+              "isRequired": false,
+              "attributes": []
+            },
+            "childName": {
+              "name": "childName",
+              "isArray": false,
+              "type": "String",
+              "isRequired": false,
+              "attributes": []
+            },
+            "title": {
+              "name": "title",
+              "isArray": false,
+              "type": "String",
+              "isRequired": false,
+              "attributes": []
+            },
+            "periodStart": {
+              "name": "periodStart",
+              "isArray": false,
+              "type": "AWSDate",
+              "isRequired": false,
+              "attributes": []
+            },
+            "periodEnd": {
+              "name": "periodEnd",
+              "isArray": false,
+              "type": "AWSDate",
+              "isRequired": false,
+              "attributes": []
+            },
+            "markdownText": {
+              "name": "markdownText",
+              "isArray": false,
+              "type": "String",
+              "isRequired": false,
+              "attributes": []
+            },
+            "status": {
+              "name": "status",
+              "isArray": false,
+              "type": "String",
+              "isRequired": true,
+              "attributes": []
+            },
+            "message": {
+              "name": "message",
+              "isArray": false,
+              "type": "String",
+              "isRequired": false,
+              "attributes": []
+            }
+          }
+        },
         "ParentNoticeRecipientSendResult": {
           "name": "ParentNoticeRecipientSendResult",
           "fields": {
@@ -11770,6 +11831,22 @@
           "isArray": false,
           "type": {
             "nonModel": "GetParentNoticeReplyContextResponse"
+          },
+          "isRequired": false,
+          "arguments": {
+            "replyToken": {
+              "name": "replyToken",
+              "isArray": false,
+              "type": "String",
+              "isRequired": true
+            }
+          }
+        },
+        "getParentChildWeeklyLetter": {
+          "name": "getParentChildWeeklyLetter",
+          "isArray": false,
+          "type": {
+            "nonModel": "ParentChildWeeklyLetterResponse"
           },
           "isRequired": false,
           "arguments": {

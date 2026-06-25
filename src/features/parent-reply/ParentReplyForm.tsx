@@ -24,6 +24,21 @@ type GetParentNoticeReplyContextResult = {
   message?: string | null;
 };
 
+type GetParentChildWeeklyLetterArgs = {
+  replyToken: string;
+};
+
+type GetParentChildWeeklyLetterResult = {
+  childKey?: string | null;
+  childName?: string | null;
+  title?: string | null;
+  periodStart?: string | null;
+  periodEnd?: string | null;
+  markdownText?: string | null;
+  status?: string | null;
+  message?: string | null;
+};
+
 type SubmitParentNoticeReplyArgs = {
   replyToken: string;
 
@@ -60,6 +75,10 @@ type ParentReplyClient = {
     getParentNoticeReplyContext?: OperationRunner<
       GetParentNoticeReplyContextArgs,
       GetParentNoticeReplyContextResult
+    >;
+    getParentChildWeeklyLetter?: OperationRunner<
+      GetParentChildWeeklyLetterArgs,
+      GetParentChildWeeklyLetterResult
     >;
     submitParentNoticeReply?: OperationRunner<
       SubmitParentNoticeReplyArgs,
@@ -163,11 +182,17 @@ export default function ParentReplyForm() {
   const [contextLoaded, setContextLoaded] = useState(false);
   const [contextMessage, setContextMessage] = useState("");
 
+  const [loadingWeeklyLetter, setLoadingWeeklyLetter] = useState(false);
+  const [weeklyLetter, setWeeklyLetter] =
+    useState<GetParentChildWeeklyLetterResult | null>(null);
+  const [weeklyLetterMessage, setWeeklyLetterMessage] = useState("");
+
   const [submitting, setSubmitting] = useState(false);
   const [submitted, setSubmitted] = useState(false);
   const [message, setMessage] = useState("");
 
   const isChildScoped = s(scopeType).toUpperCase() === "CHILD";
+  const hasWeeklyLetter = s(weeklyLetter?.status).toUpperCase() === "READY";
 
   async function loadReplyContext() {
     const runner = client.mutations?.getParentNoticeReplyContext;
@@ -212,6 +237,54 @@ export default function ParentReplyForm() {
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [replyToken]);
+
+  async function loadWeeklyLetter() {
+    const runner = client.mutations?.getParentChildWeeklyLetter;
+
+    if (!runner) {
+      setWeeklyLetterMessage(
+        "getParentChildWeeklyLetter mutation が見つかりません。resource.ts と sandbox を確認してください。",
+      );
+      return;
+    }
+
+    if (!replyToken) {
+      setWeeklyLetterMessage(
+        "返信URLが正しくありません。園から受け取ったURLを確認してください。",
+      );
+      return;
+    }
+
+    if (!contextLoaded) {
+      setWeeklyLetterMessage(
+        "返信URLの確認が完了していません。少し待ってから再度お試しください。",
+      );
+      return;
+    }
+
+    setLoadingWeeklyLetter(true);
+    setWeeklyLetterMessage("");
+
+    try {
+      const data = await runOperation<
+        GetParentChildWeeklyLetterArgs,
+        GetParentChildWeeklyLetterResult
+      >(runner, { replyToken });
+
+      setWeeklyLetter(data);
+      setWeeklyLetterMessage(
+        data?.message || "週末こどもだよりを確認しました。",
+      );
+    } catch (e) {
+      console.error(e);
+      setWeeklyLetter(null);
+      setWeeklyLetterMessage(
+        `週末こどもだより読込エラー: ${e instanceof Error ? e.message : String(e)}`,
+      );
+    } finally {
+      setLoadingWeeklyLetter(false);
+    }
+  }
 
   async function submitReply() {
     const runner = client.mutations?.submitParentNoticeReply;
@@ -360,6 +433,97 @@ export default function ParentReplyForm() {
             {message}
           </pre>
         ) : null}
+
+        <div
+          style={{
+            padding: 14,
+            border: "1px solid #e5e7eb",
+            background: "#fffdf5",
+            borderRadius: 10,
+            display: "grid",
+            gap: 10,
+          }}
+        >
+          <div>
+            <div style={{ fontWeight: 800 }}>週末こどもだより</div>
+            <div style={{ marginTop: 4, color: "#666", fontSize: 13 }}>
+              子ども別返信URLから、お子さまの週末こどもだよりだけを閲覧できます。
+            </div>
+          </div>
+
+          <button
+            type="button"
+            onClick={loadWeeklyLetter}
+            disabled={
+              loadingWeeklyLetter ||
+              !replyToken ||
+              loadingContext ||
+              !contextLoaded
+            }
+            style={{
+              justifySelf: "start",
+              padding: "10px 14px",
+              borderRadius: 8,
+              border: "1px solid #92400e",
+              background: loadingWeeklyLetter ? "#fde68a" : "#f59e0b",
+              color: "#111827",
+              fontWeight: 700,
+            }}
+          >
+            {loadingWeeklyLetter ? "読み込み中..." : "週末こどもだよりを見る"}
+          </button>
+
+          {weeklyLetterMessage ? (
+            <div
+              style={{
+                whiteSpace: "pre-wrap",
+                color: hasWeeklyLetter ? "#166534" : "#92400e",
+                fontSize: 13,
+              }}
+            >
+              {weeklyLetterMessage}
+            </div>
+          ) : null}
+
+          {hasWeeklyLetter ? (
+            <div
+              style={{
+                border: "1px solid #fed7aa",
+                borderRadius: 10,
+                background: "#fff",
+                padding: 14,
+                display: "grid",
+                gap: 10,
+              }}
+            >
+              <div>
+                <div style={{ fontWeight: 800, fontSize: 16 }}>
+                  {weeklyLetter?.title ||
+                    `${childName || "お子さま"}さん 週末だより`}
+                </div>
+                <div style={{ marginTop: 4, color: "#666", fontSize: 13 }}>
+                  期間: {formatDate(weeklyLetter?.periodStart)} 〜{" "}
+                  {formatDate(weeklyLetter?.periodEnd)}
+                </div>
+              </div>
+
+              <pre
+                style={{
+                  margin: 0,
+                  whiteSpace: "pre-wrap",
+                  wordBreak: "break-word",
+                  lineHeight: 1.75,
+                  fontFamily:
+                    'system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif',
+                  fontSize: 14,
+                  color: "#111827",
+                }}
+              >
+                {weeklyLetter?.markdownText || "本文がありません。"}
+              </pre>
+            </div>
+          ) : null}
+        </div>
 
         {submitted ? (
           <div

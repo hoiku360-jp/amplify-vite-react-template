@@ -111,6 +111,14 @@ export const sendParentNoticeEmailsFn = defineFunction({
   runtime: 22,
 });
 
+export const getParentChildWeeklyLetterFn = defineFunction({
+  name: "get-parent-child-weekly-letter",
+  entry: "../functions/get-parent-child-weekly-letter/handler.ts",
+  timeoutSeconds: 30,
+  memoryMB: 512,
+  runtime: 22,
+});
+
 export const syncScheduleDayObservationsFn = defineFunction({
   name: "sync-schedule-day-observations",
   entry: "../functions/sync-schedule-day-observations/handler.ts",
@@ -361,6 +369,26 @@ const schema = a
       .returns(a.ref("GetParentNoticeReplyContextResponse"))
       .authorization((allow) => [allow.publicApiKey(), allow.authenticated()])
       .handler(a.handler.function(getParentNoticeReplyContextFn)),
+
+    ParentChildWeeklyLetterResponse: a.customType({
+      childKey: a.string(),
+      childName: a.string(),
+      title: a.string(),
+      periodStart: a.date(),
+      periodEnd: a.date(),
+      markdownText: a.string(),
+      status: a.string().required(),
+      message: a.string(),
+    }),
+
+    getParentChildWeeklyLetter: a
+      .mutation()
+      .arguments({
+        replyToken: a.string().required(),
+      })
+      .returns(a.ref("ParentChildWeeklyLetterResponse"))
+      .authorization((allow) => [allow.publicApiKey(), allow.authenticated()])
+      .handler(a.handler.function(getParentChildWeeklyLetterFn)),
 
     ParentNoticeRecipientSendResult: a.customType({
       childKey: a.string(),
@@ -2397,6 +2425,7 @@ const schema = a
     allow.resource(generateParentNoticeFn),
     allow.resource(submitParentNoticeReplyFn),
     allow.resource(getParentNoticeReplyContextFn),
+    allow.resource(getParentChildWeeklyLetterFn),
     allow.resource(sendParentNoticeEmailsFn),
     allow.resource(syncScheduleDayObservationsFn),
     allow.resource(issueScheduleDayFromScheduleWeekFn),

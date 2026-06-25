@@ -19,6 +19,7 @@ import {
   generateParentNoticeFn,
   submitParentNoticeReplyFn,
   getParentNoticeReplyContextFn,
+  getParentChildWeeklyLetterFn,
   sendParentNoticeEmailsFn,
 } from "./data/resource";
 import { storage } from "./storage/resource";
@@ -32,6 +33,7 @@ const backend = defineBackend({
   generateParentNoticeFn,
   submitParentNoticeReplyFn,
   getParentNoticeReplyContextFn,
+  getParentChildWeeklyLetterFn,
   sendParentNoticeEmailsFn,
   storage,
   dailyDigest,

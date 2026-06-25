@@ -212,7 +212,7 @@ export const handler: Schema["sendParentNoticeEmails"]["functionHandler"] =
     const region = process.env.AWS_REGION || "ap-northeast-1";
     const ses = new SESv2Client({ region });
     const fromEmail =
-      s(process.env.PARENT_NOTICE_FROM_EMAIL) || "noreply@hoiku360.jp";
+      s(process.env.PARENT_NOTICE_FROM_EMAIL) || "demo@hoiku360.jp";
     const subject = buildSubject(day, classroomName);
     const now = new Date().toISOString();
 
