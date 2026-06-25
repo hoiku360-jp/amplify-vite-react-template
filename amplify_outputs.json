@@ -4155,6 +4155,55 @@
               "isRequired": true,
               "attributes": []
             },
+            "childKey": {
+              "name": "childKey",
+              "isArray": false,
+              "type": "String",
+              "isRequired": false,
+              "attributes": []
+            },
+            "childName": {
+              "name": "childName",
+              "isArray": false,
+              "type": "String",
+              "isRequired": false,
+              "attributes": []
+            },
+            "parentEmail": {
+              "name": "parentEmail",
+              "isArray": false,
+              "type": "String",
+              "isRequired": false,
+              "attributes": []
+            },
+            "deliveryStatus": {
+              "name": "deliveryStatus",
+              "isArray": false,
+              "type": "String",
+              "isRequired": false,
+              "attributes": []
+            },
+            "sentAt": {
+              "name": "sentAt",
+              "isArray": false,
+              "type": "AWSDateTime",
+              "isRequired": false,
+              "attributes": []
+            },
+            "emailMessageId": {
+              "name": "emailMessageId",
+              "isArray": false,
+              "type": "String",
+              "isRequired": false,
+              "attributes": []
+            },
+            "sendErrorMessage": {
+              "name": "sendErrorMessage",
+              "isArray": false,
+              "type": "String",
+              "isRequired": false,
+              "attributes": []
+            },
             "status": {
               "name": "status",
               "isArray": false,
@@ -4244,6 +4293,18 @@
                 "queryField": "listParentNoticeReplyTokensByTokenHash",
                 "fields": [
                   "tokenHash"
+                ]
+              }
+            },
+            {
+              "type": "key",
+              "properties": {
+                "name": "parentNoticeReplyTokensByChildKeyAndTargetDateAndIssuedAt",
+                "queryField": "listParentNoticeReplyTokensByChildDate",
+                "fields": [
+                  "childKey",
+                  "targetDate",
+                  "issuedAt"
                 ]
               }
             },
@@ -5948,6 +6009,313 @@
                   "abilityCode",
                   "targetDate",
                   "classroomId"
+                ]
+              }
+            },
+            {
+              "type": "auth",
+              "properties": {
+                "rules": [
+                  {
+                    "provider": "userPools",
+                    "ownerField": "owner",
+                    "allow": "owner",
+                    "identityClaim": "cognito:username",
+                    "operations": [
+                      "create",
+                      "update",
+                      "delete",
+                      "read"
+                    ]
+                  },
+                  {
+                    "allow": "private",
+                    "operations": [
+                      "read",
+                      "create",
+                      "update",
+                      "delete"
+                    ]
+                  }
+                ]
+              }
+            }
+          ],
+          "primaryKeyInfo": {
+            "isCustomPrimaryKey": false,
+            "primaryKeyFieldName": "id",
+            "sortKeyFieldNames": []
+          }
+        },
+        "PhotoAttachment": {
+          "name": "PhotoAttachment",
+          "fields": {
+            "id": {
+              "name": "id",
+              "isArray": false,
+              "type": "ID",
+              "isRequired": true,
+              "attributes": []
+            },
+            "tenantId": {
+              "name": "tenantId",
+              "isArray": false,
+              "type": "String",
+              "isRequired": true,
+              "attributes": []
+            },
+            "owner": {
+              "name": "owner",
+              "isArray": false,
+              "type": "String",
+              "isRequired": true,
+              "attributes": []
+            },
+            "classroomId": {
+              "name": "classroomId",
+              "isArray": false,
+              "type": "ID",
+              "isRequired": true,
+              "attributes": []
+            },
+            "ageTargetId": {
+              "name": "ageTargetId",
+              "isArray": false,
+              "type": "ID",
+              "isRequired": false,
+              "attributes": []
+            },
+            "scheduleDayId": {
+              "name": "scheduleDayId",
+              "isArray": false,
+              "type": "ID",
+              "isRequired": true,
+              "attributes": []
+            },
+            "scheduleDayItemId": {
+              "name": "scheduleDayItemId",
+              "isArray": false,
+              "type": "ID",
+              "isRequired": false,
+              "attributes": []
+            },
+            "targetDate": {
+              "name": "targetDate",
+              "isArray": false,
+              "type": "AWSDate",
+              "isRequired": true,
+              "attributes": []
+            },
+            "linkTargetType": {
+              "name": "linkTargetType",
+              "isArray": false,
+              "type": "String",
+              "isRequired": true,
+              "attributes": []
+            },
+            "observationRecordId": {
+              "name": "observationRecordId",
+              "isArray": false,
+              "type": "ID",
+              "isRequired": false,
+              "attributes": []
+            },
+            "sourceScheduleRecordId": {
+              "name": "sourceScheduleRecordId",
+              "isArray": false,
+              "type": "ID",
+              "isRequired": false,
+              "attributes": []
+            },
+            "scopeType": {
+              "name": "scopeType",
+              "isArray": false,
+              "type": {
+                "enum": "ObservationScopeType"
+              },
+              "isRequired": true,
+              "attributes": []
+            },
+            "childKey": {
+              "name": "childKey",
+              "isArray": false,
+              "type": "String",
+              "isRequired": false,
+              "attributes": []
+            },
+            "childName": {
+              "name": "childName",
+              "isArray": false,
+              "type": "String",
+              "isRequired": false,
+              "attributes": []
+            },
+            "childNamesJson": {
+              "name": "childNamesJson",
+              "isArray": false,
+              "type": "String",
+              "isRequired": false,
+              "attributes": []
+            },
+            "storagePath": {
+              "name": "storagePath",
+              "isArray": false,
+              "type": "String",
+              "isRequired": true,
+              "attributes": []
+            },
+            "thumbnailPath": {
+              "name": "thumbnailPath",
+              "isArray": false,
+              "type": "String",
+              "isRequired": false,
+              "attributes": []
+            },
+            "contentType": {
+              "name": "contentType",
+              "isArray": false,
+              "type": "String",
+              "isRequired": false,
+              "attributes": []
+            },
+            "fileName": {
+              "name": "fileName",
+              "isArray": false,
+              "type": "String",
+              "isRequired": false,
+              "attributes": []
+            },
+            "caption": {
+              "name": "caption",
+              "isArray": false,
+              "type": "String",
+              "isRequired": false,
+              "attributes": []
+            },
+            "note": {
+              "name": "note",
+              "isArray": false,
+              "type": "String",
+              "isRequired": false,
+              "attributes": []
+            },
+            "takenAt": {
+              "name": "takenAt",
+              "isArray": false,
+              "type": "AWSDateTime",
+              "isRequired": false,
+              "attributes": []
+            },
+            "uploadedAt": {
+              "name": "uploadedAt",
+              "isArray": false,
+              "type": "AWSDateTime",
+              "isRequired": true,
+              "attributes": []
+            },
+            "uploadedBySub": {
+              "name": "uploadedBySub",
+              "isArray": false,
+              "type": "String",
+              "isRequired": false,
+              "attributes": []
+            },
+            "status": {
+              "name": "status",
+              "isArray": false,
+              "type": "String",
+              "isRequired": true,
+              "attributes": []
+            },
+            "createdAt": {
+              "name": "createdAt",
+              "isArray": false,
+              "type": "AWSDateTime",
+              "isRequired": false,
+              "attributes": [],
+              "isReadOnly": true
+            },
+            "updatedAt": {
+              "name": "updatedAt",
+              "isArray": false,
+              "type": "AWSDateTime",
+              "isRequired": false,
+              "attributes": [],
+              "isReadOnly": true
+            }
+          },
+          "syncable": true,
+          "pluralName": "PhotoAttachments",
+          "attributes": [
+            {
+              "type": "model",
+              "properties": {}
+            },
+            {
+              "type": "key",
+              "properties": {
+                "name": "photoAttachmentsByClassroomIdAndTargetDateAndUploadedAt",
+                "queryField": "listPhotoAttachmentsByClassroomDate",
+                "fields": [
+                  "classroomId",
+                  "targetDate",
+                  "uploadedAt"
+                ]
+              }
+            },
+            {
+              "type": "key",
+              "properties": {
+                "name": "photoAttachmentsByScheduleDayIdAndUploadedAt",
+                "queryField": "listPhotoAttachmentsByScheduleDay",
+                "fields": [
+                  "scheduleDayId",
+                  "uploadedAt"
+                ]
+              }
+            },
+            {
+              "type": "key",
+              "properties": {
+                "name": "photoAttachmentsByScheduleDayItemIdAndUploadedAt",
+                "queryField": "listPhotoAttachmentsByScheduleDayItem",
+                "fields": [
+                  "scheduleDayItemId",
+                  "uploadedAt"
+                ]
+              }
+            },
+            {
+              "type": "key",
+              "properties": {
+                "name": "photoAttachmentsByObservationRecordIdAndUploadedAt",
+                "queryField": "listPhotoAttachmentsByObservationRecord",
+                "fields": [
+                  "observationRecordId",
+                  "uploadedAt"
+                ]
+              }
+            },
+            {
+              "type": "key",
+              "properties": {
+                "name": "photoAttachmentsBySourceScheduleRecordIdAndUploadedAt",
+                "queryField": "listPhotoAttachmentsBySourceScheduleRecord",
+                "fields": [
+                  "sourceScheduleRecordId",
+                  "uploadedAt"
+                ]
+              }
+            },
+            {
+              "type": "key",
+              "properties": {
+                "name": "photoAttachmentsByChildKeyAndTargetDateAndUploadedAt",
+                "queryField": "listPhotoAttachmentsByChildDate",
+                "fields": [
+                  "childKey",
+                  "targetDate",
+                  "uploadedAt"
                 ]
               }
             },
@@ -10695,6 +11063,178 @@
             }
           }
         },
+        "GetParentNoticeReplyContextResponse": {
+          "name": "GetParentNoticeReplyContextResponse",
+          "fields": {
+            "scheduleDayId": {
+              "name": "scheduleDayId",
+              "isArray": false,
+              "type": "ID",
+              "isRequired": false,
+              "attributes": []
+            },
+            "classroomId": {
+              "name": "classroomId",
+              "isArray": false,
+              "type": "ID",
+              "isRequired": false,
+              "attributes": []
+            },
+            "ageTargetId": {
+              "name": "ageTargetId",
+              "isArray": false,
+              "type": "ID",
+              "isRequired": false,
+              "attributes": []
+            },
+            "targetDate": {
+              "name": "targetDate",
+              "isArray": false,
+              "type": "AWSDate",
+              "isRequired": false,
+              "attributes": []
+            },
+            "scopeType": {
+              "name": "scopeType",
+              "isArray": false,
+              "type": "String",
+              "isRequired": false,
+              "attributes": []
+            },
+            "childKey": {
+              "name": "childKey",
+              "isArray": false,
+              "type": "String",
+              "isRequired": false,
+              "attributes": []
+            },
+            "childName": {
+              "name": "childName",
+              "isArray": false,
+              "type": "String",
+              "isRequired": false,
+              "attributes": []
+            },
+            "status": {
+              "name": "status",
+              "isArray": false,
+              "type": "String",
+              "isRequired": true,
+              "attributes": []
+            },
+            "message": {
+              "name": "message",
+              "isArray": false,
+              "type": "String",
+              "isRequired": false,
+              "attributes": []
+            }
+          }
+        },
+        "ParentNoticeRecipientSendResult": {
+          "name": "ParentNoticeRecipientSendResult",
+          "fields": {
+            "childKey": {
+              "name": "childKey",
+              "isArray": false,
+              "type": "String",
+              "isRequired": false,
+              "attributes": []
+            },
+            "childName": {
+              "name": "childName",
+              "isArray": false,
+              "type": "String",
+              "isRequired": false,
+              "attributes": []
+            },
+            "email": {
+              "name": "email",
+              "isArray": false,
+              "type": "String",
+              "isRequired": false,
+              "attributes": []
+            },
+            "replyUrl": {
+              "name": "replyUrl",
+              "isArray": false,
+              "type": "String",
+              "isRequired": false,
+              "attributes": []
+            },
+            "tokenId": {
+              "name": "tokenId",
+              "isArray": false,
+              "type": "ID",
+              "isRequired": false,
+              "attributes": []
+            },
+            "status": {
+              "name": "status",
+              "isArray": false,
+              "type": "String",
+              "isRequired": true,
+              "attributes": []
+            },
+            "message": {
+              "name": "message",
+              "isArray": false,
+              "type": "String",
+              "isRequired": false,
+              "attributes": []
+            }
+          }
+        },
+        "SendParentNoticeEmailsResponse": {
+          "name": "SendParentNoticeEmailsResponse",
+          "fields": {
+            "scheduleDayId": {
+              "name": "scheduleDayId",
+              "isArray": false,
+              "type": "ID",
+              "isRequired": true,
+              "attributes": []
+            },
+            "sentCount": {
+              "name": "sentCount",
+              "isArray": false,
+              "type": "Int",
+              "isRequired": true,
+              "attributes": []
+            },
+            "failedCount": {
+              "name": "failedCount",
+              "isArray": false,
+              "type": "Int",
+              "isRequired": true,
+              "attributes": []
+            },
+            "status": {
+              "name": "status",
+              "isArray": false,
+              "type": "String",
+              "isRequired": true,
+              "attributes": []
+            },
+            "message": {
+              "name": "message",
+              "isArray": false,
+              "type": "String",
+              "isRequired": false,
+              "attributes": []
+            },
+            "results": {
+              "name": "results",
+              "isArray": true,
+              "type": {
+                "nonModel": "ParentNoticeRecipientSendResult"
+              },
+              "isRequired": false,
+              "attributes": [],
+              "isArrayNullable": true
+            }
+          }
+        },
         "IssueScheduleDayFromScheduleWeekResponse": {
           "name": "IssueScheduleDayFromScheduleWeekResponse",
           "fields": {
@@ -11219,6 +11759,50 @@
             },
             "userAgent": {
               "name": "userAgent",
+              "isArray": false,
+              "type": "String",
+              "isRequired": false
+            }
+          }
+        },
+        "getParentNoticeReplyContext": {
+          "name": "getParentNoticeReplyContext",
+          "isArray": false,
+          "type": {
+            "nonModel": "GetParentNoticeReplyContextResponse"
+          },
+          "isRequired": false,
+          "arguments": {
+            "replyToken": {
+              "name": "replyToken",
+              "isArray": false,
+              "type": "String",
+              "isRequired": true
+            }
+          }
+        },
+        "sendParentNoticeEmails": {
+          "name": "sendParentNoticeEmails",
+          "isArray": false,
+          "type": {
+            "nonModel": "SendParentNoticeEmailsResponse"
+          },
+          "isRequired": false,
+          "arguments": {
+            "scheduleDayId": {
+              "name": "scheduleDayId",
+              "isArray": false,
+              "type": "ID",
+              "isRequired": true
+            },
+            "noticeText": {
+              "name": "noticeText",
+              "isArray": false,
+              "type": "String",
+              "isRequired": false
+            },
+            "baseUrl": {
+              "name": "baseUrl",
               "isArray": false,
               "type": "String",
               "isRequired": false

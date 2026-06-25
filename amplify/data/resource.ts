@@ -92,6 +92,25 @@ export const submitParentNoticeReplyFn = defineFunction({
   runtime: 22,
 });
 
+export const getParentNoticeReplyContextFn = defineFunction({
+  name: "get-parent-notice-reply-context",
+  entry: "../functions/get-parent-notice-reply-context/handler.ts",
+  timeoutSeconds: 30,
+  memoryMB: 512,
+  runtime: 22,
+});
+
+export const sendParentNoticeEmailsFn = defineFunction({
+  name: "send-parent-notice-emails",
+  entry: "../functions/send-parent-notice-emails/handler.ts",
+  timeoutSeconds: 60,
+  memoryMB: 512,
+  environment: {
+    PARENT_NOTICE_FROM_EMAIL: "demo@hoiku360.jp",
+  },
+  runtime: 22,
+});
+
 export const syncScheduleDayObservationsFn = defineFunction({
   name: "sync-schedule-day-observations",
   entry: "../functions/sync-schedule-day-observations/handler.ts",
@@ -321,6 +340,57 @@ const schema = a
       .returns(a.ref("SubmitParentNoticeReplyResponse"))
       .authorization((allow) => [allow.publicApiKey(), allow.authenticated()])
       .handler(a.handler.function(submitParentNoticeReplyFn)),
+
+    GetParentNoticeReplyContextResponse: a.customType({
+      scheduleDayId: a.id(),
+      classroomId: a.id(),
+      ageTargetId: a.id(),
+      targetDate: a.date(),
+      scopeType: a.string(),
+      childKey: a.string(),
+      childName: a.string(),
+      status: a.string().required(),
+      message: a.string(),
+    }),
+
+    getParentNoticeReplyContext: a
+      .mutation()
+      .arguments({
+        replyToken: a.string().required(),
+      })
+      .returns(a.ref("GetParentNoticeReplyContextResponse"))
+      .authorization((allow) => [allow.publicApiKey(), allow.authenticated()])
+      .handler(a.handler.function(getParentNoticeReplyContextFn)),
+
+    ParentNoticeRecipientSendResult: a.customType({
+      childKey: a.string(),
+      childName: a.string(),
+      email: a.string(),
+      replyUrl: a.string(),
+      tokenId: a.id(),
+      status: a.string().required(),
+      message: a.string(),
+    }),
+
+    SendParentNoticeEmailsResponse: a.customType({
+      scheduleDayId: a.id().required(),
+      sentCount: a.integer().required(),
+      failedCount: a.integer().required(),
+      status: a.string().required(),
+      message: a.string(),
+      results: a.ref("ParentNoticeRecipientSendResult").array(),
+    }),
+
+    sendParentNoticeEmails: a
+      .mutation()
+      .arguments({
+        scheduleDayId: a.id().required(),
+        noticeText: a.string(),
+        baseUrl: a.string(),
+      })
+      .returns(a.ref("SendParentNoticeEmailsResponse"))
+      .authorization((allow) => [allow.authenticated()])
+      .handler(a.handler.function(sendParentNoticeEmailsFn)),
 
     IssueScheduleDayFromScheduleWeekResponse: a.customType({
       scheduleWeekId: a.id().required(),
@@ -1042,6 +1112,17 @@ const schema = a
         // CHILD: 将来の子ども別URL用
         scopeType: a.string().required(),
 
+        // scopeType=CHILD の場合に使用する子ども別返信先
+        childKey: a.string(),
+        childName: a.string(),
+        parentEmail: a.string(),
+
+        // PENDING / SENT / FAILED / SKIPPED
+        deliveryStatus: a.string(),
+        sentAt: a.datetime(),
+        emailMessageId: a.string(),
+        sendErrorMessage: a.string(),
+
         // ACTIVE / REVOKED / EXPIRED
         status: a.string().required(),
 
@@ -1058,6 +1139,9 @@ const schema = a
         index("classroomId")
           .sortKeys(["targetDate", "issuedAt"])
           .queryField("listParentNoticeReplyTokensByClassroomDate"),
+        index("childKey")
+          .sortKeys(["targetDate", "issuedAt"])
+          .queryField("listParentNoticeReplyTokensByChildDate"),
       ])
       .authorization((allow) => [
         allow.ownerDefinedIn("owner"),
@@ -2312,6 +2396,8 @@ const schema = a
     allow.resource(cleanupTranscriptTextFn),
     allow.resource(generateParentNoticeFn),
     allow.resource(submitParentNoticeReplyFn),
+    allow.resource(getParentNoticeReplyContextFn),
+    allow.resource(sendParentNoticeEmailsFn),
     allow.resource(syncScheduleDayObservationsFn),
     allow.resource(issueScheduleDayFromScheduleWeekFn),
     allow.resource(issueScheduleWeekFromScheduleMonthFn),

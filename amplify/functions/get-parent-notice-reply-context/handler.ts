@@ -2,31 +2,17 @@ import type { Schema } from "../../data/resource";
 import { Amplify } from "aws-amplify";
 import { generateClient } from "aws-amplify/data";
 import { getAmplifyDataClientConfig } from "@aws-amplify/backend/function/runtime";
-import { env } from "$amplify/env/submit-parent-notice-reply";
+import { env } from "$amplify/env/get-parent-notice-reply-context";
 import { createHash } from "node:crypto";
 
 type DataClientEnv = Parameters<typeof getAmplifyDataClientConfig>[0];
 
-type SubmitParentNoticeReplyArgs = {
+type GetParentNoticeReplyContextArgs = {
   replyToken?: string | null;
-
-  childKey?: string | null;
-  childName?: string | null;
-
-  okSigned?: boolean | null;
-
-  pickupPersonRelation?: string | null;
-  pickupPersonName?: string | null;
-  pickupPlannedTime?: string | null;
-
-  homeNote?: string | null;
-  userAgent?: string | null;
 };
 
 type ParentNoticeReplyTokenRow = Schema["ParentNoticeReplyToken"]["type"] & {
   id: string;
-  tenantId?: string | null;
-  owner?: string | null;
   scheduleDayId?: string | null;
   classroomId?: string | null;
   ageTargetId?: string | null;
@@ -35,7 +21,6 @@ type ParentNoticeReplyTokenRow = Schema["ParentNoticeReplyToken"]["type"] & {
   scopeType?: string | null;
   childKey?: string | null;
   childName?: string | null;
-  parentEmail?: string | null;
   status?: string | null;
   expiresAt?: string | null;
 };
@@ -44,21 +29,8 @@ function s(value: unknown): string {
   return String(value ?? "").trim();
 }
 
-function truncate(value: string, maxLength: number): string {
-  if (value.length <= maxLength) return value;
-  return value.slice(0, maxLength);
-}
-
 function sha256Hex(value: string): string {
   return createHash("sha256").update(value, "utf8").digest("hex");
-}
-
-function normalizeChildKey(childName: string): string {
-  return childName
-    .trim()
-    .replace(/\s+/g, "_")
-    .replace(/[^\p{Letter}\p{Number}_-]/gu, "")
-    .slice(0, 80);
 }
 
 function isExpired(expiresAt?: string | null): boolean {
@@ -111,17 +83,13 @@ async function listAll<T>(
   return rows;
 }
 
-export const handler: Schema["submitParentNoticeReply"]["functionHandler"] =
+export const handler: Schema["getParentNoticeReplyContext"]["functionHandler"] =
   async (event) => {
-    const args = event.arguments as SubmitParentNoticeReplyArgs;
-
+    const args = event.arguments as GetParentNoticeReplyContextArgs;
     const replyToken = s(args.replyToken);
+
     if (!replyToken) {
       throw new Error("返信URLの token が空です。");
-    }
-
-    if (args.okSigned !== true) {
-      throw new Error("内容確認のOKサインが必要です。");
     }
 
     const tokenHash = sha256Hex(replyToken);
@@ -168,79 +136,17 @@ export const handler: Schema["submitParentNoticeReply"]["functionHandler"] =
       );
     }
 
-    const tenantId = s(tokenRow.tenantId);
-    const owner = s(tokenRow.owner);
-    const scheduleDayId = s(tokenRow.scheduleDayId);
-    const classroomId = s(tokenRow.classroomId);
-    const ageTargetId = s(tokenRow.ageTargetId);
-    const targetDate = s(tokenRow.targetDate);
-
-    if (!tenantId || !owner || !scheduleDayId || !classroomId || !targetDate) {
-      throw new Error(
-        "返信URLの内部情報が不足しています。園側で返信URLを作り直してください。",
-      );
-    }
-
-    const scopeType = s(tokenRow.scopeType).toUpperCase();
-    const tokenChildName = truncate(s(tokenRow.childName), 80);
-    const tokenChildKey = truncate(s(tokenRow.childKey), 80);
-
-    const childName =
-      scopeType === "CHILD" ? tokenChildName : truncate(s(args.childName), 80);
-    const childKey =
-      scopeType === "CHILD"
-        ? tokenChildKey || normalizeChildKey(childName)
-        : truncate(s(args.childKey) || normalizeChildKey(childName), 80);
-
-    if (!childName) {
-      throw new Error(
-        scopeType === "CHILD"
-          ? "返信URLにお子さま情報がありません。園側で返信URLを作り直してください。"
-          : "お子さまの名前を入力してください。",
-      );
-    }
-
-    const now = new Date().toISOString();
-
-    const createResult = await dataClient.models.ParentNoticeReply.create({
-      tenantId,
-      owner,
-
-      scheduleDayId,
-      classroomId,
-      ageTargetId: ageTargetId || null,
-      targetDate,
-
-      replyTokenHash: tokenHash,
-
-      childKey: childKey || null,
-      childName,
-
-      okSigned: true,
-
-      pickupPersonRelation: truncate(s(args.pickupPersonRelation), 40),
-      pickupPersonName: truncate(s(args.pickupPersonName), 80),
-      pickupPlannedTime: truncate(s(args.pickupPlannedTime), 20),
-
-      homeNote: truncate(s(args.homeNote), 2000),
-
-      status: "SUBMITTED",
-      submittedAt: now,
-
-      userAgent: truncate(s(args.userAgent), 300),
-    });
-
-    if (createResult.errors?.length) {
-      throw new Error(
-        `ParentNoticeReply create failed: ${errorText(createResult.errors)}`,
-      );
-    }
-
-    const replyId = createResult.data?.id;
-
     return {
-      replyId,
-      status: "SUBMITTED",
-      message: "返信を受け付けました。",
+      scheduleDayId: s(tokenRow.scheduleDayId) || null,
+      classroomId: s(tokenRow.classroomId) || null,
+      ageTargetId: s(tokenRow.ageTargetId) || null,
+      targetDate: s(tokenRow.targetDate) || null,
+      scopeType: s(tokenRow.scopeType) || "CLASSROOM",
+      childKey: s(tokenRow.childKey) || null,
+      childName: s(tokenRow.childName) || null,
+      status: "OK",
+      message: s(tokenRow.childName)
+        ? `${s(tokenRow.childName)}さんの返信画面を開きました。`
+        : "返信画面を開きました。",
     };
   };

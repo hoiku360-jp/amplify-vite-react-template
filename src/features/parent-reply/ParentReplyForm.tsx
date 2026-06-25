@@ -1,10 +1,26 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { generateClient } from "aws-amplify/data";
 import type { Schema } from "../../../amplify/data/resource";
 
 type ModelError = {
+  message?: string | null;
+};
+
+type GetParentNoticeReplyContextArgs = {
+  replyToken: string;
+};
+
+type GetParentNoticeReplyContextResult = {
+  scheduleDayId?: string | null;
+  classroomId?: string | null;
+  ageTargetId?: string | null;
+  targetDate?: string | null;
+  scopeType?: string | null;
+  childKey?: string | null;
+  childName?: string | null;
+  status?: string | null;
   message?: string | null;
 };
 
@@ -41,6 +57,10 @@ type OperationRunner<TArgs, TData> = (
 
 type ParentReplyClient = {
   mutations?: {
+    getParentNoticeReplyContext?: OperationRunner<
+      GetParentNoticeReplyContextArgs,
+      GetParentNoticeReplyContextResult
+    >;
     submitParentNoticeReply?: OperationRunner<
       SubmitParentNoticeReplyArgs,
       SubmitParentNoticeReplyResult
@@ -83,11 +103,37 @@ function getOperationData<TData>(res: OperationEnvelope<TData> | TData): TData {
   return ((res as OperationEnvelope<TData>).data ?? res) as TData;
 }
 
+async function runOperation<TArgs, TData>(
+  runner: OperationRunner<TArgs, TData>,
+  args: TArgs,
+): Promise<TData> {
+  let res: OperationEnvelope<TData> | TData;
+
+  try {
+    res = await runner(args);
+  } catch {
+    res = await runner({ input: args });
+  }
+
+  const errors = getOperationErrors(res);
+  if (errors?.length) {
+    throw new Error(formatModelErrors(errors, "処理に失敗しました。"));
+  }
+
+  return getOperationData(res);
+}
+
 function getReplyTokenFromUrl(): string {
   if (typeof window === "undefined") return "";
 
   const params = new URLSearchParams(window.location.search);
   return s(params.get("token") || params.get("replyToken"));
+}
+
+function formatDate(value?: string | null) {
+  const text = s(value);
+  if (!text) return "-";
+  return text.replace(/-/g, "/");
 }
 
 export default function ParentReplyForm() {
@@ -101,7 +147,11 @@ export default function ParentReplyForm() {
 
   const replyToken = useMemo(() => getReplyTokenFromUrl(), []);
 
+  const [childKey, setChildKey] = useState("");
   const [childName, setChildName] = useState("");
+  const [scopeType, setScopeType] = useState("");
+  const [targetDate, setTargetDate] = useState("");
+
   const [okSigned, setOkSigned] = useState(false);
 
   const [pickupPersonRelation, setPickupPersonRelation] = useState("母");
@@ -109,9 +159,59 @@ export default function ParentReplyForm() {
   const [pickupPlannedTime, setPickupPlannedTime] = useState("");
   const [homeNote, setHomeNote] = useState("");
 
+  const [loadingContext, setLoadingContext] = useState(false);
+  const [contextLoaded, setContextLoaded] = useState(false);
+  const [contextMessage, setContextMessage] = useState("");
+
   const [submitting, setSubmitting] = useState(false);
   const [submitted, setSubmitted] = useState(false);
   const [message, setMessage] = useState("");
+
+  const isChildScoped = s(scopeType).toUpperCase() === "CHILD";
+
+  async function loadReplyContext() {
+    const runner = client.mutations?.getParentNoticeReplyContext;
+
+    if (!replyToken || !runner) {
+      return;
+    }
+
+    setLoadingContext(true);
+    setContextMessage("");
+
+    try {
+      const data = await runOperation<
+        GetParentNoticeReplyContextArgs,
+        GetParentNoticeReplyContextResult
+      >(runner, { replyToken });
+
+      setScopeType(s(data.scopeType));
+      setChildKey(s(data.childKey));
+      setTargetDate(s(data.targetDate));
+
+      if (s(data.childName)) {
+        setChildName(s(data.childName));
+      }
+
+      setContextLoaded(true);
+      setContextMessage(data?.message || "返信画面を開きました。");
+    } catch (e) {
+      console.error(e);
+      setContextLoaded(false);
+      setContextMessage(
+        `返信URL確認エラー: ${e instanceof Error ? e.message : String(e)}`,
+      );
+    } finally {
+      setLoadingContext(false);
+    }
+  }
+
+  useEffect(() => {
+    if (replyToken) {
+      void loadReplyContext();
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [replyToken]);
 
   async function submitReply() {
     const runner = client.mutations?.submitParentNoticeReply;
@@ -126,6 +226,13 @@ export default function ParentReplyForm() {
     if (!replyToken) {
       setMessage(
         "返信URLが正しくありません。園から受け取ったURLを確認してください。",
+      );
+      return;
+    }
+
+    if (isChildScoped && !contextLoaded) {
+      setMessage(
+        "返信URLの確認が完了していません。少し待ってから送信してください。",
       );
       return;
     }
@@ -147,6 +254,7 @@ export default function ParentReplyForm() {
       const args: SubmitParentNoticeReplyArgs = {
         replyToken,
 
+        childKey: s(childKey),
         childName: s(childName),
 
         okSigned,
@@ -160,24 +268,10 @@ export default function ParentReplyForm() {
           typeof navigator === "undefined" ? "" : s(navigator.userAgent),
       };
 
-      let res:
-        | OperationEnvelope<SubmitParentNoticeReplyResult>
-        | SubmitParentNoticeReplyResult;
-
-      try {
-        res = await runner(args);
-      } catch {
-        res = await runner({ input: args });
-      }
-
-      const errors = getOperationErrors(res);
-      if (errors?.length) {
-        throw new Error(
-          formatModelErrors(errors, "返信の送信に失敗しました。"),
-        );
-      }
-
-      const data = getOperationData(res);
+      const data = await runOperation<
+        SubmitParentNoticeReplyArgs,
+        SubmitParentNoticeReplyResult
+      >(runner, args);
 
       setSubmitted(true);
       setMessage(
@@ -234,6 +328,24 @@ export default function ParentReplyForm() {
           </div>
         ) : null}
 
+        {replyToken ? (
+          <div
+            style={{
+              padding: 12,
+              border: contextLoaded ? "1px solid #bbf7d0" : "1px solid #dbeafe",
+              background: contextLoaded ? "#f0fdf4" : "#f6fbff",
+              borderRadius: 8,
+              color: contextLoaded ? "#166534" : "#334155",
+              whiteSpace: "pre-wrap",
+            }}
+          >
+            {loadingContext
+              ? "返信URLを確認しています..."
+              : contextMessage || "返信URLを確認します。"}
+            {targetDate ? `\n対象日: ${formatDate(targetDate)}` : ""}
+          </div>
+        ) : null}
+
         {message ? (
           <pre
             style={{
@@ -271,15 +383,22 @@ export default function ParentReplyForm() {
                 value={childName}
                 onChange={(e) => setChildName(e.target.value)}
                 placeholder="例: 山田 太郎"
-                disabled={submitting}
+                disabled={submitting || loadingContext || isChildScoped}
+                readOnly={isChildScoped}
                 style={{
                   width: "100%",
                   boxSizing: "border-box",
                   padding: 10,
                   border: "1px solid #cbd5e1",
                   borderRadius: 8,
+                  background: isChildScoped ? "#f8fafc" : "#fff",
                 }}
               />
+              {isChildScoped ? (
+                <div style={{ fontSize: 12, color: "#666", marginTop: 4 }}>
+                  子ども別返信URLから自動表示しています。
+                </div>
+              ) : null}
             </label>
 
             <label
@@ -397,7 +516,7 @@ export default function ParentReplyForm() {
 
             <button
               onClick={submitReply}
-              disabled={submitting || !replyToken}
+              disabled={submitting || !replyToken || loadingContext}
               style={{
                 padding: "12px 16px",
                 borderRadius: 8,

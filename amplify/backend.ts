@@ -17,6 +17,9 @@ import {
   analyzeTranscriptObservationsFn,
   cleanupTranscriptTextFn,
   generateParentNoticeFn,
+  submitParentNoticeReplyFn,
+  getParentNoticeReplyContextFn,
+  sendParentNoticeEmailsFn,
 } from "./data/resource";
 import { storage } from "./storage/resource";
 import { dailyDigest } from "./jobs/daily-digest/resource";
@@ -27,6 +30,9 @@ const backend = defineBackend({
   auth,
   data,
   generateParentNoticeFn,
+  submitParentNoticeReplyFn,
+  getParentNoticeReplyContextFn,
+  sendParentNoticeEmailsFn,
   storage,
   dailyDigest,
   issueNextDaySchedules,
@@ -50,6 +56,14 @@ const generateParentNoticeBedrockPolicy = new PolicyStatement({
 
 backend.generateParentNoticeFn.resources.lambda.addToRolePolicy(
   generateParentNoticeBedrockPolicy,
+);
+
+backend.sendParentNoticeEmailsFn.resources.lambda.addToRolePolicy(
+  new PolicyStatement({
+    effect: Effect.ALLOW,
+    actions: ["ses:SendEmail", "ses:SendRawEmail"],
+    resources: ["*"],
+  }),
 );
 
 type LambdaConfigurable = {

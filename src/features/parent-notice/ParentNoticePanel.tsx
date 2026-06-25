@@ -1,4 +1,4 @@
-﻿import { useMemo, useState } from "react";
+import { useMemo, useState } from "react";
 import { generateClient } from "aws-amplify/data";
 import type { Schema } from "../../../amplify/data/resource";
 
@@ -65,6 +65,31 @@ type GenerateParentNoticeResult = {
   message?: string | null;
 };
 
+type SendParentNoticeEmailsArgs = {
+  scheduleDayId: string;
+  noticeText?: string | null;
+  baseUrl?: string | null;
+};
+
+type ParentNoticeRecipientSendResult = {
+  childKey?: string | null;
+  childName?: string | null;
+  email?: string | null;
+  replyUrl?: string | null;
+  tokenId?: string | null;
+  status?: string | null;
+  message?: string | null;
+};
+
+type SendParentNoticeEmailsResult = {
+  scheduleDayId?: string | null;
+  sentCount?: number | null;
+  failedCount?: number | null;
+  status?: string | null;
+  message?: string | null;
+  results?: (ParentNoticeRecipientSendResult | null)[] | null;
+};
+
 type OperationEnvelope<TData> = {
   data?: TData | null;
   errors?: ModelError[] | null;
@@ -88,6 +113,10 @@ type ParentNoticeClient = {
     generateParentNotice?: OperationRunner<
       GenerateParentNoticeArgs,
       GenerateParentNoticeResult
+    >;
+    sendParentNoticeEmails?: OperationRunner<
+      SendParentNoticeEmailsArgs,
+      SendParentNoticeEmailsResult
     >;
   };
 };
@@ -204,6 +233,8 @@ function parentNoticeDeliveryMethodLabel(value?: string | null): string {
       return "iPhone共有";
     case "CLIPBOARD":
       return "コピー";
+    case "EMAIL":
+      return "メール一括送信";
     case "MANUAL":
       return "手動";
     default:
@@ -367,6 +398,8 @@ export default function ParentNoticePanel(props: {
   const [savingParentNotice, setSavingParentNotice] = useState(false);
   const [sharingParentNotice, setSharingParentNotice] = useState(false);
   const [copyingParentNotice, setCopyingParentNotice] = useState(false);
+  const [sendingParentNoticeEmails, setSendingParentNoticeEmails] =
+    useState(false);
   const [markingParentNoticeSent, setMarkingParentNoticeSent] = useState(false);
   const [creatingReplyToken, setCreatingReplyToken] = useState(false);
 
@@ -391,6 +424,7 @@ export default function ParentNoticePanel(props: {
     savingParentNotice ||
     sharingParentNotice ||
     copyingParentNotice ||
+    sendingParentNoticeEmails ||
     markingParentNoticeSent ||
     creatingReplyToken;
 
@@ -748,7 +782,7 @@ export default function ParentNoticePanel(props: {
 
   async function updateParentNoticeDeliveryState(input: {
     status: "SHARED" | "SENT";
-    deliveryMethod: "WEB_SHARE" | "CLIPBOARD" | "MANUAL";
+    deliveryMethod: "WEB_SHARE" | "CLIPBOARD" | "EMAIL" | "MANUAL";
     sharedAt?: string;
     sentAt?: string;
     memo: string;
@@ -897,6 +931,115 @@ export default function ParentNoticePanel(props: {
     }
   }
 
+  function formatSendResultLines(
+    results?: (ParentNoticeRecipientSendResult | null)[] | null,
+  ) {
+    const rows = (results ?? []).filter(
+      (row): row is ParentNoticeRecipientSendResult => !!row,
+    );
+
+    if (rows.length === 0) return "";
+
+    return rows
+      .map((row) => {
+        const status = s(row.status) || "-";
+        const childName = s(row.childName) || s(row.childKey) || "-";
+        const email = s(row.email) || "-";
+        const detail = s(row.message);
+
+        return `- ${childName} / ${email} / ${status}${
+          detail ? ` / ${detail}` : ""
+        }`;
+      })
+      .join("\n");
+  }
+
+  async function sendParentNoticeEmailsToAll() {
+    if (!selectedDay) return;
+
+    const runner = client.mutations?.sendParentNoticeEmails;
+    if (!runner) {
+      setMessage(
+        "sendParentNoticeEmails mutation が見つかりません。resource.ts と sandbox を確認してください。",
+      );
+      return;
+    }
+
+    const text = parentNoticeDraft.trim();
+    if (!text) {
+      setMessage("送信する保護者向けお知らせ本文がありません。");
+      return;
+    }
+
+    const ok = window.confirm(
+      "選択中クラスの保護者全員へ、子ども別返信URL付きメールを送信します。よろしいですか？",
+    );
+
+    if (!ok) return;
+
+    setSendingParentNoticeEmails(true);
+    setMessage("");
+
+    try {
+      let res:
+        | OperationEnvelope<SendParentNoticeEmailsResult>
+        | SendParentNoticeEmailsResult;
+
+      const args: SendParentNoticeEmailsArgs = {
+        scheduleDayId: selectedDay.id,
+        noticeText: text,
+        baseUrl:
+          typeof window === "undefined" ? undefined : window.location.origin,
+      };
+
+      try {
+        res = await runner(args);
+      } catch {
+        res = await runner({ input: args });
+      }
+
+      const errors = getOperationErrors(res);
+      if (errors?.length) {
+        throw new Error(
+          formatModelErrors(errors, "保護者連絡メールの送信に失敗しました。"),
+        );
+      }
+
+      const data = getOperationData(res);
+      const now = new Date().toISOString();
+
+      if ((data.sentCount ?? 0) > 0) {
+        await updateParentNoticeDeliveryState({
+          status: "SENT",
+          deliveryMethod: "EMAIL",
+          sharedAt: selectedDay.parentNoticeSharedAt ?? now,
+          sentAt: now,
+          memo: `子ども別返信URL付きメールを一括送信しました。送信=${
+            data.sentCount ?? 0
+          }件 / 失敗=${data.failedCount ?? 0}件`,
+        });
+      }
+
+      await loadParentReplies(selectedDay.id);
+
+      const lines = formatSendResultLines(data.results);
+      setMessage(
+        `${data.message || "保護者連絡メールを送信しました。"}${
+          lines ? `\n${lines}` : ""
+        }`,
+      );
+    } catch (e) {
+      console.error(e);
+      setMessage(
+        `保護者連絡メール送信エラー: ${
+          e instanceof Error ? e.message : String(e)
+        }`,
+      );
+    } finally {
+      setSendingParentNoticeEmails(false);
+    }
+  }
+
   async function markParentNoticeSent() {
     if (!selectedDay) return;
 
@@ -923,7 +1066,9 @@ export default function ParentNoticePanel(props: {
       await updateParentNoticeDeliveryState({
         status: "SENT",
         deliveryMethod:
-          deliveryMethod === "WEB_SHARE" || deliveryMethod === "CLIPBOARD"
+          deliveryMethod === "WEB_SHARE" ||
+          deliveryMethod === "CLIPBOARD" ||
+          deliveryMethod === "EMAIL"
             ? deliveryMethod
             : "MANUAL",
         sharedAt: selectedDay.parentNoticeSharedAt ?? now,
@@ -1263,6 +1408,10 @@ export default function ParentNoticePanel(props: {
 
             <button onClick={shareParentNotice} disabled={busy}>
               {sharingParentNotice ? "共有中..." : "iPhoneで送信する"}
+            </button>
+
+            <button onClick={sendParentNoticeEmailsToAll} disabled={busy}>
+              {sendingParentNoticeEmails ? "送信中..." : "全員にメール送信"}
             </button>
 
             <button onClick={copyParentNotice} disabled={busy}>
