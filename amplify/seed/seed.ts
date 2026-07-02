@@ -70,6 +70,13 @@ const weekendPlayAbilityLinkCsvUrl = new URL(
   "./data/WeekendPlayAbilityLink.csv",
   import.meta.url,
 );
+const tenantCsvUrl = new URL("./data/Tenant.csv", import.meta.url);
+const classroomCsvUrl = new URL("./data/Classroom.csv", import.meta.url);
+const userProfileCsvUrl = new URL("./data/UserProfile.csv", import.meta.url);
+const staffAssignmentCsvUrl = new URL(
+  "./data/StaffAssignment.csv",
+  import.meta.url,
+);
 
 // 固定ユーザー名
 const DEFAULT_SEED_USERNAME = "noreply-test01@hoiku360.jp";
@@ -84,6 +91,12 @@ const SHOULD_WIPE =
 const SHOULD_REPLACE_OBSERVATION_HINTS =
   String(process.env.SEED_REPLACE_OBSERVATION_HINTS ?? "").toLowerCase() ===
   "true";
+
+// Tenant / Classroom / UserProfile / StaffAssignment をCSVから投入したいときに使う。
+// Cognitoユーザー作成は別途 AdminCreateUser または AWS CLI で実施し、
+// UserProfile.userId には Cognito sub を入れる。
+const SHOULD_SEED_TENANT_STAFF =
+  String(process.env.SEED_TENANT_STAFF ?? "").toLowerCase() === "true";
 
 type AbilityRow = {
   code: string;
@@ -185,6 +198,55 @@ type WeekendPlayAbilityLinkRow = {
   status?: string;
 };
 
+type TenantRow = {
+  tenantId: string;
+  name: string;
+  legalName?: string;
+  status?: string;
+  plan?: string;
+  note?: string;
+};
+
+type ClassroomRow = {
+  tenantId: string;
+  classroomId?: string;
+  name: string;
+  ageBand?: string;
+  schoolName?: string;
+  status?: string;
+};
+
+type UserProfileRow = {
+  userId: string;
+  tenantId: string;
+  fullName: string;
+  displayName?: string;
+  phoneticName?: string;
+  email?: string;
+  role?: string;
+  status?: string;
+  department?: string;
+  position?: string;
+  profileVisibility?: string;
+  practiceDefaultVisibility?: string;
+  owner?: string;
+};
+
+type StaffAssignmentRow = {
+  assignmentId: string;
+  tenantId: string;
+  userId: string;
+  scopeType: string;
+  classroomId?: string;
+  role: string;
+  fiscalYear: string | number;
+  startDate: string;
+  endDate?: string;
+  isPrimary?: string | boolean;
+  status?: string;
+  note?: string;
+};
+
 type GraphqlErrorLike = {
   message?: string | null;
 };
@@ -235,6 +297,10 @@ type SeedModels = {
   PlanPhraseAbilityLink: SeedModel;
   WeekendPlay: SeedModel;
   WeekendPlayAbilityLink: SeedModel;
+  Tenant: SeedModel;
+  Classroom: SeedModel;
+  UserProfile: SeedModel;
+  StaffAssignment: SeedModel;
 };
 
 type UpsertResult = "created" | "updated" | false;
@@ -564,8 +630,117 @@ function parseActiveFlag(value: unknown): boolean {
   );
 }
 
+function parseBooleanFlag(value: unknown, defaultValue = false): boolean {
+  const raw = String(value ?? "")
+    .trim()
+    .toLowerCase();
+  if (!raw) return defaultValue;
+
+  return raw === "true" || raw === "1" || raw === "yes" || raw === "y";
+}
+
 function sameNullableString(left: unknown, right: unknown): boolean {
   return asStr(left) === asStr(right);
+}
+
+function normalizeAgeBand(value: unknown): string {
+  const raw = asStr(value);
+  const compact = raw.replace(/\s+/g, "");
+
+  if (
+    ["3", "3歳", "3才", "3歳児", "3才児", "3歳クラス", "3才クラス"].includes(
+      compact,
+    )
+  ) {
+    return "3歳";
+  }
+  if (
+    ["4", "4歳", "4才", "4歳児", "4才児", "4歳クラス", "4才クラス"].includes(
+      compact,
+    )
+  ) {
+    return "4歳";
+  }
+  if (
+    ["5", "5歳", "5才", "5歳児", "5才児", "5歳クラス", "5才クラス"].includes(
+      compact,
+    )
+  ) {
+    return "5歳";
+  }
+
+  return raw;
+}
+
+function isArchivedStatus(value: unknown): boolean {
+  return asStr(value).toLowerCase() === "archived";
+}
+
+function classroomAliasKey(tenantId: string, classroomId: string): string {
+  return `${tenantId}::${classroomId}`;
+}
+
+const classroomIdAliasMap = new Map<string, string>();
+
+function rememberClassroomIdAlias(
+  tenantId: string,
+  csvClassroomId: string,
+  actualClassroomId: string,
+): void {
+  if (!tenantId || !csvClassroomId || !actualClassroomId) return;
+  classroomIdAliasMap.set(
+    classroomAliasKey(tenantId, csvClassroomId),
+    actualClassroomId,
+  );
+}
+
+function resolveClassroomIdAlias(
+  tenantId: string,
+  csvClassroomId: string | null,
+): string | null {
+  if (!csvClassroomId) return null;
+  return (
+    classroomIdAliasMap.get(classroomAliasKey(tenantId, csvClassroomId)) ??
+    csvClassroomId
+  );
+}
+
+async function findClassroomByNaturalKey(
+  model: SeedModel,
+  tenantId: string,
+  name: string,
+  ageBand: unknown,
+): Promise<SeedItem | null> {
+  const targetAgeBand = normalizeAgeBand(ageBand);
+  let nextToken: string | null | undefined = undefined;
+  let archivedFallback: SeedItem | null = null;
+
+  for (;;) {
+    const res = await model.list({
+      authMode: "userPool",
+      filter: {
+        tenantId: { eq: tenantId },
+        name: { eq: name },
+      },
+      limit: 1000,
+      nextToken,
+    });
+
+    if (res.errors?.length) throw res.errors;
+
+    for (const item of res.data ?? []) {
+      if (normalizeAgeBand(item.ageBand) !== targetAgeBand) continue;
+
+      if (!isArchivedStatus(item.status)) {
+        return item;
+      }
+
+      archivedFallback ??= item;
+    }
+
+    nextToken = res.nextToken;
+    if (!nextToken) return archivedFallback;
+  }
 }
 
 async function findAbilityObservationHintByNaturalKey(
@@ -859,6 +1034,187 @@ async function upsertWeekendPlayAbilityLink(
   return "created";
 }
 
+async function upsertTenant(
+  model: SeedModel,
+  row: TenantRow,
+): Promise<UpsertResult> {
+  const tenantId = asStr(row.tenantId);
+  if (!tenantId) return false;
+
+  const name = asStr(row.name);
+  if (!name) {
+    throw new Error(`Tenant name is empty. tenantId=${tenantId}`);
+  }
+
+  const payload = {
+    tenantId,
+    name,
+    legalName: asNullable(row.legalName),
+    status: asStr(row.status) || "ACTIVE",
+    plan: asNullable(row.plan),
+    note: asNullable(row.note),
+  };
+
+  const existing = await findFirstByField(model, "tenantId", tenantId);
+  const existingTenantId = asStr(existing?.tenantId);
+
+  if (existingTenantId) {
+    const res = await model.update(payload, { authMode: "userPool" });
+    if (res.errors?.length) throw res.errors;
+    return "updated";
+  }
+
+  const res = await model.create(payload, { authMode: "userPool" });
+  if (res.errors?.length) throw res.errors;
+  return "created";
+}
+
+async function upsertClassroom(
+  model: SeedModel,
+  row: ClassroomRow,
+): Promise<UpsertResult> {
+  const tenantId = asStr(row.tenantId);
+  const name = asStr(row.name);
+  if (!tenantId || !name) return false;
+
+  const payload = {
+    tenantId,
+    name,
+    ageBand: asNullable(row.ageBand),
+    schoolName: asNullable(row.schoolName),
+    status: asStr(row.status) || "ACTIVE",
+  };
+
+  const classroomId = asStr(row.classroomId);
+
+  // 1) CSVの固定 classroomId が既に存在すれば、そのレコードを更新する。
+  // 2) 存在しない場合でも、既存MVPデータのように自動採番IDで作られた
+  //    同一テナント・同一クラス名・同一年齢帯の Classroom があれば再利用する。
+  //    これにより「3歳」と「3歳児」の表記ゆれによる二重登録を抑止する。
+  const existing =
+    (classroomId ? await findFirstByField(model, "id", classroomId) : null) ??
+    (await findClassroomByNaturalKey(model, tenantId, name, row.ageBand));
+  const existingId = asStr(existing?.id);
+
+  if (existingId) {
+    rememberClassroomIdAlias(tenantId, classroomId, existingId);
+
+    const res = await model.update(
+      {
+        id: existingId,
+        ...payload,
+      },
+      { authMode: "userPool" },
+    );
+    if (res.errors?.length) throw res.errors;
+    return "updated";
+  }
+
+  const createPayload = classroomId ? { id: classroomId, ...payload } : payload;
+  const res = await model.create(createPayload, { authMode: "userPool" });
+  if (res.errors?.length) throw res.errors;
+
+  const createdId = asStr(res.data?.id) || classroomId;
+  rememberClassroomIdAlias(tenantId, classroomId, createdId);
+
+  return "created";
+}
+
+async function upsertUserProfile(
+  model: SeedModel,
+  row: UserProfileRow,
+): Promise<UpsertResult> {
+  const userId = asStr(row.userId);
+  const tenantId = asStr(row.tenantId);
+  const fullName = asStr(row.fullName);
+  if (!userId || !tenantId || !fullName) return false;
+
+  const payload = {
+    userId,
+    tenantId,
+    fullName,
+    displayName: asNullable(row.displayName),
+    phoneticName: asNullable(row.phoneticName),
+    email: asNullable(row.email),
+    role: asStr(row.role) || "TEACHER",
+    status: asStr(row.status) || "ACTIVE",
+    department: asNullable(row.department),
+    position: asNullable(row.position),
+    profileVisibility: asNullable(row.profileVisibility),
+    practiceDefaultVisibility: asNullable(row.practiceDefaultVisibility),
+    owner: asStr(row.owner) || userId,
+  };
+
+  const existing = await findFirstByField(model, "userId", userId);
+  const existingUserId = asStr(existing?.userId);
+
+  if (existingUserId) {
+    const res = await model.update(payload, { authMode: "userPool" });
+    if (res.errors?.length) throw res.errors;
+    return "updated";
+  }
+
+  const res = await model.create(payload, { authMode: "userPool" });
+  if (res.errors?.length) throw res.errors;
+  return "created";
+}
+
+async function upsertStaffAssignment(
+  model: SeedModel,
+  row: StaffAssignmentRow,
+): Promise<UpsertResult> {
+  const assignmentId = asStr(row.assignmentId);
+  const tenantId = asStr(row.tenantId);
+  const userId = asStr(row.userId);
+  const scopeType = asStr(row.scopeType).toUpperCase();
+  const role = asStr(row.role).toUpperCase();
+  const fiscalYear = toInt(row.fiscalYear);
+  const startDate = asStr(row.startDate);
+
+  if (!assignmentId || !tenantId || !userId || !scopeType || !role) {
+    return false;
+  }
+  if (!fiscalYear || !startDate) {
+    throw new Error(
+      `StaffAssignment required value is empty. assignmentId=${assignmentId}`,
+    );
+  }
+
+  const csvClassroomId = asNullable(row.classroomId);
+  const resolvedClassroomId =
+    scopeType === "CLASSROOM"
+      ? resolveClassroomIdAlias(tenantId, csvClassroomId)
+      : null;
+
+  const payload = {
+    assignmentId,
+    tenantId,
+    userId,
+    scopeType,
+    classroomId: resolvedClassroomId,
+    role,
+    fiscalYear,
+    startDate,
+    endDate: asNullable(row.endDate),
+    isPrimary: parseBooleanFlag(row.isPrimary, false),
+    status: asStr(row.status) || "ACTIVE",
+    note: asNullable(row.note),
+  };
+
+  const existing = await findFirstByField(model, "assignmentId", assignmentId);
+  const existingAssignmentId = asStr(existing?.assignmentId);
+
+  if (existingAssignmentId) {
+    const res = await model.update(payload, { authMode: "userPool" });
+    if (res.errors?.length) throw res.errors;
+    return "updated";
+  }
+
+  const res = await model.create(payload, { authMode: "userPool" });
+  if (res.errors?.length) throw res.errors;
+  return "created";
+}
+
 async function seedRows<T extends object>(args: {
   label: string;
   rows: T[];
@@ -898,6 +1254,7 @@ async function seedRows<T extends object>(args: {
       "SEED replaceObservationHints:",
       SHOULD_REPLACE_OBSERVATION_HINTS,
     );
+    console.log("SEED tenantStaff:", SHOULD_SEED_TENANT_STAFF);
 
     await signInWithTotp(username, password);
     signedIn = true;
@@ -943,6 +1300,45 @@ async function seedRows<T extends object>(args: {
           "AbilityObservationHint",
         );
       }
+    }
+
+    if (SHOULD_SEED_TENANT_STAFF) {
+      const tenantRows = await parseCsv<TenantRow>(tenantCsvUrl);
+      await seedRows({
+        label: "Tenant",
+        rows: tenantRows,
+        upsert: (row) => upsertTenant(models.Tenant, row),
+      });
+
+      const classroomRows = await parseCsv<ClassroomRow>(classroomCsvUrl);
+      await seedRows({
+        label: "Classroom",
+        rows: classroomRows,
+        upsert: (row) => upsertClassroom(models.Classroom, row),
+      });
+      if (classroomIdAliasMap.size > 0) {
+        console.log(
+          `Classroom alias map: ${classroomIdAliasMap.size} csv id(s) resolved to actual Classroom.id`,
+        );
+      }
+
+      const userProfileRows = await parseCsv<UserProfileRow>(userProfileCsvUrl);
+      await seedRows({
+        label: "UserProfile",
+        rows: userProfileRows,
+        upsert: (row) => upsertUserProfile(models.UserProfile, row),
+      });
+
+      const staffAssignmentRows = await parseCsv<StaffAssignmentRow>(
+        staffAssignmentCsvUrl,
+      );
+      await seedRows({
+        label: "StaffAssignment",
+        rows: staffAssignmentRows,
+        upsert: (row) => upsertStaffAssignment(models.StaffAssignment, row),
+      });
+    } else {
+      console.log("tenant / staff seed skipped");
     }
 
     // 1) AbilityCode投入

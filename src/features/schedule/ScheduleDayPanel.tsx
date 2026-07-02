@@ -440,6 +440,32 @@ function s(value: unknown): string {
   return String(value ?? "").trim();
 }
 
+function filterRowsByTenantAndClassroom<
+  TRow extends { tenantId?: string | null; classroomId?: string | null },
+>(
+  rows: TRow[],
+  tenantId: string | undefined,
+  currentClassroomId: string | null,
+  allowedClassroomIds: string[],
+): TRow[] {
+  const targetTenantId = s(tenantId);
+  const tenantRows = targetTenantId
+    ? rows.filter((row) => s(row.tenantId) === targetTenantId)
+    : rows;
+
+  const currentId = s(currentClassroomId);
+  if (currentId) {
+    return tenantRows.filter((row) => s(row.classroomId) === currentId);
+  }
+
+  const allowedSet = new Set(allowedClassroomIds.map((value) => s(value)));
+  if (allowedSet.size > 0) {
+    return tenantRows.filter((row) => allowedSet.has(s(row.classroomId)));
+  }
+
+  return tenantRows;
+}
+
 function normalizeClassroomName(value: unknown): string {
   return s(value).replace(/\s+/g, "");
 }
@@ -1118,8 +1144,20 @@ function PhotoAttachmentLink(props: { photo: PhotoAttachmentRow }) {
   );
 }
 
-export default function ScheduleDayPanel(props: { owner: string }) {
-  const { owner } = props;
+export default function ScheduleDayPanel(props: {
+  owner: string;
+  tenantId?: string;
+  currentClassroomId?: string | null;
+  allowedClassroomIds?: string[];
+  isSchoolScope?: boolean;
+}) {
+  const {
+    owner,
+    tenantId,
+    currentClassroomId = null,
+    allowedClassroomIds = [],
+    isSchoolScope = false,
+  } = props;
   const client = useMemo(
     () => generateClient<Schema>() as unknown as ScheduleDayPanelClient,
     [],
@@ -1493,7 +1531,7 @@ export default function ScheduleDayPanel(props: { owner: string }) {
     try {
       const dayRes = await client.models.ScheduleDay.list({
         filter: {
-          owner: { eq: owner },
+          ...(tenantId ? { tenantId: { eq: tenantId } } : {}),
           targetDate: { eq: date },
         } as ListOptions,
         limit: 1000,
@@ -1508,14 +1546,19 @@ export default function ScheduleDayPanel(props: { owner: string }) {
         );
       }
 
-      const latestRows = latestScheduleDaysByClassroom(dayRes.data ?? []);
+      const latestRows = filterRowsByTenantAndClassroom(
+        latestScheduleDaysByClassroom(dayRes.data ?? []),
+        tenantId,
+        currentClassroomId,
+        allowedClassroomIds,
+      );
       setParentNoticeCandidates(latestRows);
 
-      const tenantId = s(latestRows[0]?.tenantId);
-      if (tenantId) {
+      const labelTenantId = s(latestRows[0]?.tenantId) || s(tenantId);
+      if (labelTenantId) {
         const classroomRes = await client.models.Classroom.list({
           filter: {
-            tenantId: { eq: tenantId },
+            tenantId: { eq: labelTenantId },
           } as ListOptions,
           limit: 1000,
         });
@@ -1779,7 +1822,7 @@ export default function ScheduleDayPanel(props: { owner: string }) {
     try {
       const dayRes = await client.models.ScheduleDay.list({
         filter: {
-          owner: { eq: owner },
+          ...(tenantId ? { tenantId: { eq: tenantId } } : {}),
           targetDate: { eq: targetDate },
         } as ListOptions,
         limit: 1000,
@@ -1794,8 +1837,11 @@ export default function ScheduleDayPanel(props: { owner: string }) {
         );
       }
 
-      const candidateRows = latestScheduleDaysByClassroomForDay(
-        dayRes.data ?? [],
+      const candidateRows = filterRowsByTenantAndClassroom(
+        latestScheduleDaysByClassroomForDay(dayRes.data ?? []),
+        tenantId,
+        currentClassroomId,
+        allowedClassroomIds,
       );
 
       setScheduleDayCandidates(candidateRows);
@@ -1814,6 +1860,13 @@ export default function ScheduleDayPanel(props: { owner: string }) {
       let foundDay =
         candidateRows.find((row) => row.id === selectedScheduleDayId) ?? null;
 
+      if (!foundDay && currentClassroomId) {
+        foundDay =
+          candidateRows.find(
+            (row) => s(row.classroomId) === currentClassroomId,
+          ) ?? null;
+      }
+
       if (!foundDay && previousClassroomId) {
         foundDay =
           candidateRows.find(
@@ -1828,7 +1881,11 @@ export default function ScheduleDayPanel(props: { owner: string }) {
       if (!foundDay) {
         await loadDayHeaderLabels(candidateRows[0]);
         setMessage(
-          `対象日 ${targetDate} の日案候補が ${candidateRows.length} 件あります。クラスを選択してから「日案を表示」を押してください。`,
+          `対象日 ${targetDate} の日案候補が ${candidateRows.length} 件あります。${
+            currentClassroomId
+              ? "選択中クラスの日案を選択してください。"
+              : "クラスを選択してから「日案を表示」を押してください。"
+          }`,
         );
         return;
       }
@@ -3181,6 +3238,14 @@ export default function ScheduleDayPanel(props: { owner: string }) {
         }}
       >
         <h2 style={{ marginTop: 0, marginBottom: 12 }}>Schedule（日案）</h2>
+        <div style={{ color: "#666", fontSize: 13, marginBottom: 12 }}>
+          表示範囲:{" "}
+          {currentClassroomId
+            ? `選択クラスのみ (${currentClassroomId})`
+            : isSchoolScope
+              ? "園全体"
+              : "担当クラス"}
+        </div>
 
         <div
           style={{

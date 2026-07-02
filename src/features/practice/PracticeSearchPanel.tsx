@@ -312,6 +312,31 @@ function toPracticeLite(row: PracticeCodeRow): PracticeLite | null {
   };
 }
 
+function practiceVisibleForTenant(
+  row: {
+    tenantId?: string | null;
+    visibility?: string | null;
+    publishScope?: string | null;
+  },
+  targetTenantId: string,
+): boolean {
+  const rowTenantId = s(row.tenantId);
+  if (!targetTenantId) return true;
+  if (rowTenantId && rowTenantId !== targetTenantId) return false;
+
+  // tenantId が空のPracticeは共通マスターとして扱う。
+  return true;
+}
+
+function suggestionVisibleForTenant(
+  row: { tenantId?: string | null },
+  targetTenantId: string,
+): boolean {
+  const rowTenantId = s(row.tenantId);
+  if (!targetTenantId) return true;
+  return !rowTenantId || rowTenantId === targetTenantId;
+}
+
 function buildAbilityMaps(codes: AbilityCodeRow[]) {
   const byCode = new Map<string, AbilityCodeRow>();
   for (const code of codes) {
@@ -341,8 +366,20 @@ function buildAbilityMaps(codes: AbilityCodeRow[]) {
   return { buildCodeName, buildParentLabel };
 }
 
-export default function PracticeSearchPanel(props: { owner?: string }) {
-  void props;
+type Props = {
+  owner?: string;
+  tenantId?: string;
+  currentClassroomId?: string | null;
+  allowedClassroomIds?: string[] | null;
+  isSchoolScope?: boolean;
+};
+
+export default function PracticeSearchPanel(props: Props) {
+  const tenantId = s(props.tenantId);
+  void props.owner;
+  void props.currentClassroomId;
+  void props.allowedClassroomIds;
+  void props.isSchoolScope;
 
   const client = useMemo(() => generateClient<Schema>(), []);
 
@@ -455,7 +492,7 @@ export default function PracticeSearchPanel(props: { owner?: string }) {
 
   const listPracticeCodes = useCallback(
     async (filter?: Record<string, unknown>): Promise<PracticeCodeRow[]> => {
-      return listAll<
+      const rows = await listAll<
         PracticeCodeRow,
         Parameters<typeof client.models.PracticeCode.list>[0]
       >(
@@ -465,15 +502,17 @@ export default function PracticeSearchPanel(props: { owner?: string }) {
           >,
         filter ? { filter } : undefined,
       );
+
+      return rows.filter((row) => practiceVisibleForTenant(row, tenantId));
     },
-    [client],
+    [client, tenantId],
   );
 
   const listPracticeLinkSuggestions = useCallback(
     async (
       filter: Record<string, unknown>,
     ): Promise<PracticeLinkSuggestionRow[]> => {
-      return listAll<
+      const rows = await listAll<
         PracticeLinkSuggestionRow,
         Parameters<typeof client.models.PracticeLinkSuggestion.list>[0]
       >(
@@ -483,8 +522,10 @@ export default function PracticeSearchPanel(props: { owner?: string }) {
           >,
         { filter },
       );
+
+      return rows.filter((row) => suggestionVisibleForTenant(row, tenantId));
     },
-    [client],
+    [client, tenantId],
   );
 
   useEffect(() => {
@@ -1141,6 +1182,10 @@ export default function PracticeSearchPanel(props: { owner?: string }) {
     setSavingSuggestionId(row.id);
 
     try {
+      if (!suggestionVisibleForTenant(row, tenantId)) {
+        throw new Error("現在のテナント外の候補は更新できません。");
+      }
+
       const nextStatus = checked ? "accepted" : "rejected";
 
       const payload = {
@@ -1184,6 +1229,10 @@ export default function PracticeSearchPanel(props: { owner?: string }) {
     setSavingSuggestionId(row.id);
 
     try {
+      if (!suggestionVisibleForTenant(row, tenantId)) {
+        throw new Error("現在のテナント外の候補は更新できません。");
+      }
+
       const payload = {
         id: row.id,
         tenantId: row.tenantId ?? undefined,

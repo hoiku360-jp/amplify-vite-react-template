@@ -5,6 +5,10 @@ import type { Schema } from "../../../amplify/data/resource";
 
 type Props = {
   owner: string;
+  tenantId?: string;
+  currentClassroomId?: string | null;
+  allowedClassroomIds?: string[] | null;
+  isSchoolScope?: boolean;
 };
 
 type ScheduleMonthRow = Schema["ScheduleMonth"]["type"];
@@ -846,6 +850,18 @@ function calendarEventVisibleForClassroom(
   return false;
 }
 
+function practiceVisibleForTenant(
+  row: Pick<PracticeRow, "tenantId" | "visibility" | "publishScope">,
+  targetTenantId: string,
+): boolean {
+  const rowTenantId = s(row.tenantId);
+  if (!targetTenantId) return true;
+  if (rowTenantId && rowTenantId !== targetTenantId) return false;
+
+  // tenantId が空のPracticeは共通マスターとして扱い、どのテナントでも参照可能にする。
+  return true;
+}
+
 function sortCalendarEvents(
   a: ClassCalendarEventRow,
   b: ClassCalendarEventRow,
@@ -960,8 +976,30 @@ const smallMutedStyle: CSSProperties = {
 
 export default function SimpleScheduleWorkspacePanel(props: Props) {
   const { owner } = props;
+  const userTenantId = s(props.tenantId);
+  const currentClassroomId = s(props.currentClassroomId);
+  const isSchoolScope = props.isSchoolScope === true;
+  const isTenantLocked = userTenantId.length > 0;
 
-  const [tenantId, setTenantId] = useState(DEFAULT_TENANT_ID);
+  const allowedClassroomIdSet = useMemo(
+    () =>
+      new Set(
+        (props.allowedClassroomIds ?? []).map((id) => s(id)).filter(Boolean),
+      ),
+    [props.allowedClassroomIds],
+  );
+
+  const classroomAllowedForUser = useCallback(
+    (row: ClassroomRow | null | undefined): boolean => {
+      if (!row) return false;
+      if (userTenantId && s(row.tenantId) !== userTenantId) return false;
+      if (isSchoolScope || allowedClassroomIdSet.size === 0) return true;
+      return allowedClassroomIdSet.has(s(row.id));
+    },
+    [allowedClassroomIdSet, isSchoolScope, userTenantId],
+  );
+
+  const [tenantId, setTenantId] = useState(userTenantId || DEFAULT_TENANT_ID);
   const [monthKey, setMonthKey] = useState(monthKeyFromDate(todayString()));
   const [selectedMonthId, setSelectedMonthId] = useState("");
   const [selectedClassMonthPlanId, setSelectedClassMonthPlanId] = useState("");
@@ -1011,6 +1049,14 @@ export default function SimpleScheduleWorkspacePanel(props: Props) {
   const [classroomId, setClassroomId] = useState("");
   const [ageTargetId, setAgeTargetId] = useState("");
 
+  useEffect(() => {
+    if (!userTenantId) return;
+    setTenantId(userTenantId);
+    if (currentClassroomId) {
+      setClassroomId((prev) => prev || currentClassroomId);
+    }
+  }, [currentClassroomId, userTenantId]);
+
   const scheduleMonthCandidates = useMemo(() => {
     return months
       .filter((row) => {
@@ -1018,6 +1064,7 @@ export default function SimpleScheduleWorkspacePanel(props: Props) {
 
         return (
           row.monthKey === monthKey &&
+          row.tenantId === tenantId &&
           row.owner === owner &&
           row.classroomId === classroomId &&
           row.ageTargetId === ageTargetId &&
@@ -1025,7 +1072,7 @@ export default function SimpleScheduleWorkspacePanel(props: Props) {
         );
       })
       .sort(compareScheduleMonthCandidate);
-  }, [ageTargetId, classroomId, monthKey, months, owner]);
+  }, [ageTargetId, classroomId, monthKey, months, owner, tenantId]);
 
   const activeScheduleMonthCandidateCount = useMemo(() => {
     return scheduleMonthCandidates.filter(
@@ -1462,7 +1509,8 @@ export default function SimpleScheduleWorkspacePanel(props: Props) {
   const loadInitial = useCallback(async () => {
     setLoading(true);
     try {
-      const trimmedTenantId = tenantId.trim() || DEFAULT_TENANT_ID;
+      const trimmedTenantId =
+        userTenantId || tenantId.trim() || DEFAULT_TENANT_ID;
       const [
         classroomRes,
         ageTargetRes,
@@ -1536,6 +1584,7 @@ export default function SimpleScheduleWorkspacePanel(props: Props) {
         } as ListOptions),
         client.models.ScheduleMonth.list({
           filter: {
+            tenantId: { eq: trimmedTenantId },
             owner: { eq: owner },
           },
           limit: 1000,
@@ -1559,12 +1608,16 @@ export default function SimpleScheduleWorkspacePanel(props: Props) {
         throw new Error(formatModelErrors(responseErrors));
       }
 
-      const classroomRows = classroomRes.data ?? [];
+      const classroomRows = [...(classroomRes.data ?? [])].filter((row) =>
+        classroomAllowedForUser(row),
+      );
       const ageRows = ageTargetRes.data ?? [];
       const practices = [...(practiceRes.data ?? [])]
+        .filter((row) => practiceVisibleForTenant(row, trimmedTenantId))
         .filter(practiceActive)
         .sort((a, b) => s(a.practice_code).localeCompare(s(b.practice_code)));
       const monthRows = [...(monthRes.data ?? [])]
+        .filter((row) => row.tenantId === trimmedTenantId)
         .filter((row) => row.monthKey === monthKey || !row.monthKey)
         .sort((a, b) => s(b.monthKey).localeCompare(s(a.monthKey)));
       const calendarRows = [...(calendarEventRes.data ?? [])]
@@ -1583,7 +1636,17 @@ export default function SimpleScheduleWorkspacePanel(props: Props) {
       setCalendarEvents(calendarRows);
       setMonths(monthRows);
 
-      const nextClassroomId = classroomId || classroomRows[0]?.id || "";
+      const currentClassroomIsAvailable = classroomRows.some(
+        (row) => row.id === currentClassroomId,
+      );
+      const previousClassroomIsAvailable = classroomRows.some(
+        (row) => row.id === classroomId,
+      );
+      const nextClassroomId = currentClassroomIsAvailable
+        ? currentClassroomId
+        : previousClassroomIsAvailable
+          ? classroomId
+          : classroomRows[0]?.id || "";
       const nextAgeTargetId = ageTargetId || ageRows[0]?.id || "";
       setClassroomId(nextClassroomId);
       setAgeTargetId(nextAgeTargetId);
@@ -1620,12 +1683,15 @@ export default function SimpleScheduleWorkspacePanel(props: Props) {
     }
   }, [
     ageTargetId,
+    classroomAllowedForUser,
     classroomId,
+    currentClassroomId,
     fetchWeeksForMonth,
     fiscalYear,
     monthKey,
     owner,
     tenantId,
+    userTenantId,
   ]);
 
   useEffect(() => {
@@ -2396,10 +2462,18 @@ export default function SimpleScheduleWorkspacePanel(props: Props) {
             <input
               type="text"
               value={tenantId}
+              disabled={isTenantLocked}
               onChange={(e) => setTenantId(e.target.value)}
               style={{ width: 140 }}
             />
           </label>
+
+          {userTenantId && (
+            <span style={smallMutedStyle}>
+              scope: {isSchoolScope ? "SCHOOL" : "CLASSROOM"}
+              {currentClassroomId ? ` / classroom: ${currentClassroomId}` : ""}
+            </span>
+          )}
 
           <label>
             classroom{" "}

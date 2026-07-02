@@ -22,11 +22,28 @@ import {
 type Props = {
   owner: string;
   tenantId: string;
+  currentClassroomId?: string | null;
+  allowedClassroomIds?: string[];
+  isSchoolScope?: boolean;
 };
 
+function s(value: unknown): string {
+  return String(value ?? "").trim();
+}
+
 export default function ClassWeeklyReportPanel(props: Props) {
-  const { owner, tenantId } = props;
+  const {
+    owner,
+    tenantId,
+    currentClassroomId = null,
+    allowedClassroomIds = [],
+    isSchoolScope = false,
+  } = props;
   const client = useMemo(() => generateClient<Schema>(), []);
+  const allowedClassroomKey = useMemo(
+    () => allowedClassroomIds.join("|"),
+    [allowedClassroomIds],
+  );
 
   const [loadingClassrooms, setLoadingClassrooms] = useState(false);
   const [loadingReport, setLoadingReport] = useState(false);
@@ -49,17 +66,55 @@ export default function ClassWeeklyReportPanel(props: Props) {
     [classrooms, selectedClassroomId],
   );
 
+  function filterClassroomsForCurrentContext(
+    rows: Array<Schema["Classroom"]["type"]>,
+  ): Array<Schema["Classroom"]["type"]> {
+    const tenantRows = rows.filter((row) => s(row.tenantId) === tenantId);
+    const currentId = s(currentClassroomId);
+    if (currentId) {
+      return tenantRows.filter((row) => row.id === currentId);
+    }
+
+    const allowedSet = new Set(allowedClassroomIds.map((value) => s(value)));
+    if (allowedSet.size > 0) {
+      return tenantRows.filter((row) => allowedSet.has(row.id));
+    }
+
+    return tenantRows;
+  }
+
+  function selectedClassroomIsInTenantScope(): boolean {
+    return !!selectedClassroom && s(selectedClassroom.tenantId) === tenantId;
+  }
+
+  function nextSelectedClassroomId(
+    rows: Array<Schema["Classroom"]["type"]>,
+  ): string {
+    const currentId = currentClassroomId ?? "";
+    if (currentId && rows.some((row) => row.id === currentId)) {
+      return currentId;
+    }
+
+    if (
+      selectedClassroomId &&
+      rows.some((row) => row.id === selectedClassroomId)
+    ) {
+      return selectedClassroomId;
+    }
+
+    return rows[0]?.id ?? "";
+  }
+
   async function reloadClassrooms() {
     setLoadingClassrooms(true);
     setMessage("");
 
     try {
-      const rows = await loadClassrooms(client, tenantId);
+      const rows = filterClassroomsForCurrentContext(
+        await loadClassrooms(client, tenantId),
+      );
       setClassrooms(rows);
-
-      if (!selectedClassroomId && rows.length > 0) {
-        setSelectedClassroomId(rows[0].id);
-      }
+      setSelectedClassroomId(nextSelectedClassroomId(rows));
 
       if (rows.length === 0) {
         setMessage(`tenantId=${tenantId} の Classroom が見つかりません。`);
@@ -77,7 +132,7 @@ export default function ClassWeeklyReportPanel(props: Props) {
   useEffect(() => {
     reloadClassrooms();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [tenantId]);
+  }, [tenantId, currentClassroomId, allowedClassroomKey, isSchoolScope]);
 
   async function generateReport() {
     if (!selectedClassroomId) {
@@ -86,6 +141,12 @@ export default function ClassWeeklyReportPanel(props: Props) {
     }
     if (fromDate > toDate) {
       setMessage("期間指定が不正です。fromDate は toDate 以下にしてください。");
+      return;
+    }
+    if (!selectedClassroomIsInTenantScope()) {
+      setMessage(
+        `選択中のクラスは現在の tenantId=${tenantId} に属していません。`,
+      );
       return;
     }
 
@@ -126,6 +187,12 @@ export default function ClassWeeklyReportPanel(props: Props) {
   async function saveReport() {
     if (!selectedClassroomId || !bundle || !markdownText) {
       setMessage("先にクラス週報を作成してください。");
+      return;
+    }
+    if (!selectedClassroomIsInTenantScope()) {
+      setMessage(
+        `選択中のクラスは現在の tenantId=${tenantId} に属していません。`,
+      );
       return;
     }
 
@@ -249,6 +316,10 @@ export default function ClassWeeklyReportPanel(props: Props) {
             <select
               value={selectedClassroomId}
               onChange={(e) => setSelectedClassroomId(e.target.value)}
+              disabled={
+                !!currentClassroomId ||
+                (!isSchoolScope && classrooms.length <= 1)
+              }
               style={{ display: "block", marginTop: 6, width: "100%" }}
             >
               <option value="">選択してください</option>

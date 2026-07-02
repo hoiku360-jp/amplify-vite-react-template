@@ -82,7 +82,32 @@ function getQuarterDefs(fiscalYear: number) {
 }
 
 function normalizeAgeBand(v: string | null | undefined) {
-  return String(v ?? "").trim();
+  const raw = String(v ?? "").trim();
+  const compact = raw.replace(/\s+/g, "");
+
+  if (
+    ["3", "3歳", "3才", "3歳児", "3才児", "3歳クラス", "3才クラス"].includes(
+      compact,
+    )
+  ) {
+    return "3歳";
+  }
+  if (
+    ["4", "4歳", "4才", "4歳児", "4才児", "4歳クラス", "4才クラス"].includes(
+      compact,
+    )
+  ) {
+    return "4歳";
+  }
+  if (
+    ["5", "5歳", "5才", "5歳児", "5才児", "5歳クラス", "5才クラス"].includes(
+      compact,
+    )
+  ) {
+    return "5歳";
+  }
+
+  return raw;
 }
 
 export const handler: Schema["ensureFiscalYearTemplateV2"]["functionHandler"] =
@@ -179,7 +204,10 @@ export const handler: Schema["ensureFiscalYearTemplateV2"]["functionHandler"] =
     const targetAgeBands = ["3歳", "4歳", "5歳"];
     let createdAgeTargetCount = 0;
 
-    const ageTargetByAge = new Map<string, Schema["SchoolAnnualAgeTarget"]["type"]>();
+    const ageTargetByAge = new Map<
+      string,
+      Schema["SchoolAnnualAgeTarget"]["type"]
+    >();
     for (const item of ageTargets) {
       ageTargetByAge.set(normalizeAgeBand(item.ageBand), item);
     }
@@ -268,7 +296,7 @@ export const handler: Schema["ensureFiscalYearTemplateV2"]["functionHandler"] =
     const quarterDefs = getQuarterDefs(fiscalYear);
 
     const quarterPlanKeySet = new Set(
-      quarterPlans.map((p) => `${p.classAnnualPlanId}::${p.termNo}`)
+      quarterPlans.map((p) => `${p.classAnnualPlanId}::${p.termNo}`),
     );
 
     for (const classAnnualPlan of classAnnualPlanByClassroom.values()) {
@@ -319,13 +347,13 @@ export const handler: Schema["ensureFiscalYearTemplateV2"]["functionHandler"] =
 
     let createdMonthPlanCount = 0;
     const monthPlanKeySet = new Set(
-      monthPlans.map((p) => `${p.classQuarterPlanId}::${p.monthKey}`)
+      monthPlans.map((p) => `${p.classQuarterPlanId}::${p.monthKey}`),
     );
 
     for (const classAnnualPlan of classAnnualPlanByClassroom.values()) {
       for (const q of quarterDefs) {
         const quarterPlan = quarterPlanByAnnualAndTerm.get(
-          `${classAnnualPlan.id}::${q.termNo}`
+          `${classAnnualPlan.id}::${q.termNo}`,
         );
         if (!quarterPlan?.id) continue;
 
@@ -341,7 +369,11 @@ export const handler: Schema["ensureFiscalYearTemplateV2"]["functionHandler"] =
             monthKey,
             title: `${m.year}年${m.month}月`,
             periodStart: formatDate(m.year, m.month, 1),
-            periodEnd: formatDate(m.year, m.month, lastDayOfMonth(m.year, m.month)),
+            periodEnd: formatDate(
+              m.year,
+              m.month,
+              lastDayOfMonth(m.year, m.month),
+            ),
             ageBand: classAnnualPlan.ageBand,
             goalTextC: "",
             status: "DRAFT",

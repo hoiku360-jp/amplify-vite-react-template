@@ -168,6 +168,28 @@ function s(value: unknown): string {
   return String(value ?? "").trim();
 }
 
+function filterRowsByTenantAndClassroom<
+  TRow extends { tenantId?: string | null; classroomId?: string | null },
+>(
+  rows: TRow[],
+  tenantId: string,
+  currentClassroomId: string | null,
+  allowedClassroomIds: string[],
+): TRow[] {
+  const tenantRows = rows.filter((row) => s(row.tenantId) === tenantId);
+  const currentId = s(currentClassroomId);
+  if (currentId) {
+    return tenantRows.filter((row) => s(row.classroomId) === currentId);
+  }
+
+  const allowedSet = new Set(allowedClassroomIds.map((value) => s(value)));
+  if (allowedSet.size > 0) {
+    return tenantRows.filter((row) => allowedSet.has(s(row.classroomId)));
+  }
+
+  return tenantRows;
+}
+
 function formatDateTime(value?: string | null) {
   if (!value) return "-";
   const d = new Date(value);
@@ -372,8 +394,16 @@ async function sha256Hex(value: string): Promise<string> {
 export default function ParentNoticePanel(props: {
   owner: string;
   tenantId?: string;
+  currentClassroomId?: string | null;
+  allowedClassroomIds?: string[];
+  isSchoolScope?: boolean;
 }) {
-  const { owner, tenantId = DEFAULT_TENANT_ID } = props;
+  const {
+    owner,
+    tenantId = DEFAULT_TENANT_ID,
+    currentClassroomId = null,
+    allowedClassroomIds = [],
+  } = props;
 
   const client = useMemo(
     () => generateClient<Schema>() as unknown as ParentNoticeClient,
@@ -428,6 +458,18 @@ export default function ParentNoticePanel(props: {
     markingParentNoticeSent ||
     creatingReplyToken;
 
+  function scheduleDayIsInCurrentTenantScope(row: ScheduleDayRow): boolean {
+    if (s(row.tenantId) !== tenantId) return false;
+
+    const currentId = s(currentClassroomId);
+    if (currentId) return s(row.classroomId) === currentId;
+
+    const allowedSet = new Set(allowedClassroomIds.map((value) => s(value)));
+    if (allowedSet.size > 0) return allowedSet.has(s(row.classroomId));
+
+    return true;
+  }
+
   function mergeScheduleDay(next: ScheduleDayRow) {
     setSelectedDay(next);
     setCandidates((prev) =>
@@ -480,6 +522,7 @@ export default function ParentNoticePanel(props: {
     try {
       const res = await client.models.ParentNoticeReply.list({
         filter: {
+          tenantId: { eq: tenantId },
           scheduleDayId: { eq: scheduleDayId },
         } as ListOptions,
         limit: 1000,
@@ -523,7 +566,6 @@ export default function ParentNoticePanel(props: {
 
       const dayRes = await client.models.ScheduleDay.list({
         filter: {
-          owner: { eq: owner },
           tenantId: { eq: tenantId },
           targetDate: { eq: date },
         } as ListOptions,
@@ -539,7 +581,12 @@ export default function ParentNoticePanel(props: {
         );
       }
 
-      const latestRows = latestScheduleDaysByClassroom(dayRes.data ?? []);
+      const latestRows = filterRowsByTenantAndClassroom(
+        latestScheduleDaysByClassroom(dayRes.data ?? []),
+        tenantId,
+        currentClassroomId,
+        allowedClassroomIds,
+      );
       setCandidates(latestRows);
 
       if (selectedDay && !latestRows.some((row) => row.id === selectedDay.id)) {
@@ -554,7 +601,9 @@ export default function ParentNoticePanel(props: {
       }
 
       setMessage(
-        `保護者連絡候補を読み込みました。対象日=${date}, 件数=${latestRows.length}`,
+        `保護者連絡候補を読み込みました。対象日=${date}, 件数=${latestRows.length}${
+          currentClassroomId ? `, classroomId=${currentClassroomId}` : ""
+        }`,
       );
     } catch (e) {
       console.error(e);
@@ -570,6 +619,13 @@ export default function ParentNoticePanel(props: {
   }
 
   function openCandidate(row: ScheduleDayRow) {
+    if (!scheduleDayIsInCurrentTenantScope(row)) {
+      setMessage(
+        `この日案は現在の tenantId=${tenantId} または表示可能クラスに属していないため開けません。`,
+      );
+      return;
+    }
+
     setSelectedDay(row);
     setParentNoticeDraft(
       s(row.parentNoticeText) || s(row.parentNoticeDraftText),
@@ -585,6 +641,12 @@ export default function ParentNoticePanel(props: {
   }
 
   async function ensureReplyToken(day: ScheduleDayRow): Promise<string> {
+    if (!scheduleDayIsInCurrentTenantScope(day)) {
+      throw new Error(
+        `この日案は現在の tenantId=${tenantId} または表示可能クラスに属していません。`,
+      );
+    }
+
     if (replyTokenPlain && replyTokenDayId === day.id) {
       return replyTokenPlain;
     }
@@ -653,6 +715,13 @@ export default function ParentNoticePanel(props: {
 
   async function generateParentNotice() {
     if (!selectedDay) return;
+
+    if (!scheduleDayIsInCurrentTenantScope(selectedDay)) {
+      setMessage(
+        `この日案は現在の tenantId=${tenantId} または表示可能クラスに属していないため生成しません。`,
+      );
+      return;
+    }
 
     const runner = client.mutations?.generateParentNotice;
     if (!runner) {
@@ -726,6 +795,13 @@ export default function ParentNoticePanel(props: {
   async function saveParentNotice(textOverride?: string) {
     if (!selectedDay) return;
 
+    if (!scheduleDayIsInCurrentTenantScope(selectedDay)) {
+      setMessage(
+        `この日案は現在の tenantId=${tenantId} または表示可能クラスに属していないため保存しません。`,
+      );
+      return;
+    }
+
     setSavingParentNotice(true);
     setMessage("");
 
@@ -788,6 +864,12 @@ export default function ParentNoticePanel(props: {
     memo: string;
   }) {
     if (!selectedDay) return;
+
+    if (!scheduleDayIsInCurrentTenantScope(selectedDay)) {
+      throw new Error(
+        `この日案は現在の tenantId=${tenantId} または表示可能クラスに属していません。`,
+      );
+    }
 
     const text = parentNoticeDraft.trim();
     if (!text) {

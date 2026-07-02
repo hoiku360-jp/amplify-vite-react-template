@@ -719,7 +719,8 @@
                     "allow": "private",
                     "operations": [
                       "create",
-                      "read"
+                      "read",
+                      "update"
                     ]
                   }
                 ]
@@ -898,7 +899,9 @@
                   {
                     "allow": "private",
                     "operations": [
-                      "read"
+                      "read",
+                      "create",
+                      "update"
                     ]
                   }
                 ]
@@ -908,6 +911,186 @@
           "primaryKeyInfo": {
             "isCustomPrimaryKey": true,
             "primaryKeyFieldName": "userId",
+            "sortKeyFieldNames": []
+          }
+        },
+        "StaffAssignment": {
+          "name": "StaffAssignment",
+          "fields": {
+            "assignmentId": {
+              "name": "assignmentId",
+              "isArray": false,
+              "type": "String",
+              "isRequired": true,
+              "attributes": []
+            },
+            "tenantId": {
+              "name": "tenantId",
+              "isArray": false,
+              "type": "String",
+              "isRequired": true,
+              "attributes": []
+            },
+            "userId": {
+              "name": "userId",
+              "isArray": false,
+              "type": "String",
+              "isRequired": true,
+              "attributes": []
+            },
+            "scopeType": {
+              "name": "scopeType",
+              "isArray": false,
+              "type": "String",
+              "isRequired": true,
+              "attributes": []
+            },
+            "classroomId": {
+              "name": "classroomId",
+              "isArray": false,
+              "type": "ID",
+              "isRequired": false,
+              "attributes": []
+            },
+            "role": {
+              "name": "role",
+              "isArray": false,
+              "type": "String",
+              "isRequired": true,
+              "attributes": []
+            },
+            "fiscalYear": {
+              "name": "fiscalYear",
+              "isArray": false,
+              "type": "Int",
+              "isRequired": true,
+              "attributes": []
+            },
+            "startDate": {
+              "name": "startDate",
+              "isArray": false,
+              "type": "AWSDate",
+              "isRequired": true,
+              "attributes": []
+            },
+            "endDate": {
+              "name": "endDate",
+              "isArray": false,
+              "type": "AWSDate",
+              "isRequired": false,
+              "attributes": []
+            },
+            "isPrimary": {
+              "name": "isPrimary",
+              "isArray": false,
+              "type": "Boolean",
+              "isRequired": false,
+              "attributes": []
+            },
+            "status": {
+              "name": "status",
+              "isArray": false,
+              "type": "String",
+              "isRequired": true,
+              "attributes": []
+            },
+            "note": {
+              "name": "note",
+              "isArray": false,
+              "type": "String",
+              "isRequired": false,
+              "attributes": []
+            },
+            "createdAt": {
+              "name": "createdAt",
+              "isArray": false,
+              "type": "AWSDateTime",
+              "isRequired": false,
+              "attributes": [],
+              "isReadOnly": true
+            },
+            "updatedAt": {
+              "name": "updatedAt",
+              "isArray": false,
+              "type": "AWSDateTime",
+              "isRequired": false,
+              "attributes": [],
+              "isReadOnly": true
+            }
+          },
+          "syncable": true,
+          "pluralName": "StaffAssignments",
+          "attributes": [
+            {
+              "type": "model",
+              "properties": {}
+            },
+            {
+              "type": "key",
+              "properties": {
+                "fields": [
+                  "assignmentId"
+                ]
+              }
+            },
+            {
+              "type": "key",
+              "properties": {
+                "name": "staffAssignmentsByTenantIdAndFiscalYearAndScopeTypeAndRole",
+                "queryField": "listStaffAssignmentsByTenantYear",
+                "fields": [
+                  "tenantId",
+                  "fiscalYear",
+                  "scopeType",
+                  "role"
+                ]
+              }
+            },
+            {
+              "type": "key",
+              "properties": {
+                "name": "staffAssignmentsByUserIdAndFiscalYearAndScopeTypeAndClassroomId",
+                "queryField": "listStaffAssignmentsByUser",
+                "fields": [
+                  "userId",
+                  "fiscalYear",
+                  "scopeType",
+                  "classroomId"
+                ]
+              }
+            },
+            {
+              "type": "key",
+              "properties": {
+                "name": "staffAssignmentsByClassroomIdAndFiscalYearAndRole",
+                "queryField": "listStaffAssignmentsByClassroomYear",
+                "fields": [
+                  "classroomId",
+                  "fiscalYear",
+                  "role"
+                ]
+              }
+            },
+            {
+              "type": "auth",
+              "properties": {
+                "rules": [
+                  {
+                    "allow": "private",
+                    "operations": [
+                      "create",
+                      "read",
+                      "update",
+                      "delete"
+                    ]
+                  }
+                ]
+              }
+            }
+          ],
+          "primaryKeyInfo": {
+            "isCustomPrimaryKey": true,
+            "primaryKeyFieldName": "assignmentId",
             "sortKeyFieldNames": []
           }
         },

@@ -14,6 +14,7 @@ import AbilityDashboardPanel from "./features/check/AbilityDashboardPanel";
 import ClassWeeklyReportPanel from "./features/check/ClassWeeklyReportPanel";
 import ChildWeekendLetterPanel from "./features/check/ChildWeekendLetterPanel";
 import AttendancePanel from "./features/attendance/AttendancePanel";
+import type { Schema } from "../amplify/data/resource";
 
 type TabKey =
   | "planV2Workspace"
@@ -30,17 +31,113 @@ type TabKey =
   | "link"
   | "audio";
 
+type Classroom = Schema["Classroom"]["type"];
+
+export type CurrentUserContext = {
+  userId: string | null;
+  tenantId: string;
+  profileFullName: string | null;
+  role: string;
+  fiscalYear: number;
+  isSchoolScope: boolean;
+  allowedClassroomIds: string[];
+  currentClassroomId: string | null;
+  assignmentCount: number;
+  source: "assignment" | "profile" | "fallback";
+};
+
+function s(value: unknown): string {
+  return String(value ?? "").trim();
+}
+
+function uniqueStrings(values: string[]): string[] {
+  return Array.from(new Set(values.map((value) => s(value)).filter(Boolean)));
+}
+
+function displayClassroomName(classroom: Classroom): string {
+  const ageBand = classroom.ageBand ? `${classroom.ageBand} ` : "";
+  return `${ageBand}${classroom.name}`;
+}
+
+function classroomBelongsToTenant(
+  classroom: Classroom,
+  tenantId: string,
+): boolean {
+  const rowTenantId = s((classroom as { tenantId?: string | null }).tenantId);
+  return !!rowTenantId && rowTenantId === tenantId;
+}
+
+function sanitizeUserContextForTenant(args: {
+  userContext: CurrentUserContext;
+  classrooms: Classroom[];
+  tenantId: string;
+}): { safeUserContext: CurrentUserContext; visibleClassrooms: Classroom[] } {
+  const { userContext, classrooms, tenantId } = args;
+
+  const tenantClassrooms = classrooms.filter(
+    (classroom) =>
+      classroomBelongsToTenant(classroom, tenantId) &&
+      s((classroom as { status?: string | null }).status).toUpperCase() !==
+        "ARCHIVED",
+  );
+  const tenantClassroomIds = tenantClassrooms.map((classroom) => classroom.id);
+  const tenantClassroomIdSet = new Set(tenantClassroomIds);
+
+  const requestedAllowedClassroomIds = userContext.isSchoolScope
+    ? tenantClassroomIds
+    : userContext.allowedClassroomIds.filter((classroomId) =>
+        tenantClassroomIdSet.has(classroomId),
+      );
+
+  const safeAllowedClassroomIds = uniqueStrings(requestedAllowedClassroomIds);
+  const requestedCurrentClassroomId = s(userContext.currentClassroomId);
+  const safeCurrentClassroomId = safeAllowedClassroomIds.includes(
+    requestedCurrentClassroomId,
+  )
+    ? requestedCurrentClassroomId
+    : (safeAllowedClassroomIds[0] ?? null);
+
+  const visibleClassrooms = tenantClassrooms.filter((classroom) =>
+    safeAllowedClassroomIds.includes(classroom.id),
+  );
+
+  return {
+    visibleClassrooms,
+    safeUserContext: {
+      ...userContext,
+      tenantId,
+      allowedClassroomIds: safeAllowedClassroomIds,
+      currentClassroomId: safeCurrentClassroomId,
+    },
+  };
+}
+
 export default function SignedInApp(props: {
   owner: string;
   signOut: () => void;
+  userContext: CurrentUserContext;
+  classrooms: Classroom[];
+  onSelectClassroomId: (classroomId: string) => void;
 }) {
-  const { owner, signOut } = props;
+  const { owner, signOut, userContext, classrooms, onSelectClassroomId } =
+    props;
 
   // デモでは旧PLANではなく、現在の本線である PLAN v2 を初期表示にする
   const [tab, setTab] = useState<TabKey>("planV2Workspace");
 
-  // ひとまず固定。後でログインユーザー所属園・tenant選択に置き換える
-  const tenantId = "demo-tenant";
+  const tenantId = userContext.tenantId || "demo-tenant";
+  const { safeUserContext, visibleClassrooms } = sanitizeUserContextForTenant({
+    userContext,
+    classrooms,
+    tenantId,
+  });
+  const currentClassroom = visibleClassrooms.find(
+    (classroom) => classroom.id === safeUserContext.currentClassroomId,
+  );
+
+  const showClassroomSelector =
+    safeUserContext.isSchoolScope ||
+    safeUserContext.allowedClassroomIds.length > 1;
 
   return (
     <div
@@ -50,6 +147,95 @@ export default function SignedInApp(props: {
         alignItems: "stretch",
       }}
     >
+      <div
+        style={{
+          display: "grid",
+          gap: 8,
+          marginBottom: 16,
+          padding: 12,
+          border: "1px solid #ddd",
+          borderRadius: 8,
+          background: "#fffef8",
+        }}
+      >
+        <div
+          style={{
+            display: "flex",
+            gap: 12,
+            flexWrap: "wrap",
+            alignItems: "center",
+          }}
+        >
+          <div>
+            <b>利用者:</b> {safeUserContext.profileFullName ?? owner}
+          </div>
+          <div>
+            <b>tenant:</b> {tenantId}
+          </div>
+          <div>
+            <b>年度:</b> {safeUserContext.fiscalYear}
+          </div>
+          <div>
+            <b>role:</b> {safeUserContext.role || "(未設定)"}
+          </div>
+          <div>
+            <b>scope:</b> {safeUserContext.isSchoolScope ? "園全体" : "クラス"}
+          </div>
+          <div>
+            <b>所属元:</b> {safeUserContext.source}
+          </div>
+        </div>
+
+        <div
+          style={{
+            display: "flex",
+            gap: 12,
+            flexWrap: "wrap",
+            alignItems: "center",
+          }}
+        >
+          <label>
+            表示クラス:{" "}
+            <select
+              value={safeUserContext.currentClassroomId ?? ""}
+              onChange={(event) => onSelectClassroomId(event.target.value)}
+              disabled={
+                !showClassroomSelector || visibleClassrooms.length === 0
+              }
+            >
+              <option value="">(未選択)</option>
+              {visibleClassrooms.map((classroom) => (
+                <option key={classroom.id} value={classroom.id}>
+                  {displayClassroomName(classroom)}
+                </option>
+              ))}
+            </select>
+          </label>
+
+          <div>
+            <b>現在:</b>{" "}
+            {currentClassroom
+              ? displayClassroomName(currentClassroom)
+              : "未選択"}
+          </div>
+
+          <div>
+            <b>所属件数:</b> {safeUserContext.assignmentCount}
+          </div>
+          <div>
+            <b>表示可能クラス:</b> {visibleClassrooms.length}
+          </div>
+        </div>
+
+        {visibleClassrooms.length === 0 && (
+          <div style={{ color: "#8a6d3b", fontSize: 13 }}>
+            このユーザーの tenantId={tenantId}{" "}
+            に紐づく表示可能クラスがありません。 Classroom.csv と
+            StaffAssignment.csv の tenantId / classroomId を確認してください。
+          </div>
+        )}
+      </div>
+
       <div
         style={{
           display: "flex",
@@ -86,18 +272,54 @@ export default function SignedInApp(props: {
         </div>
       </div>
 
-      {tab === "planV2Workspace" && <PlanV2WorkspacePanel owner={owner} />}
+      {tab === "planV2Workspace" && (
+        <PlanV2WorkspacePanel
+          owner={owner}
+          tenantId={tenantId}
+          currentClassroomId={safeUserContext.currentClassroomId}
+          allowedClassroomIds={safeUserContext.allowedClassroomIds}
+          isSchoolScope={safeUserContext.isSchoolScope}
+        />
+      )}
 
-      {tab === "schedulePlan" && <SimpleScheduleWorkspacePanel owner={owner} />}
+      {tab === "schedulePlan" && (
+        <SimpleScheduleWorkspacePanel
+          owner={owner}
+          tenantId={tenantId}
+          currentClassroomId={safeUserContext.currentClassroomId}
+          allowedClassroomIds={safeUserContext.allowedClassroomIds}
+          isSchoolScope={safeUserContext.isSchoolScope}
+        />
+      )}
 
-      {tab === "scheduleDay" && <ScheduleDayPanel owner={owner} />}
+      {tab === "scheduleDay" && (
+        <ScheduleDayPanel
+          owner={owner}
+          tenantId={tenantId}
+          currentClassroomId={safeUserContext.currentClassroomId}
+          allowedClassroomIds={safeUserContext.allowedClassroomIds}
+          isSchoolScope={safeUserContext.isSchoolScope}
+        />
+      )}
 
       {tab === "parentNotice" && (
-        <ParentNoticePanel owner={owner} tenantId={tenantId} />
+        <ParentNoticePanel
+          owner={owner}
+          tenantId={tenantId}
+          currentClassroomId={safeUserContext.currentClassroomId}
+          allowedClassroomIds={safeUserContext.allowedClassroomIds}
+          isSchoolScope={safeUserContext.isSchoolScope}
+        />
       )}
 
       {tab === "attendance" && (
-        <AttendancePanel owner={owner} tenantId={tenantId} />
+        <AttendancePanel
+          owner={owner}
+          tenantId={tenantId}
+          currentClassroomId={safeUserContext.currentClassroomId}
+          allowedClassroomIds={safeUserContext.allowedClassroomIds}
+          isSchoolScope={safeUserContext.isSchoolScope}
+        />
       )}
 
       {tab === "environmentImpact" && (
@@ -109,14 +331,34 @@ export default function SignedInApp(props: {
       )}
 
       {tab === "classWeeklyReport" && (
-        <ClassWeeklyReportPanel owner={owner} tenantId={tenantId} />
+        <ClassWeeklyReportPanel
+          owner={owner}
+          tenantId={tenantId}
+          currentClassroomId={safeUserContext.currentClassroomId}
+          allowedClassroomIds={safeUserContext.allowedClassroomIds}
+          isSchoolScope={safeUserContext.isSchoolScope}
+        />
       )}
 
       {tab === "childWeekendLetter" && (
-        <ChildWeekendLetterPanel owner={owner} tenantId={tenantId} />
+        <ChildWeekendLetterPanel
+          owner={owner}
+          tenantId={tenantId}
+          currentClassroomId={safeUserContext.currentClassroomId}
+          allowedClassroomIds={safeUserContext.allowedClassroomIds}
+          isSchoolScope={safeUserContext.isSchoolScope}
+        />
       )}
 
-      {tab === "practice" && <PracticeSearchPanelLookup owner={owner} />}
+      {tab === "practice" && (
+        <PracticeSearchPanelLookup
+          owner={owner}
+          tenantId={tenantId}
+          currentClassroomId={safeUserContext.currentClassroomId}
+          allowedClassroomIds={safeUserContext.allowedClassroomIds}
+          isSchoolScope={safeUserContext.isSchoolScope}
+        />
+      )}
       {tab === "practiceRegister" && <PracticeRegisterPanel owner={owner} />}
       {tab === "link" && <LinkSearchPanel />}
 

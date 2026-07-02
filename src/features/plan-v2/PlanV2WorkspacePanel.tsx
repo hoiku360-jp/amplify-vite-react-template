@@ -206,15 +206,48 @@ function sortClassCalendarEvents(
   return s(a.title).localeCompare(s(b.title));
 }
 
-export default function PlanV2WorkspacePanel(props: { owner: string }) {
+type Props = {
+  owner: string;
+  tenantId?: string;
+  currentClassroomId?: string | null;
+  allowedClassroomIds?: string[] | null;
+  isSchoolScope?: boolean;
+};
+
+export default function PlanV2WorkspacePanel(props: Props) {
   const { owner } = props;
+  const userTenantId = s(props.tenantId);
+  const currentClassroomId = s(props.currentClassroomId);
+  const isSchoolScope = props.isSchoolScope === true;
+  const isTenantLocked = userTenantId.length > 0;
+
+  const allowedClassroomIdSet = useMemo(
+    () =>
+      new Set(
+        (props.allowedClassroomIds ?? []).map((id) => s(id)).filter(Boolean),
+      ),
+    [props.allowedClassroomIds],
+  );
+
+  const classroomAllowedForUser = useCallback(
+    (row: ClassroomRecord | null | undefined): boolean => {
+      if (!row) return false;
+      if (userTenantId && s(row.tenantId) !== userTenantId) return false;
+      if (isSchoolScope || allowedClassroomIdSet.size === 0) return true;
+      return allowedClassroomIdSet.has(s(row.id));
+    },
+    [allowedClassroomIdSet, isSchoolScope, userTenantId],
+  );
+
+  const initialTenantId = userTenantId || "demo-tenant";
+
   const client = useMemo(() => generateClient<Schema>(), []);
 
   const [loading, setLoading] = useState(false);
   const [message, setMessage] = useState("");
   const [error, setError] = useState("");
 
-  const [selectedTenantId, setSelectedTenantId] = useState("demo-tenant");
+  const [selectedTenantId, setSelectedTenantId] = useState(initialTenantId);
   const [fiscalYear, setFiscalYear] = useState<number>(2026);
   const [navPath, setNavPath] = useState<TreeNode[]>([]);
 
@@ -249,6 +282,12 @@ export default function PlanV2WorkspacePanel(props: { owner: string }) {
     ClassPlanPhraseSelectionRecord[]
   >([]);
 
+  useEffect(() => {
+    if (!userTenantId) return;
+    setSelectedTenantId(userTenantId);
+    setNavPath([{ kind: "tenant", tenantId: userTenantId }]);
+  }, [userTenantId]);
+
   const refreshAll = useCallback(
     async (tenantIdArg?: string, fiscalYearArg?: number) => {
       const fy = fiscalYearArg ?? fiscalYear;
@@ -260,12 +299,15 @@ export default function PlanV2WorkspacePanel(props: { owner: string }) {
         const tenantRes = await client.models.Tenant.list({ limit: 1000 });
         throwIfModelErrors(tenantRes);
 
-        const nextTenants = [...(tenantRes.data ?? [])].sort((a, b) =>
+        const allTenants = [...(tenantRes.data ?? [])].sort((a, b) =>
           byText(a.tenantId, b.tenantId),
         );
+        const nextTenants = userTenantId
+          ? allTenants.filter((t) => s(t.tenantId) === userTenantId)
+          : allTenants;
         setTenants(nextTenants);
 
-        let tenantId = tenantIdArg ?? selectedTenantId;
+        let tenantId = userTenantId || tenantIdArg || selectedTenantId;
         if (!tenantId) {
           tenantId = nextTenants[0]?.tenantId ?? "";
         }
@@ -403,11 +445,13 @@ export default function PlanV2WorkspacePanel(props: { owner: string }) {
         const monthIds = new Set(nextMonthPlans.map((x) => x.id));
 
         setClassrooms(
-          [...(classroomRes.data ?? [])].sort((a, b) => {
-            const age = byText(a.ageBand, b.ageBand);
-            if (age !== 0) return age;
-            return byText(a.name, b.name);
-          }),
+          [...(classroomRes.data ?? [])]
+            .filter((row) => classroomAllowedForUser(row))
+            .sort((a, b) => {
+              const age = byText(a.ageBand, b.ageBand);
+              if (age !== 0) return age;
+              return byText(a.name, b.name);
+            }),
         );
         setSchoolAnnualPlans([...(schoolAnnualPlanRes.data ?? [])]);
         setAgeTargets([...(ageTargetRes.data ?? [])]);
@@ -470,7 +514,13 @@ export default function PlanV2WorkspacePanel(props: { owner: string }) {
         setLoading(false);
       }
     },
-    [client, fiscalYear, selectedTenantId],
+    [
+      client,
+      classroomAllowedForUser,
+      fiscalYear,
+      selectedTenantId,
+      userTenantId,
+    ],
   );
 
   useEffect(() => {
@@ -823,6 +873,13 @@ export default function PlanV2WorkspacePanel(props: { owner: string }) {
     setMessage("");
 
     try {
+      if (isTenantLocked) {
+        setMessage(
+          "所属テナントでログイン中のため、デモ保育園の自動準備は無効です。Tenant/Classroom はCSV seedで登録してください。",
+        );
+        return;
+      }
+
       const tenantId = "demo-tenant";
       const schoolName = "テスト保育園";
 
@@ -1433,8 +1490,23 @@ export default function PlanV2WorkspacePanel(props: { owner: string }) {
       >
         <strong>PLAN v2 Workspace</strong>
         <span style={{ color: "#666" }}>owner: {owner}</span>
+        {userTenantId && (
+          <span style={{ color: "#666" }}>
+            tenant: {userTenantId} / scope:{" "}
+            {isSchoolScope ? "SCHOOL" : "CLASSROOM"}
+            {currentClassroomId ? ` / classroom: ${currentClassroomId}` : ""}
+          </span>
+        )}
 
-        <button onClick={() => void prepareDemoTenant()} disabled={loading}>
+        <button
+          onClick={() => void prepareDemoTenant()}
+          disabled={loading || isTenantLocked}
+          title={
+            isTenantLocked
+              ? "所属テナントでログイン中はCSV seedで管理します。"
+              : undefined
+          }
+        >
           デモ保育園を準備
         </button>
 
@@ -1442,6 +1514,7 @@ export default function PlanV2WorkspacePanel(props: { owner: string }) {
           tenant
           <select
             value={selectedTenantId}
+            disabled={isTenantLocked}
             onChange={(e) => {
               const next = e.target.value;
               setSelectedTenantId(next);

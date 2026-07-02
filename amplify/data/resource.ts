@@ -504,7 +504,9 @@ const schema = a
         note: a.string(),
       })
       .identifier(["tenantId"])
-      .authorization((allow) => [allow.authenticated().to(["create", "read"])]),
+      .authorization((allow) => [
+        allow.authenticated().to(["create", "read", "update"]),
+      ]),
 
     UserProfile: a
       .model({
@@ -531,7 +533,45 @@ const schema = a
       ])
       .authorization((allow) => [
         allow.ownerDefinedIn("owner"),
-        allow.authenticated().to(["read"]),
+        allow.authenticated().to(["read", "create", "update"]),
+      ]),
+
+    StaffAssignment: a
+      .model({
+        assignmentId: a.string().required(),
+        tenantId: a.string().required(),
+        userId: a.string().required(),
+
+        // SCHOOL: 園長・主任など園全体所属
+        // CLASSROOM: 担任・補助などクラス所属
+        scopeType: a.string().required(),
+        classroomId: a.id(),
+
+        // DIRECTOR / CHIEF / TEACHER / SUPPORT / TENANT_ADMIN
+        role: a.string().required(),
+
+        fiscalYear: a.integer().required(),
+        startDate: a.date().required(),
+        endDate: a.date(),
+
+        isPrimary: a.boolean(),
+        status: a.string().required(), // ACTIVE / INACTIVE / ARCHIVED
+        note: a.string(),
+      })
+      .identifier(["assignmentId"])
+      .secondaryIndexes((index) => [
+        index("userId")
+          .sortKeys(["fiscalYear", "scopeType", "classroomId"])
+          .queryField("listStaffAssignmentsByUser"),
+        index("tenantId")
+          .sortKeys(["fiscalYear", "scopeType", "role"])
+          .queryField("listStaffAssignmentsByTenantYear"),
+        index("classroomId")
+          .sortKeys(["fiscalYear", "role"])
+          .queryField("listStaffAssignmentsByClassroomYear"),
+      ])
+      .authorization((allow) => [
+        allow.authenticated().to(["create", "read", "update", "delete"]),
       ]),
 
     AbilityCode: a

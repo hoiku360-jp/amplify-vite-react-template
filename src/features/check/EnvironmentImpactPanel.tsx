@@ -182,6 +182,14 @@ function isActivePractice(row: PracticeCodeRow): boolean {
   return status !== "ARCHIVED" && status !== "DELETED";
 }
 
+function isSharedOrTenantPractice(
+  row: PracticeCodeRow,
+  tenantId: string,
+): boolean {
+  const rowTenantId = s(row.tenantId);
+  return !rowTenantId || rowTenantId === tenantId;
+}
+
 function practiceCodeOf(row: PracticeCodeRow): string {
   return s(row.practice_code);
 }
@@ -880,8 +888,7 @@ export default function EnvironmentImpactPanel(props: Props) {
           if (!practiceCode) return false;
           if (!isActivePractice(row)) return false;
 
-          const rowTenantId = s(row.tenantId);
-          return !rowTenantId || rowTenantId === tenantId;
+          return isSharedOrTenantPractice(row, tenantId);
         })
         .sort((a, b) => {
           const categoryDiff = categoryLabelOf(a).localeCompare(
@@ -891,12 +898,22 @@ export default function EnvironmentImpactPanel(props: Props) {
           return practiceTitleOf(a).localeCompare(practiceTitleOf(b));
         });
 
+      const sharedPracticeCount = activePracticeRows.filter(
+        (row) => !s(row.tenantId),
+      ).length;
+      const tenantPracticeCount =
+        activePracticeRows.length - sharedPracticeCount;
+      const otherTenantPracticeCount = practiceRows.filter((row) => {
+        const rowTenantId = s(row.tenantId);
+        return rowTenantId && rowTenantId !== tenantId;
+      }).length;
+
       setPractices(activePracticeRows);
       setAbilityLinks(linkRows);
       setAbilityAggs(aggRows);
       setAbilityCodes(abilityRows);
       setMessage(
-        `読込完了: Practice=${activePracticeRows.length}件 / AbilityPracticeLink=${linkRows.length}件 / AbilityPracticeAgg=${aggRows.length}件`,
+        `読込完了: Practice=${activePracticeRows.length}件（共通=${sharedPracticeCount}件 / 自テナント=${tenantPracticeCount}件 / 他テナント除外=${otherTenantPracticeCount}件） / AbilityPracticeLink=${linkRows.length}件 / AbilityPracticeAgg=${aggRows.length}件`,
       );
     } catch (e) {
       console.error(e);

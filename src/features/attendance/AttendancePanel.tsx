@@ -6,6 +6,9 @@ import type { Schema } from "../../../amplify/data/resource";
 type Props = {
   owner: string;
   tenantId?: string;
+  currentClassroomId?: string | null;
+  allowedClassroomIds?: string[];
+  isSchoolScope?: boolean;
 };
 
 type ModelError = {
@@ -134,6 +137,42 @@ const smallMutedStyle: CSSProperties = {
 
 function s(value: unknown): string {
   return String(value ?? "").trim();
+}
+
+function filterClassroomsForCurrentContext(
+  rows: ClassroomRow[],
+  tenantId: string,
+  currentClassroomId: string | null,
+  allowedClassroomIds: string[],
+): ClassroomRow[] {
+  const tenantRows = rows.filter((row) => s(row.tenantId) === tenantId);
+  const currentId = s(currentClassroomId);
+  if (currentId) {
+    return tenantRows.filter((row) => row.id === currentId);
+  }
+
+  const allowedSet = new Set(allowedClassroomIds.map((value) => s(value)));
+  if (allowedSet.size > 0) {
+    return tenantRows.filter((row) => allowedSet.has(row.id));
+  }
+
+  return tenantRows;
+}
+
+function resolveNextClassroomId(
+  rows: ClassroomRow[],
+  currentClassroomId: string | null,
+  selectedClassroomId: string,
+): string {
+  const currentId = currentClassroomId ?? "";
+  if (currentId && rows.some((row) => row.id === currentId)) return currentId;
+  if (
+    selectedClassroomId &&
+    rows.some((row) => row.id === selectedClassroomId)
+  ) {
+    return selectedClassroomId;
+  }
+  return rows[0]?.id ?? "";
 }
 
 function todayYYYYMMDD() {
@@ -336,7 +375,13 @@ function latestReplySort(a: ParentNoticeReplyRow, b: ParentNoticeReplyRow) {
 }
 
 export default function AttendancePanel(props: Props) {
-  const { owner, tenantId = DEFAULT_TENANT_ID } = props;
+  const {
+    owner,
+    tenantId = DEFAULT_TENANT_ID,
+    currentClassroomId = null,
+    allowedClassroomIds = [],
+    isSchoolScope = false,
+  } = props;
 
   const [targetDate, setTargetDate] = useState(todayYYYYMMDD);
   const [classroomId, setClassroomId] = useState("");
@@ -485,19 +530,23 @@ export default function AttendancePanel(props: Props) {
       }),
     ]);
 
-    const nextClassrooms = [...classroomRows].sort((a, b) =>
-      classroomLabel(a as ClassroomDisplayRow).localeCompare(
-        classroomLabel(b as ClassroomDisplayRow),
+    const nextClassrooms = filterClassroomsForCurrentContext(
+      [...classroomRows].sort((a, b) =>
+        classroomLabel(a as ClassroomDisplayRow).localeCompare(
+          classroomLabel(b as ClassroomDisplayRow),
+        ),
       ),
+      tenantId,
+      currentClassroomId,
+      allowedClassroomIds,
     );
 
     setClassrooms(nextClassrooms);
     setAgeTargets(ageTargetRows);
-
-    if (!classroomId && nextClassrooms[0]) {
-      setClassroomId(nextClassrooms[0].id);
-    }
-  }, [classroomId, tenantId]);
+    setClassroomId(
+      resolveNextClassroomId(nextClassrooms, currentClassroomId, classroomId),
+    );
+  }, [allowedClassroomIds, classroomId, currentClassroomId, tenantId]);
 
   const loadAttendance = useCallback(async () => {
     const date = s(targetDate);
@@ -513,7 +562,6 @@ export default function AttendancePanel(props: Props) {
         listAll(client.models.AttendanceSheet, {
           filter: {
             tenantId: { eq: tenantId },
-            owner: { eq: owner },
             classroomId: { eq: cls },
             targetDate: { eq: date },
           },
@@ -522,7 +570,6 @@ export default function AttendancePanel(props: Props) {
         listAll(client.models.ParentNoticeReply, {
           filter: {
             tenantId: { eq: tenantId },
-            owner: { eq: owner },
             classroomId: { eq: cls },
             targetDate: { eq: date },
           },
@@ -553,6 +600,7 @@ export default function AttendancePanel(props: Props) {
 
       const recordRows = await listAll(client.models.AttendanceRecord, {
         filter: {
+          tenantId: { eq: tenantId },
           attendanceSheetId: { eq: latestSheet.id },
         },
         limit: 1000,
@@ -591,7 +639,7 @@ export default function AttendancePanel(props: Props) {
     } finally {
       setLoading(false);
     }
-  }, [classroomId, owner, selectedClassroomName, targetDate, tenantId]);
+  }, [classroomId, selectedClassroomName, targetDate, tenantId]);
 
   useEffect(() => {
     void loadMaster();
@@ -619,7 +667,6 @@ export default function AttendancePanel(props: Props) {
       const existing = await listAll(client.models.AttendanceSheet, {
         filter: {
           tenantId: { eq: tenantId },
-          owner: { eq: owner },
           classroomId: { eq: cls },
           targetDate: { eq: date },
         },
@@ -694,6 +741,13 @@ export default function AttendancePanel(props: Props) {
     row: AttendanceRecordRow,
     draft: RecordDraft,
   ) {
+    if (s(row.tenantId) !== tenantId) {
+      setMessage(
+        `この登降園レコードは現在の tenantId=${tenantId} に属していないため保存しません。`,
+      );
+      return;
+    }
+
     setSavingRecordId(row.id);
     setMessage("");
 
@@ -829,6 +883,10 @@ export default function AttendancePanel(props: Props) {
             <select
               value={classroomId}
               onChange={(e) => setClassroomId(e.target.value)}
+              disabled={
+                !!currentClassroomId ||
+                (!isSchoolScope && classrooms.length <= 1)
+              }
             >
               <option value="">選択してください</option>
               {classrooms.map((row) => (
